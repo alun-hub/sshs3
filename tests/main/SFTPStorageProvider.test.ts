@@ -291,6 +291,20 @@ describe('SFTPStorageProvider', () => {
       expect(entries[0].isDirectory).toBe(false);
     });
 
+    // M7 (code review 2026-11-03): a FIFO or device on the server must be flagged so transfers skip it
+    // (opening it over SFTP blocks until something writes to it).
+    it('flags a special file (FIFO, socket, device) as isSpecial, but not a regular file', async () => {
+      mockList.mockResolvedValue([
+        { name: 'pipe', type: '-', size: 0, isSpecial: true },
+        { name: 'plain.txt', type: '-', size: 3 },
+      ]);
+
+      const entries = await new SFTPStorageProvider(baseConfig).list('/folder');
+
+      expect(entries.find((e) => e.name === 'pipe')?.isSpecial).toBe(true);
+      expect(entries.find((e) => e.name === 'plain.txt')?.isSpecial).toBeFalsy();
+    });
+
     it('should sort directories first, then files alphabetically', async () => {
       const now = Date.now();
       mockList.mockResolvedValue([

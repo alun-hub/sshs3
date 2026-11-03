@@ -7,6 +7,7 @@ import {
   type SftpFileStats,
   type SftpNameEntry,
 } from './SftpConstants';
+import { isSpecialFileMode } from './sftpFileType';
 
 /** Largest data payload per SSH_FXP_WRITE; well under sftp-server's 256 KiB message limit. */
 export const MAX_WRITE_DATA = 64 * 1024;
@@ -665,6 +666,7 @@ function parseAttrs(
 
   const isDirectory = mode !== undefined ? (mode & 0o170000) === 0o040000 : false;
   const isSymlink = mode !== undefined ? (mode & 0o170000) === 0o120000 : false;
+  const isSpecial = isSpecialFileMode(mode);
 
   return {
     stats: {
@@ -676,6 +678,7 @@ function parseAttrs(
       mtime,
       isDirectory,
       isSymlink,
+      isSpecial,
     },
     nextOffset: offset,
   };

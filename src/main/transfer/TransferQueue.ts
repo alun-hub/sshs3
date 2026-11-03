@@ -359,8 +359,10 @@ export class TransferQueue extends EventEmitter {
 
     try {
       if (!job.isDirectory) {
+        let isSpecial = false;
         try {
           const srcStat = await job.sourceProvider.stat(job.sourcePath);
+          isSpecial = Boolean(srcStat.isSpecial);
           if (srcStat.isDirectory) {
             job.isDirectory = true;
           }
@@ -372,6 +374,10 @@ export class TransferQueue extends EventEmitter {
           }
         } catch {
           // ignore
+        }
+        if (isSpecial) {
+          // A FIFO, socket or device: reading it would block, and there is nothing to copy.
+          throw new Error(`Not a regular file: ${getBaseName(job.sourcePath) || job.sourcePath}`);
         }
       }
 

@@ -171,6 +171,8 @@ export class LocalStorageProvider extends BaseStorageProvider {
             size: itemStats.size,
             isDirectory: isDir,
             isSymlink,
+            // FIFO, socket or device (after following a link, so a link to one counts too): reading it blocks.
+            isSpecial: !isDir && !itemStats.isFile(),
             mtime: formatDate(itemStats.mtime),
             mtimeMs: itemStats.mtime.getTime(),
             mimeType: isDir ? undefined : getMimeType(entry.name),
@@ -185,6 +187,7 @@ export class LocalStorageProvider extends BaseStorageProvider {
             size: 0,
             isDirectory: isDir,
             isSymlink,
+            isSpecial: !isDir && !isSymlink && !entry.isFile(),
             mimeType: isDir ? undefined : getMimeType(entry.name),
           };
         }

@@ -54,6 +54,14 @@ describe('DirectorySyncService', () => {
     await expect(buildTree(provider, '/src')).rejects.toThrow('Connection lost');
   });
 
+  it('leaves special files (FIFOs, sockets, devices) out of the tree, so they are never offered for copying (M7)', async () => {
+    const provider = fakeProvider({
+      '/src': [file('/src', 'a.txt'), { ...file('/src', 'pipe'), isSpecial: true } as FileEntry],
+    });
+    const tree = await buildTree(provider, '/src');
+    expect([...tree.keys()]).toEqual(['a.txt']);
+  });
+
   it('does not follow symlinked directories', async () => {
     const provider = fakeProvider({
       '/src': [dir('/src', 'loop', { isSymlink: true }), file('/src', 'a.txt')],

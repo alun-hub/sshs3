@@ -463,12 +463,16 @@ async function executeTransferFile(options: TransferOptions): Promise<void> {
 
   let totalBytes = options.totalBytes;
   if (totalBytes === undefined || totalBytes < 0) {
+    let stat: FileEntry | undefined;
     try {
-      const stat = await options.sourceProvider.stat(options.sourcePath);
-      totalBytes = stat.size >= 0 ? stat.size : 0;
+      stat = await options.sourceProvider.stat(options.sourcePath);
     } catch {
-      totalBytes = 0;
+      stat = undefined;
     }
+    if (stat?.isSpecial) {
+      throw new Error(`Not a regular file: ${fileName}`);
+    }
+    totalBytes = stat && stat.size >= 0 ? stat.size : 0;
   }
 
   const readStream = await options.sourceProvider.createReadStream(
@@ -668,6 +672,10 @@ async function scanDirectory(
     // cycle, since no cycle detection exists here. Matches the same
     // skip-symlinks policy LocalContentSearchService already uses.
     if (entry.isSymlink) {
+      continue;
+    }
+    // FIFOs, sockets and devices cannot be copied: reading a FIFO blocks until something writes to it (M7).
+    if (entry.isSpecial) {
       continue;
     }
     const childTargetPath = joinPaths(targetType, currentTargetPath, baseName);

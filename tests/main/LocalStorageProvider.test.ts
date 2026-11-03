@@ -36,6 +36,23 @@ describe('LocalStorageProvider', () => {
     expect(customProvider.name).toBe('My Computer');
   });
 
+  describe('list: special files (M7)', () => {
+    it.skipIf(process.platform === 'win32')('flags a FIFO as isSpecial, and a regular file, folder and symlink as not', async () => {
+      const { execFileSync } = await import('node:child_process');
+      await fs.writeFile(path.join(testDir, 'plain.txt'), 'x');
+      await fs.mkdir(path.join(testDir, 'folder'));
+      await fs.symlink(path.join(testDir, 'plain.txt'), path.join(testDir, 'link'));
+      execFileSync('mkfifo', [path.join(testDir, 'pipe')]);
+
+      const byName = new Map((await provider.list(testDir)).map((e) => [e.name, e]));
+
+      expect(byName.get('pipe')?.isSpecial).toBe(true);
+      expect(byName.get('plain.txt')?.isSpecial).toBeFalsy();
+      expect(byName.get('folder')?.isSpecial).toBeFalsy();
+      expect(byName.get('link')?.isSpecial).toBeFalsy();
+    });
+  });
+
   describe('createFolder', () => {
     it('should create a single directory', async () => {
       const folderPath = path.join(testDir, 'test-folder');

@@ -1526,6 +1526,26 @@ describe('IpcBridge', () => {
       );
     });
 
+    it('rejects a special file (FIFO, socket, device) in transferAdd and queues nothing (M7)', async () => {
+      const special = {
+        ...mockStorageRegistry.providers.get('test-storage'),
+        stat: vi.fn().mockResolvedValue({ name: 'pipe', path: '/src/pipe', size: 0, isDirectory: false, isSpecial: true }),
+      };
+      mockStorageRegistry.providers.set('special-storage', special as any);
+      mockTransferQueue.addJob.mockClear();
+
+      await expect(
+        mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+          sourceProviderId: 'special-storage',
+          sourcePath: '/src/pipe',
+          targetProviderId: 'test-storage',
+          targetPath: '/dst/pipe',
+          conflictPolicy: 'overwrite',
+        })
+      ).rejects.toThrow('Not a regular file: pipe');
+      expect(mockTransferQueue.addJob).not.toHaveBeenCalled();
+    });
+
     it('rejects overwriting a file with itself in transferAdd and queues nothing', async () => {
       mockTransferQueue.addJob.mockClear();
 

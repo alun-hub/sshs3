@@ -47,12 +47,18 @@ export function registerTransferHandlers(bridge: TransferHost): void {
 
       let isDirectory = false;
       let totalBytes: number | undefined;
+      let isSpecial = false;
       try {
         const srcStat = await sourceProvider.stat(options.sourcePath);
         isDirectory = Boolean(srcStat.isDirectory);
         totalBytes = srcStat.size;
+        isSpecial = Boolean(srcStat.isSpecial);
       } catch {
         // ignore error if stat not available
+      }
+      if (isSpecial) {
+        // A FIFO, socket or device: reading it would block, and there is nothing to copy.
+        throw new Error(`Not a regular file: ${getBaseName(options.sourcePath) || options.sourcePath}`);
       }
 
       let resolvedTargetPath = options.targetPath;

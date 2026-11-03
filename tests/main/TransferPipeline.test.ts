@@ -668,6 +668,38 @@ describe('TransferPipeline', () => {
       expect(mockSource.list).not.toHaveBeenCalledWith('linked-dir');
     });
 
+    // M7 (code review 2026-11-03): reading a FIFO blocks until something writes to it, so a folder transfer
+    // used to hang on one. Special files are skipped like symlinks.
+    it('never copies a special file (FIFO, socket, device) found in a folder', async () => {
+      const mockSource = new MemoryStorageProvider();
+      mockSource.list = vi.fn().mockResolvedValue([
+        { name: 'real.txt', path: 'real.txt', size: 4, isDirectory: false },
+        { name: 'pipe', path: 'pipe', size: 0, isDirectory: false, isSpecial: true },
+      ]);
+      mockSource.files.set('real.txt', Buffer.from('test'));
+      const readSpy = vi.spyOn(mockSource, 'createReadStream');
+      const mockTarget = new MemoryStorageProvider();
+
+      await transferDirectory({ sourceProvider: mockSource, sourcePath: '', targetProvider: mockTarget, targetPath: '' });
+
+      expect(mockTarget.files.has('real.txt')).toBe(true);
+      expect(mockTarget.files.has('pipe')).toBe(false);
+      expect(readSpy).not.toHaveBeenCalledWith('pipe', expect.anything(), expect.anything());
+      expect(readSpy.mock.calls.map((c) => c[0])).toEqual(['real.txt']);
+    });
+
+    it('refuses to transfer a single special file', async () => {
+      const mockSource = new MemoryStorageProvider();
+      mockSource.stat = vi.fn().mockResolvedValue({ name: 'pipe', path: 'pipe', size: 0, isDirectory: false, isSpecial: true });
+      const readSpy = vi.spyOn(mockSource, 'createReadStream');
+      const mockTarget = new MemoryStorageProvider();
+
+      await expect(
+        transferFile({ sourceProvider: mockSource, sourcePath: 'pipe', targetProvider: mockTarget, targetPath: 'pipe' })
+      ).rejects.toThrow('Not a regular file');
+      expect(readSpy).not.toHaveBeenCalled();
+    });
+
     it.skipIf(process.platform === 'win32')(
       'end-to-end: a real symlinked directory inside the source tree is not copied to the target',
       async () => {
@@ -1171,6 +1203,19 @@ describe('TransferQueue', () => {
     await queue.waitForJob(job.id);
     await expect(queue.waitForJob(job.id)).resolves.toBe(job);
     await expect(queue.waitForJob('missing')).rejects.toThrow(/Job not found/);
+  });
+
+  it('fails a job whose source is a special file without opening it (M7)', async () => {
+    sourceProvider.stat = vi.fn().mockResolvedValue({ name: 'pipe', path: 'pipe', size: 0, isDirectory: false, isSpecial: true });
+    const readSpy = vi.spyOn(sourceProvider, 'createReadStream');
+    const queue = new TransferQueue();
+    const job = queue.addJob({ sourceProvider, sourcePath: 'pipe', targetProvider, targetPath: 'pipe' });
+
+    await queue.waitForJob(job.id);
+
+    expect(job.progress.status).toBe('failed');
+    expect(job.error).toBe('Not a regular file: pipe');
+    expect(readSpy).not.toHaveBeenCalled();
   });
 
   it('refuses to copy a file onto itself on the same provider and leaves it intact', async () => {

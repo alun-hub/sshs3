@@ -62,6 +62,8 @@ export async function buildTree(
       if (!baseName || baseName === '.' || baseName === '..') {
         continue;
       }
+      // FIFOs, sockets and devices are never copied, so they are not part of the comparison either.
+      if (entry.isSpecial) continue;
       const relativePath = relPrefix ? `${relPrefix}/${baseName}` : baseName;
       const childPath = entry.path || joinPaths(provider.type, currentPath, baseName);
 
