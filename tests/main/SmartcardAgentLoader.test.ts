@@ -225,6 +225,37 @@ describe.skipIf(process.platform === 'win32')('loadFido2ResidentKeysIntoPrivateA
     AgentLifecycleManager.killPrivateAgent(pid);
   });
 
+  // Low finding: the replay had no guard, so a PIN that had become wrong (changed on the key) was replayed for
+  // every signature and burnt the authenticator's retries. Same rule as AppAgent's FIDO2 PIN.
+  it('with keepAskpassAliveForAgentLifetime, asks the user again instead of replaying a PIN that is requested again right away', async () => {
+    await installFakeSshAdd('#!/bin/sh\nif [ "$1" = "-K" ]; then exit 0; fi\nif [ "$1" = "-l" ]; then echo "no output"; exit 0; fi\nexit 0\n');
+    const promptHandler = vi.fn().mockResolvedValueOnce('first-pin').mockResolvedValue('typed-after-failure');
+
+    const { pid, askpassServer } = await loadFido2ResidentKeysIntoPrivateAgent(promptHandler, { keepAskpassAliveForAgentLifetime: true });
+    try {
+      const ask = (prompt: string) =>
+        new Promise<{ pin: string }>((resolve) => {
+          const client = connectToAskpass(askpassServer!);
+          client.on('connect', () => client.write(JSON.stringify({ token: (askpassServer as any).token, prompt }) + '\n'));
+          client.on('data', (d) => {
+            resolve(JSON.parse(d.toString().trim()));
+            client.end();
+          });
+        });
+      const sigPrompt = 'Enter PIN and confirm user presence for ED25519-SK key SHA256:abc: ';
+
+      expect(await ask(sigPrompt)).toEqual({ pin: 'first-pin' }); // nothing cached yet: the user is asked
+      expect(await ask(sigPrompt)).toEqual({ pin: 'first-pin' }); // replayed
+      expect(promptHandler).toHaveBeenCalledTimes(1);
+
+      expect(await ask(sigPrompt)).toEqual({ pin: 'typed-after-failure' }); // asked again at once: it was wrong
+      expect(promptHandler).toHaveBeenCalledTimes(2);
+    } finally {
+      await askpassServer?.stop();
+      AgentLifecycleManager.killPrivateAgent(pid);
+    }
+  });
+
   it('with keepAskpassAliveForAgentLifetime, reuses the cached PIN for subsequent signature prompts without calling promptHandler again', async () => {
     await installFakeSshAdd('#!/bin/sh\nif [ "$1" = "-K" ]; then exit 0; fi\nif [ "$1" = "-l" ]; then echo "no output"; exit 0; fi\nexit 0\n');
 

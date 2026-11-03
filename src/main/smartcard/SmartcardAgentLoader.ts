@@ -237,6 +237,9 @@ export interface LoadIntoPrivateAgentOptions {
   keepAskpassAliveForAgentLifetime?: boolean;
 }
 
+/** A FIDO2 signature PIN asked for again within this time of a replay is treated as wrong (also used by AppAgent). */
+export const FIDO2_PIN_REPLAY_WINDOW_MS = 3000;
+
 /**
  * Spawns a private, app-managed ssh-agent and runs `ssh-add <addArgs>`
  * against it, prompting for the PIN via our own AskpassServer. Shared by
@@ -270,12 +273,11 @@ async function runAddIntoPrivateAgent(
   const keepAlive = !target && (options?.keepAskpassAliveForAgentLifetime ?? false);
   const logPrefix = `[smartcard] runAddIntoPrivateAgent(${addArgs.join(' ')})`;
 
-  // Caches the PIN for the duration of THIS load's own retry loop only (so the user isn't asked
-  // again for a mechanical ssh-add retry after a transient collision) — deliberately NOT reused
-  // once the load finishes: for `keepAlive`, the AskpassServer's handler is swapped below to the
-  // raw (non-caching) `promptHandler`, so a *future* signature request — potentially minutes later,
-  // and needing a fresh touch regardless of PIN — always gets its own live prompt rather than
-  // silently replaying whatever was typed at load time.
+  // Caches the PIN so the user isn't asked again for a mechanical ssh-add retry after a transient
+  // collision. For a `keepAlive` agent (the per-session FIDO2 agent) it is also replayed for later
+  // signature prompts, so a verify-required key only needs a touch: the same deliberate, memory-only
+  // exception as AppAgent's FIDO2 PIN. After the load a replay is guarded (see `replayingPromptHandler`):
+  // a PIN that is asked for again right after a replay was wrong, and is never replayed again.
   let cachedPin: string | undefined;
   let inFlightPrompt: Promise<string> | undefined;
   // Set by the retry loop below just before re-entering it after a wrong PIN, and consumed (cleared)
@@ -315,6 +317,22 @@ async function runAddIntoPrivateAgent(
       }
     })();
     return inFlightPrompt;
+  };
+
+  let lastReplayAt = 0;
+  const replayingPromptHandler: AskpassPromptHandler = async (prompt, retry) => {
+    const isAccountPasswordPrompt = /password/i.test(prompt) && !/pin|passphrase/i.test(prompt);
+    if (!isAccountPasswordPrompt && cachedPin !== undefined) {
+      const now = Date.now();
+      if (now - lastReplayAt > FIDO2_PIN_REPLAY_WINDOW_MS) {
+        lastReplayAt = now;
+        return cachingPromptHandler(prompt, retry); // replays the cached PIN
+      }
+      // Asked again right after a replay: the PIN was wrong (or changed). Replaying it again would burn the
+      // authenticator's PIN retries, so ask the user.
+      cachedPin = undefined;
+    }
+    return cachingPromptHandler(prompt, retry);
   };
 
   const askpassServer = new AskpassServer({
@@ -490,7 +508,7 @@ async function runAddIntoPrivateAgent(
     // Keep using the PIN that was entered during the load step for subsequent signature
     // requests during this session, rather than forcing the user to re-type the exact same PIN
     // a split-second later when ssh initiates public-key authentication.
-    askpassServer.setPromptHandler(cachingPromptHandler);
+    askpassServer.setPromptHandler(replayingPromptHandler);
     if (options?.onPresenceRequested) {
       askpassServer.setOnPresence(() => options.onPresenceRequested?.());
     }

@@ -22,6 +22,7 @@ vi.mock('../../src/main/smartcard/SmartcardAgentLoader', () => ({
   listAgentIdentities: vi.fn(),
   addSmartcardToAgent: vi.fn(),
   addFido2ResidentKeysToAgent: vi.fn(),
+  FIDO2_PIN_REPLAY_WINDOW_MS: 3000,
 }));
 
 const askpassInstances: Array<{ options: any; start: any; stop: any; getEnv: any }> = [];

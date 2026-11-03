@@ -11,6 +11,7 @@ import {
   listAgentIdentities,
   addSmartcardToAgent,
   addFido2ResidentKeysToAgent,
+  FIDO2_PIN_REPLAY_WINDOW_MS,
   type AgentIdentity,
   type AgentTarget,
   type LoadIntoPrivateAgentOptions,
@@ -26,7 +27,6 @@ const EVICT_TIMEOUT_MS = 3000;
 
 /** "Enter PIN and confirm user presence for ED25519-SK key SHA256:…" — a FIDO2 signature asking for its PIN. */
 const FIDO2_SIGNATURE_PIN_PROMPT = /\bPIN\b.*(-SK\b|authenticator|security key|user presence)/i;
-const FIDO2_PIN_REPLAY_WINDOW_MS = 3000;
 
 /**
  * Why a load that was running or waiting when the user locked is reported as failed. Not a fault of the card or
