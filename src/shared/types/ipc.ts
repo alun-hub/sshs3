@@ -1085,6 +1085,8 @@ export interface FileReadResult {
 
 export interface ExternalFileStatusEvent {
   sessionToken: string;
+  /** The storage the file belongs to: the same path can exist on several servers. */
+  providerId: string;
   remotePath: string;
   status: 'uploaded' | 'error';
   error?: string;

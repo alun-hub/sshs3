@@ -165,6 +165,12 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
+  // Read by the external-editor listener, which must not be re-subscribed on every keystroke.
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+  const confirmRef = useRef(confirm);
+  confirmRef.current = confirm;
+
   // Stop tail session helper
   const stopTailSession = useCallback(async () => {
     if (tailId) {
@@ -341,20 +347,39 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     if (!open || !window.multissh?.onExternalFileStatus) return;
 
     const cleanup = window.multissh.onExternalFileStatus((event: ExternalFileStatusEvent) => {
-      if (event.sessionToken === externalSessionToken || event.remotePath === entry?.path) {
-        if (event.status === 'uploaded') {
-          setSaveStatus(`Uploaded from external editor at ${event.timestamp}`);
-          setExternalStatus(`Auto-uploaded from external editor at ${event.timestamp}`);
+      // This tab's own session, or the same file on the same storage. A bare path match is not enough: the same
+      // path exists on every server (M11).
+      const isOurs =
+        event.sessionToken === externalSessionToken ||
+        (event.providerId === providerId && event.remotePath === entry?.path);
+      if (!isOurs) return;
+      if (event.status === 'uploaded') {
+        setSaveStatus(`Uploaded from external editor at ${event.timestamp}`);
+        setExternalStatus(`Auto-uploaded from external editor at ${event.timestamp}`);
+        void (async () => {
+          // Reloading replaces the editor buffer: never do that over unsaved edits without asking.
+          if (
+            isDirtyRef.current &&
+            !(await confirmRef.current({
+              title: 'File changed externally',
+              message: `${entry?.name ?? 'This file'} was changed by the external editor. Reload it and discard your unsaved edits?`,
+              confirmLabel: 'Reload and discard',
+              cancelLabel: 'Keep my edits',
+            }))
+          ) {
+            setExternalStatus('The external editor saved a newer version. Your unsaved edits here were kept.');
+            return;
+          }
           void loadFile();
-          onSaved?.();
-        } else if (event.status === 'error') {
-          setError(`External editor upload failed: ${event.error}`);
-        }
+        })();
+        onSaved?.();
+      } else if (event.status === 'error') {
+        setError(`External editor upload failed: ${event.error}`);
       }
     });
 
     return () => cleanup();
-  }, [open, externalSessionToken, entry?.path, loadFile, onSaved]);
+  }, [open, externalSessionToken, providerId, entry?.path, entry?.name, loadFile, onSaved]);
 
 
 

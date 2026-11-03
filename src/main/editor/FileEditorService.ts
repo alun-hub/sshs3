@@ -406,6 +406,7 @@ export class FileEditorService {
 
               onStatus?.({
                 sessionToken,
+                providerId,
                 remotePath,
                 status: 'uploaded',
                 timestamp: formatDate(new Date()),
@@ -413,6 +414,7 @@ export class FileEditorService {
             } catch (uploadErr) {
               onStatus?.({
                 sessionToken,
+                providerId,
                 remotePath,
                 status: 'error',
                 error: uploadErr instanceof Error ? uploadErr.message : String(uploadErr),

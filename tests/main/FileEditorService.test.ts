@@ -364,6 +364,28 @@ describe('FileEditorService', () => {
     });
   });
 
+  describe('external editor status events (M11)', () => {
+    it('says which storage an auto-upload belongs to, not only the path', async () => {
+      const mockProvider = {
+        id: 'sftp-evt',
+        name: 'SFTP Evt',
+        type: 'sftp' as const,
+        createReadStream: vi.fn().mockImplementation(() => Readable.from([Buffer.from('v1', 'utf-8')])),
+        createWriteStream: vi.fn().mockImplementation(() => new PassThrough()),
+      };
+      storageRegistry.register(mockProvider as any);
+      const events: Array<Record<string, unknown>> = [];
+
+      const { localPath, sessionToken } = await service.openInExternalEditor(storageRegistry, 'sftp-evt', '/etc/app/config.ini', (e) => events.push(e as any));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await fsp.writeFile(localPath, 'v2 saved in the external editor');
+
+      await vi.waitFor(() => expect(events.length).toBeGreaterThan(0), { timeout: 4000 });
+      expect(events[0]).toMatchObject({ providerId: 'sftp-evt', remotePath: '/etc/app/config.ini', status: 'uploaded', sessionToken });
+      await service.closeExternalEditor(sessionToken);
+    });
+  });
+
   describe('dispose', () => {
     it('cleans up all active sessions without errors', async () => {
       const mockProvider = {

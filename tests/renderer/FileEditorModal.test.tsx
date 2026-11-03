@@ -408,6 +408,73 @@ describe('FileEditorModal', () => {
     );
   });
 
+  // M11 (code review 2026-11-03): the external editor event only carried the remote path, so a save on another
+  // server's file with the same path reloaded this tab, and a reload replaced unsaved edits without asking.
+  describe('external editor events', () => {
+    function captureStatusListener() {
+      let listener: ((event: any) => void) | undefined;
+      mockOnExternalFileStatus.mockImplementation((cb: (event: any) => void) => {
+        listener = cb;
+        return () => {};
+      });
+      return (event: Record<string, unknown>) =>
+        act(() => {
+          listener?.({ sessionToken: 'other-token', remotePath: '/etc/app/config.json', status: 'uploaded', timestamp: '2026-11-03 12:00', ...event });
+        });
+    }
+    const openEditor = () =>
+      render(<FileEditorModal open={true} providerId="sftp-1" sourceType="sftp" entry={sampleEntry} onClose={vi.fn()} />);
+    const reads = () => (window.multissh.fileRead as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    it('ignores an upload on another storage that happens to have the same path', async () => {
+      const emit = captureStatusListener();
+      openEditor();
+      await waitFor(() => expect(screen.getByTestId('code-editor')).toBeInTheDocument());
+      const before = reads();
+
+      emit({ providerId: 'sftp-OTHER' });
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(reads()).toBe(before);
+      expect(screen.queryByText(/Uploaded from external editor/)).not.toBeInTheDocument();
+    });
+
+    it('reloads when the upload is for this storage and path and there are no unsaved edits', async () => {
+      const emit = captureStatusListener();
+      openEditor();
+      await waitFor(() => expect(screen.getByTestId('code-editor')).toBeInTheDocument());
+      const before = reads();
+
+      emit({ providerId: 'sftp-1' });
+
+      await waitFor(() => expect(reads()).toBeGreaterThan(before));
+    });
+
+    it('asks before reloading over unsaved edits, and keeps them when the user declines', async () => {
+      const emit = captureStatusListener();
+      openEditor();
+      await waitFor(() => expect(screen.getByTestId('code-editor')).toBeInTheDocument());
+      act(() => {
+        ((screen.getByTestId('code-editor')) as any).__cmChangeDoc('my unsaved edit');
+      });
+      await waitFor(() => expect(screen.getByText('Unsaved changes')).toBeInTheDocument());
+      const before = reads();
+
+      emit({ providerId: 'sftp-1' });
+
+      const dialog = await screen.findByRole('alertdialog');
+      expect(dialog).toHaveTextContent(/changed by the external editor/i);
+      fireEvent.click(screen.getByRole('button', { name: 'Keep my edits' }));
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+      expect(reads()).toBe(before);
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+      emit({ providerId: 'sftp-1' });
+      fireEvent.click(await screen.findByRole('button', { name: 'Reload and discard' }));
+      await waitFor(() => expect(reads()).toBeGreaterThan(before));
+    });
+  });
+
   it('does not trigger window.confirm when closing in embedded mode even if dirty', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm');
     const onClose = vi.fn();
