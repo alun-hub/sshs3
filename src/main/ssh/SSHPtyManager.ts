@@ -4,7 +4,6 @@ import crypto from 'node:crypto';
 import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
 import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
@@ -63,6 +62,7 @@ import type { SFTPConfig } from '../../shared/types/storage';
 import { listAgentPublicKeys } from './PublicKeyDiscovery';
 import type { AskpassPromptRetryContext } from '../smartcard/AskpassServer';
 import { createLogger } from '../log';
+import { createMuxControlPath } from './muxControlPath';
 const sshLog = createLogger('ssh');
 export interface SSHPtyManagerEvents {
   data: (event: { sessionId: string; data: string }) => void;
@@ -664,10 +664,8 @@ export class SSHPtyManager extends EventEmitter {
       askpassEnv = askpassServer.getEnv();
     }
 
-    const controlPath =
-      process.platform !== 'win32'
-        ? path.join(os.tmpdir(), `s3m-${crypto.randomUUID().slice(0, 8)}.sock`)
-        : undefined;
+    // In the app's private 0700 folder rather than the shared temp folder (M3); undefined means no multiplexing.
+    const controlPath = process.platform !== 'win32' ? await createMuxControlPath() : undefined;
     let muxRegistryId: string | null = null;
     let filteredConfig: SSHConnectionConfig;
     let ptyProcess: IPty;

@@ -147,6 +147,30 @@ describe('SSHPtyManager', () => {
       expect(options.env.TERM).toBe('xterm-256color');
     });
 
+    // M3 (code review 2026-11-03): the multiplexing socket used to be os.tmpdir()/s3m-<8 hex>.sock, a predictable
+    // name in a shared folder that is reused on reconnect.
+    it.skipIf(process.platform === 'win32')('keeps the multiplexing socket in the private app folder, not in the shared temp folder', async () => {
+      const os = await import('node:os');
+      const path = await import('node:path');
+      const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'pty-runtime-'));
+      const saved = process.env.XDG_RUNTIME_DIR;
+      process.env.XDG_RUNTIME_DIR = runtime;
+      try {
+        await manager.createSession({
+          id: 'mux-1', name: 'Mux', host: 'example.com', port: 22, username: 'u', authType: 'password', // pragma: allowlist secret
+        } as SSHConnectionConfig);
+
+        const { args } = (mockPtyInstances[mockPtyInstances.length - 1] as any)._spawnArgs as { args: string[] };
+        const controlPath = args.find((a) => a.startsWith('ControlPath='))!.slice('ControlPath='.length);
+        expect(path.dirname(controlPath)).toBe(path.join(runtime, 'sshs3'));
+        expect(fs.statSync(path.dirname(controlPath)).mode & 0o777).toBe(0o700);
+      } finally {
+        if (saved === undefined) delete process.env.XDG_RUNTIME_DIR;
+        else process.env.XDG_RUNTIME_DIR = saved;
+        fs.rmSync(runtime, { recursive: true, force: true });
+      }
+    });
+
     it('should support SSH agent socket configuration', async () => {
       const config: SSHConnectionConfig = {
         id: 'session-agent',
