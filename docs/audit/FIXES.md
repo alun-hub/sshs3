@@ -222,3 +222,11 @@ Ten findings, each checked against the code.
 | `toggleContext` / `toggleNamespace` decide from a stale closure when toggled twice in one batch | no change. A click or key press is a discrete event that React renders before the next one, and the loaders set `loading` at once, so the second toggle sees it. Covered by the "once per expansion" test |
 | a `load()` failure after a first successful load leaves stale data with a banner but no Retry | no change. `load()` runs only on mount, so the case does not occur; a failure of the first load has the Retry button |
 | `WRITTEN_ELSEWHERE` is a hand-kept list; other keys written outside the form could be overwritten the same way | accepted. These are the only two keys with another write path (checked with grep for every `settingsSave` and `settingsSetTeamVaultTabVisible` caller); `updatedAt` is stamped by the main process. Sending only the keys that differ from when the form was opened would be more general but is a larger change of `useSettingsForm` |
+
+## Code review 2026-11-03 (`REVIEW-2026-11-03.md`)
+
+Each finding was re-read in the code before fixing. Plan and corrections to the review text: M7 (`LocalStorageProvider` already sets `isSpecial`) and M10/`K8sLogView` (already checks the dispose flag) are partly wrong in the review.
+
+| Finding | Verified | Status | Fix | Test |
+|---|---|---|---|---|
+| H1 – key install sends the passphrase/password to any matching askpass prompt | yes | fixed (uncommitted) | `runSshCommand` in `KeyInstallService.ts` answers through `savedAskpassAnswer` (password only on a password profile, passphrase only on ssh's own `Enter passphrase for …` prompt); everything else goes to the user. The "password once" rule is kept. The password login step still works on key/smartcard profiles because `toPasswordConfig` sets `authType: 'password'` | `tests/main/KeyInstallService.test.ts` (2 fail without the fix) |
