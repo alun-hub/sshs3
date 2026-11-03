@@ -70,6 +70,31 @@ describe('LocalStorageProvider', () => {
       expect(content).toBe('Hello, MultiSSH Storage Engine!');
     });
 
+    it('reports the target as touched only once the file has been opened (H2)', async () => {
+      const filePath = path.join(testDir, 'touched.txt');
+      const writeStream = (await provider.createWriteStream(filePath)) as NodeJS.WritableStream & { targetTouched: boolean };
+
+      await new Promise<void>((resolve, reject) => {
+        writeStream.on('finish', () => resolve());
+        writeStream.on('error', reject);
+        writeStream.end('x');
+      });
+      expect(writeStream.targetTouched).toBe(true);
+    });
+
+    it('leaves the target untouched when it cannot be opened (H2)', async () => {
+      // A directory cannot be opened for writing (EISDIR), on every platform.
+      const dirPath = path.join(testDir, 'a-directory');
+      await fs.mkdir(dirPath);
+      const writeStream = (await provider.createWriteStream(dirPath)) as NodeJS.WritableStream & { targetTouched: boolean };
+
+      await new Promise<void>((resolve) => {
+        writeStream.on('error', () => resolve());
+        writeStream.end('x');
+      });
+      expect(writeStream.targetTouched).toBe(false);
+    });
+
     it('should automatically create parent directories when writing a file', async () => {
       const filePath = path.join(testDir, 'nested', 'deeply', 'output.txt');
       const writeStream = await provider.createWriteStream(filePath);

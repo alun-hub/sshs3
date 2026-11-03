@@ -56,6 +56,7 @@ import type {
   StorageType,
   WriteStreamOptions,
 } from '../../shared/types/storage';
+import { defineTargetTouched } from './targetTouched';
 
 /**
  * Parses a remote S3 path into bucket and key components.
@@ -708,8 +709,11 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
 
     // Start consuming stream data immediately to avoid backpressure deadlocks
     const uploadPromise = upload.done();
+    // An S3 object is only replaced when the (multipart) upload completes; an aborted one leaves the old object intact.
+    let uploaded = false;
     uploadPromise
       .then(() => {
+        uploaded = true;
         this.clearCache();
       })
       .catch((err) => {
@@ -737,7 +741,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       upload.abort();
     });
 
-    return passThrough;
+    return defineTargetTouched(passThrough, () => uploaded);
   }
 
   async writeFile(

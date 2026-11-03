@@ -1227,6 +1227,34 @@ describe('S3StorageProvider', () => {
       expect(uploadDoneMock).toHaveBeenCalled();
     });
 
+    it('reports the object as touched only after the upload has completed (H2)', async () => {
+      let release!: () => void;
+      uploadDoneMock = vi.fn().mockImplementation(
+        () => new Promise((resolve) => { release = () => resolve({}); })
+      );
+      const writeStream = (await provider.createWriteStream('/my-bucket/o.txt')) as NodeJS.WritableStream & { targetTouched: boolean };
+
+      writeStream.write('partial');
+      expect(writeStream.targetTouched).toBe(false);
+
+      release();
+      await new Promise<void>((resolve, reject) => {
+        writeStream.on('finish', () => resolve());
+        writeStream.on('error', reject);
+        writeStream.end();
+      });
+      expect(writeStream.targetTouched).toBe(true);
+    });
+
+    it('stays untouched when the upload fails, so the old object is kept (H2)', async () => {
+      uploadDoneMock = vi.fn().mockRejectedValue(new Error('S3 upload failed'));
+      const writeStream = (await provider.createWriteStream('/my-bucket/o.txt')) as NodeJS.WritableStream & { targetTouched: boolean };
+      const failed = new Promise<void>((resolve) => writeStream.on('error', () => resolve()));
+      writeStream.end('x');
+      await failed;
+      expect(writeStream.targetTouched).toBe(false);
+    });
+
     it('should emit error on writeStream when upload.done() rejects during final', async () => {
       const uploadError = new Error('S3 upload failed');
       uploadDoneMock = vi.fn().mockRejectedValue(uploadError);

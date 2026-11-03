@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import { Readable, Writable, PassThrough } from 'node:stream';
 import { LocalStorageProvider } from '../../src/main/storage/LocalStorageProvider';
+import { defineTargetTouched } from '../../src/main/storage/targetTouched';
 import {
   TransferPipeline,
   transferFile,
@@ -811,6 +812,66 @@ describe('TransferPipeline', () => {
           targetPath: 'data.txt',
         })
       ).rejects.toThrow('Disk full write error');
+
+      expect(deleteSpy).toHaveBeenCalledWith('data.txt', false);
+    });
+
+    // H2 (code review 2026-11-03): the clean-up must not delete a target the provider never opened/replaced
+    // (cancelled S3 overwrite, EACCES on open, SFTP open that never happened).
+    it('does not delete an existing target when the write stream never touched it (H2)', async () => {
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('data.txt', Buffer.from('new content'));
+      const memTarget = new MemoryStorageProvider();
+      memTarget.files.set('data.txt', Buffer.from('original'));
+      const deleteSpy = vi.spyOn(memTarget, 'delete');
+      memTarget.createWriteStream = vi.fn().mockImplementation(async () =>
+        defineTargetTouched(
+          new Writable({
+            write(_chunk, _enc, cb) {
+              cb(new Error('open failed: EACCES'));
+            },
+          }),
+          () => false
+        )
+      );
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'data.txt',
+          targetProvider: memTarget,
+          targetPath: 'data.txt',
+        })
+      ).rejects.toThrow('open failed: EACCES');
+
+      expect(deleteSpy).not.toHaveBeenCalled();
+      expect(memTarget.files.get('data.txt')?.toString()).toBe('original');
+    });
+
+    it('still deletes the target when the write stream reports it was touched (H2)', async () => {
+      const memSource = new MemoryStorageProvider();
+      memSource.files.set('data.txt', Buffer.from('new content'));
+      const memTarget = new MemoryStorageProvider();
+      const deleteSpy = vi.spyOn(memTarget, 'delete');
+      memTarget.createWriteStream = vi.fn().mockImplementation(async () =>
+        defineTargetTouched(
+          new Writable({
+            write(_chunk, _enc, cb) {
+              cb(new Error('disk full'));
+            },
+          }),
+          () => true
+        )
+      );
+
+      await expect(
+        transferFile({
+          sourceProvider: memSource,
+          sourcePath: 'data.txt',
+          targetProvider: memTarget,
+          targetPath: 'data.txt',
+        })
+      ).rejects.toThrow('disk full');
 
       expect(deleteSpy).toHaveBeenCalledWith('data.txt', false);
     });

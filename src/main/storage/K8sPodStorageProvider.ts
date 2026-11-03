@@ -14,6 +14,7 @@ import type {
   WriteStreamOptions,
 } from '../../shared/types/storage';
 import type { K8sStorageConfig } from '../../shared/types/kubernetes';
+import { defineTargetTouched } from './targetTouched';
 
 /** How long a write stream waits, after its last byte, for the command in the pod to report back. */
 const WRITE_FINISH_TIMEOUT_MS = 60_000;
@@ -402,6 +403,8 @@ printf "%s\t%s\t%s\t%s\n" "$isDir" "$out" "$isLink" "$isReg"
     /** Ends the exec session, so `cat` in the pod does not outlive a write that has already failed. */
     let finishTimer: ReturnType<typeof setTimeout> | undefined;
     let execClosed = false;
+    // `cat > file` truncates the target as soon as the command starts in the pod.
+    let execStarted = false;
     const closeExec = (): void => {
       if (execClosed) return;
       execClosed = true;
@@ -485,6 +488,7 @@ printf "%s\t%s\t%s\t%s\n" "$isDir" "$out" "$isLink" "$isReg"
       );
 
       execConnection = conn;
+      execStarted = true;
       if (execClosed) {
         // The write was already abandoned while the session was still being opened.
         try {
@@ -511,7 +515,7 @@ printf "%s\t%s\t%s\t%s\n" "$isDir" "$out" "$isLink" "$isReg"
       out.destroy(failure);
     }
 
-    return out;
+    return defineTargetTouched(out, () => execStarted);
   }
 
   public async disconnect(): Promise<void> {

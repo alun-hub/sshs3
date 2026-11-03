@@ -123,6 +123,7 @@ export class SftpWriteStream extends Writable {
   private isOpening = false;
   private isClosed = false;
   private openFlags: number;
+  private opened = false;
 
   constructor(
     private protocol: SftpPacketProtocol,
@@ -134,6 +135,11 @@ export class SftpWriteStream extends Writable {
     this.openFlags = isAppend
       ? FXF.WRITE | FXF.CREAT | FXF.APPEND
       : FXF.WRITE | FXF.CREAT | FXF.TRUNC;
+  }
+
+  /** True once the remote file has been opened with TRUNC; the open is lazy, so a source failure before the first byte never touches it. */
+  public get targetTouched(): boolean {
+    return this.opened;
   }
 
   public override _write(
@@ -157,6 +163,7 @@ export class SftpWriteStream extends Writable {
           this.handle = await this.protocol.open(this.remotePath, this.openFlags, {
             mode: this.options?.mode,
           });
+          this.opened = true;
           this.isOpening = false;
         }
 
@@ -190,6 +197,7 @@ export class SftpWriteStream extends Writable {
           this.handle = await this.protocol.open(this.remotePath, this.openFlags, {
             mode: this.options?.mode,
           });
+          this.opened = true;
         }
         await this.closeHandle();
         callback();

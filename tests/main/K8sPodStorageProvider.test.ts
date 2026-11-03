@@ -368,7 +368,12 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
     });
   });
 
-  describe('createWriteStream', () => {      const refused = (await provider.createWriteStream('/tmp/a.bin')) as NodeJS.WritableStream & { targetTouched: boolean };
+  describe('createWriteStream', () => {
+    it('reports the target as touched once the exec has started, not when it could not start (H2)', async () => {
+      execMock.mockImplementationOnce(async () => {
+        throw new Error('exec refused');
+      });
+      const refused = (await provider.createWriteStream('/tmp/a.bin')) as NodeJS.WritableStream & { targetTouched: boolean };
       refused.on('error', () => {});
       expect(refused.targetTouched).toBe(false);
 

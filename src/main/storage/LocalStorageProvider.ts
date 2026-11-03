@@ -19,6 +19,7 @@ import type {
   WinAttributes,
   WriteStreamOptions,
 } from '../../shared/types/storage';
+import { defineTargetTouched } from './targetTouched';
 
 const execFileAsync = promisify(execFile);
 
@@ -279,7 +280,14 @@ export class LocalStorageProvider extends BaseStorageProvider {
     const fullPath = this.resolvePath(remotePath);
     const parentDir = path.dirname(fullPath);
     await fsp.mkdir(parentDir, { recursive: true });
-    return fs.createWriteStream(fullPath);
+    const stream = fs.createWriteStream(fullPath);
+    // 'open' means the file was opened for writing (and truncated); a failed open leaves the target alone.
+    // (`stream.pending` is not usable: it turns true again once the stream has closed.)
+    let opened = false;
+    stream.once('open', () => {
+      opened = true;
+    });
+    return defineTargetTouched(stream, () => opened);
   }
 
   async writeFile(

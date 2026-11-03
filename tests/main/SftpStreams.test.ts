@@ -33,6 +33,24 @@ describe('SftpWriteStream', () => {
     expect(protocol.close).toHaveBeenCalledTimes(1);
   });
 
+  it('reports the target as untouched until the lazy open has succeeded (H2)', async () => {
+    const protocol = makeProtocol();
+    const stream = new SftpWriteStream(protocol as any, '/remote/a.txt');
+    expect(stream.targetTouched).toBe(false);
+
+    await pipeline(Readable.from([Buffer.from('abc')]), stream);
+    expect(stream.targetTouched).toBe(true);
+  });
+
+  it('stays untouched when the open fails (H2)', async () => {
+    const protocol = makeProtocol();
+    protocol.open.mockRejectedValue(new Error('permission denied'));
+    const stream = new SftpWriteStream(protocol as any, '/remote/a.txt');
+
+    await expect(pipeline(Readable.from([Buffer.from('abc')]), stream)).rejects.toThrow('permission denied');
+    expect(stream.targetTouched).toBe(false);
+  });
+
   it('propagates an open failure for a zero-byte stream', async () => {
     const protocol = makeProtocol();
     protocol.open.mockRejectedValue(new Error('permission denied'));
