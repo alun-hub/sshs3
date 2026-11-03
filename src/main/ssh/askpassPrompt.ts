@@ -11,18 +11,49 @@ export function isHostKeyConfirmPrompt(rawPrompt: string): boolean {
 }
 
 /**
+ * The `user@host` a password prompt is addressed to: ssh writes "user@host's password: " for its own password
+ * authentication and "(user@host) Password: " for a keyboard-interactive question. ssh cuts the user at 30 and
+ * the host at 128 characters in these prompts.
+ */
+export function parsePromptTarget(rawPrompt: string): { user: string; host: string } | undefined {
+  const m = /^\s*\(?([^@\s()]+)@(.+?)(?:'s password:|\)\s)/i.exec(rawPrompt);
+  return m ? { user: m[1], host: m[2] } : undefined;
+}
+
+type AskpassProfile = {
+  authType?: string;
+  password?: string;
+  passphrase?: string;
+  host?: string;
+  username?: string;
+  proxyJump?: string;
+  proxyJumpProfileId?: string;
+};
+
+/** Whether this password prompt is addressed to the profile's own target, as opposed to a jump host on the way. */
+function isAddressedToTarget(rawPrompt: string, config: AskpassProfile): boolean {
+  const addressee = parsePromptTarget(rawPrompt);
+  if (!addressee || !config.host || !config.username) return false;
+  const host = config.host.trim().replace(/^\[|\]$/g, '');
+  return addressee.user === config.username.slice(0, 30) && addressee.host.toLowerCase() === host.slice(0, 128).toLowerCase();
+}
+
+/**
  * The saved secret that may answer this prompt, if any. A key passphrase only ever answers a
  * passphrase prompt and the account password only a password prompt on a password profile; any
  * other prompt (a server-controlled keyboard-interactive question, a PIN) gets `undefined` so the
  * caller asks the user. Otherwise a remote server's "password:" prompt would receive the local
  * key passphrase.
+ *
+ * With a jump host the hop asks for its own password through the same askpass, so the target's password
+ * only answers a prompt addressed to the target's own user@host; anything else is left to the user.
  */
-export function savedAskpassAnswer(
-  rawPrompt: string,
-  config: { authType?: string; password?: string; passphrase?: string }
-): string | undefined {
+export function savedAskpassAnswer(rawPrompt: string, config: AskpassProfile): string | undefined {
   if (isPasswordPrompt(rawPrompt)) {
-    return config.authType === 'password' && config.password ? config.password : undefined;
+    if (config.authType !== 'password' || !config.password) return undefined;
+    const viaJumpHost = Boolean(config.proxyJump?.trim() || config.proxyJumpProfileId);
+    if (viaJumpHost && !isAddressedToTarget(rawPrompt, config)) return undefined;
+    return config.password;
   }
   // Only ssh's own local key prompt ("Enter passphrase for key '…':"). A server-controlled
   // keyboard-interactive question reaches askpass prefixed "(user@host) ", so it never matches.

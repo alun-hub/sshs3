@@ -22,6 +22,52 @@ describe('askpassPrompt', () => {
     expect(savedAskpassAnswer('Server passphrase:', cfg)).toBeUndefined();
   });
 
+  // M2 (code review 2026-11-03): with a jump host, ssh asks for the jump hop's password through the same
+  // askpass, as "jumpuser@jump's password:". The target's saved password must not answer that.
+  describe('saved password and jump hosts', () => {
+    const cfg = {
+      authType: 'password',
+      password: 'target-pw', // pragma: allowlist secret
+      host: 'db.internal',
+      username: 'alice',
+      proxyJump: 'bob@bastion.example.com',
+    };
+
+    it('does not answer the jump host\'s password prompt', () => {
+      expect(savedAskpassAnswer("bob@bastion.example.com's password: ", cfg)).toBeUndefined();
+      expect(savedAskpassAnswer('(bob@bastion.example.com) Password: ', cfg)).toBeUndefined();
+    });
+
+    it('still answers the target\'s own prompt, as password or keyboard-interactive', () => {
+      expect(savedAskpassAnswer("alice@db.internal's password: ", cfg)).toBe('target-pw');
+      expect(savedAskpassAnswer('(alice@db.internal) Password: ', cfg)).toBe('target-pw');
+      expect(savedAskpassAnswer("ALICE@DB.INTERNAL's password: ", cfg)).toBeUndefined(); // user names are case-sensitive
+      expect(savedAskpassAnswer("alice@DB.internal's password: ", cfg)).toBe('target-pw'); // host names are not
+    });
+
+    it('answers the target when the jump host is a saved profile, and the same user name on another host is refused', () => {
+      const byProfile = { ...cfg, proxyJump: undefined, proxyJumpProfileId: 'jump-1' };
+      expect(savedAskpassAnswer("alice@db.internal's password: ", byProfile)).toBe('target-pw');
+      expect(savedAskpassAnswer("alice@bastion.example.com's password: ", byProfile)).toBeUndefined();
+    });
+
+    it('refuses a prompt it cannot attribute to the target when a jump host is configured', () => {
+      expect(savedAskpassAnswer('Password: ', cfg)).toBeUndefined();
+    });
+
+    it('matches the host and user ssh truncates in its prompt (30 and 128 characters)', () => {
+      const longUser = 'u'.repeat(40);
+      const longHost = `${'h'.repeat(140)}.example.com`;
+      const long = { ...cfg, username: longUser, host: longHost };
+      expect(savedAskpassAnswer(`${'u'.repeat(30)}@${'h'.repeat(128)}'s password: `, long)).toBe('target-pw');
+    });
+
+    it('is unchanged without a jump host: the prompt is not matched against the profile host', () => {
+      const direct = { ...cfg, proxyJump: undefined };
+      expect(savedAskpassAnswer("alice@resolved-by-ssh-config's password: ", direct)).toBe('target-pw');
+    });
+  });
+
   it('recognises account password prompts but not PIN or passphrase prompts mentioning "password"', () => {
     expect(isPasswordPrompt('alice@host.example.com\'s password: ')).toBe(true);
     expect(isPasswordPrompt('Enter passphrase for key (password protected):')).toBe(false);
