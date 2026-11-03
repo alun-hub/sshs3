@@ -7,6 +7,7 @@ import type { S3Config } from '../../shared/types/storage';
 import { withNormalizedTags } from '../../shared/tags';
 import { withNormalizedSystem } from '../../shared/system';
 import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
+import { writeFileAtomic } from '../storage/atomicFile';
 
 /** Fills in `name` for tunnels saved before it existed, so old profiles.json files still load. */
 function defaultTunnelName(tunnel: SSHTunnelConfig): string {
@@ -268,6 +269,21 @@ export class ProfileStore {
   }
 
   /**
+   * Read, merge and write as ONE step in this store's queue (tombstones included, no timestamps stamped).
+   * `compute` gets the current data and returns what to write, or null to leave the file alone. Remote profile
+   * sync used to read first and call replaceAll afterwards, so a profile saved in between was overwritten by the
+   * stale snapshot. `compute` must be synchronous and must not call this store. Returns whether anything was written.
+   */
+  public async mergeAll(compute: (current: ProfilesData) => ProfilesData | null): Promise<boolean> {
+    return this.queueMutation(async () => {
+      const next = compute(await this.getProfilesIncludingTombstones());
+      if (!next) return false;
+      await this.persist(next);
+      return true;
+    });
+  }
+
+  /**
    * Reads the current file's raw entries by id, so persist() can keep secrets that
    * could not be decrypted (locked/unavailable keyring, file moved between machines).
    * Those load as '' and would otherwise be overwritten with '' on the next save,
@@ -360,15 +376,6 @@ export class ProfileStore {
     if (data.folders && data.folders.length > 0) {
       onDisk.folders = data.folders;
     }
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(onDisk, null, 2), {
-      encoding: 'utf-8',
-      mode: 0o600,
-    });
-    try {
-      await fs.chmod(this.filePath, 0o600);
-    } catch {
-      // Ignore chmod failures (e.g. on certain filesystems or platforms)
-    }
+    await writeFileAtomic(this.filePath, JSON.stringify(onDisk, null, 2), { mode: 0o600 });
   }
 }

@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { app } from 'electron';
 import type { DotfileImportedFile, DotfilePool } from '../../shared/types/dotfiles';
 import { defaultDotfileRemotePath } from '../../shared/dotfilePath';
+import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
 
 function formatTimestamp(d = new Date()): string {
   const yyyy = d.getFullYear();
@@ -80,11 +81,14 @@ export class DotfilePoolStore {
   }
 
   private async readRawPools(): Promise<DotfilePool[]> {
+    let raw: string | undefined;
     try {
-      const raw = await fs.readFile(this.filePath, 'utf-8');
+      raw = await fs.readFile(this.filePath, 'utf-8');
       const data = JSON.parse(raw);
       return Array.isArray(data.pools) ? data.pools : [];
-    } catch {
+    } catch (err) {
+      // [] would make the next save drop every pool: keep a copy of an unparsable file first.
+      if (raw !== undefined && err instanceof SyntaxError) await backupCorruptFile(this.filePath, raw);
       return [];
     }
   }
@@ -370,15 +374,6 @@ export class DotfilePoolStore {
   }
 
   private async persist(pools: DotfilePool[]): Promise<void> {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify({ pools }, null, 2), {
-      encoding: 'utf-8',
-      mode: 0o600,
-    });
-    try {
-      await fs.chmod(this.filePath, 0o600);
-    } catch {
-      // Ignore chmod failures on non-POSIX filesystems
-    }
+    await writeFileAtomic(this.filePath, JSON.stringify({ pools }, null, 2), { mode: 0o600 });
   }
 }

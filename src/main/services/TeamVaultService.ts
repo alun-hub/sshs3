@@ -21,6 +21,7 @@ import { TeamVaultCryptoService, type AgePtyPromptCallbacks } from './TeamVaultC
 import { createLogger } from '../log/Logger';
 import { normalizeK8sList, removeK8sProfile, toTeamK8sProfile, upsertK8sProfile } from './teamVaultK8s';
 import type { K8sProfile } from '../../shared/types/kubernetes';
+import { writeFileAtomic } from '../storage/atomicFile';
 
 const teamVaultLog = createLogger('team-vault');
 
@@ -2023,13 +2024,7 @@ export class TeamVaultService {
 
   private async writeFile(vaultId: string, file: TeamVaultFile): Promise<void> {
     const filePath = this.getFilePath(vaultId);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify(file, null, 2), { encoding: 'utf-8', mode: 0o600 });
-    try {
-      await fs.chmod(filePath, 0o600);
-    } catch {
-      // Ignore chmod failures on non-POSIX filesystems.
-    }
+    await writeFileAtomic(filePath, JSON.stringify(file, null, 2), { mode: 0o600 });
   }
 
   /** Per-`vaultId` write queue: mutations against DIFFERENT vaults run fully independently

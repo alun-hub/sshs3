@@ -11,6 +11,7 @@ import {
   sessionViewForWindow,
   type WindowKey,
 } from './windowSessions';
+import { writeFileAtomic } from '../storage/atomicFile';
 
 export function sanitizeSessionData(data: SessionData): SessionData {
   if (!data || !Array.isArray(data.tabs)) {
@@ -112,16 +113,7 @@ export class SessionStore {
   }
 
   private async writeData(data: SessionData): Promise<void> {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(data, null, 2), {
-      encoding: 'utf-8',
-      mode: 0o600,
-    });
-    try {
-      await fs.chmod(this.filePath, 0o600);
-    } catch {
-      // Ignore chmod failures on non-POSIX filesystems
-    }
+    await writeFileAtomic(this.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
   }
 
   private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {

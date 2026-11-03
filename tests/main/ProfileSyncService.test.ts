@@ -351,6 +351,32 @@ describe('ProfileSyncService', () => {
     expect((await machineB.profileStore.getProfiles()).folders).toEqual(['Staging']);
   });
 
+  // M6 (code review 2026-11-03): the pull read the local profiles outside the store's write queue and wrote the
+  // merged result back afterwards, so a profile saved in between was dropped.
+  it('does not lose a profile saved while a pull is merging', async () => {
+    const machineA = await harness();
+    await machineA.profileStore.saveSSH({ id: 'ssh-remote', name: 'Remote', host: 'r.example.com', username: 'a', authType: 'password', password: 'pw' }); // pragma: allowlist secret
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    const store = machineB.profileStore;
+    const read = store.getProfilesIncludingTombstones.bind(store);
+    let racingSave: Promise<void> | undefined;
+    vi.spyOn(store, 'getProfilesIncludingTombstones').mockImplementationOnce(async () => {
+      const snapshot = await read();
+      // A save arrives right after the pull took its snapshot, and gets time to run.
+      racingSave = store.saveSSH({ id: 'ssh-local', name: 'Local', host: 'l.example.com', username: 'b', authType: 'password', password: 'pw' }); // pragma: allowlist secret
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return snapshot;
+    });
+
+    await machineB.sync.pullFromRemote(provider);
+    await racingSave;
+
+    const ids = (await store.getProfiles()).ssh.map((p) => p.id).sort();
+    expect(ids).toEqual(['ssh-local', 'ssh-remote']);
+  });
+
   it('round-trips an SSH profile between two machines, splitting secrets into credentials.enc', async () => {
     const machineA = await harness();
     await machineA.profileStore.saveSSH({

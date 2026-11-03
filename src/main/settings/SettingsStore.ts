@@ -5,6 +5,7 @@ import { app } from 'electron';
 import { DEFAULT_SETTINGS, type AppSettings } from '../../shared/types/settings';
 import { EMPTY_POLICY, type PolicyDocument } from '../../shared/types/policy';
 import { applyPolicy, stripLockedKeys } from '../policy/policyApply';
+import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
 
 /**
  * The settings UI saves the whole shortcut map, defaults included, so a binding that was still the
@@ -85,14 +86,17 @@ export class SettingsStore {
   }
 
   private async readStored(): Promise<AppSettings> {
+    let raw: string | undefined;
     try {
-      const raw = await fs.readFile(this.filePath, 'utf-8');
+      raw = await fs.readFile(this.filePath, 'utf-8');
       const data = migrateShortcuts(JSON.parse(raw));
       return {
         ...DEFAULT_SETTINGS,
         ...data,
       };
-    } catch {
+    } catch (err) {
+      // An unparsable file falls back to defaults, and the next save would overwrite it: keep a copy first.
+      if (raw !== undefined && err instanceof SyntaxError) await backupCorruptFile(this.filePath, raw);
       const legacyPath = this.getLegacyFilePath();
       if (legacyPath) {
         try {
@@ -164,16 +168,7 @@ export class SettingsStore {
   /** Shared disk-write tail for `saveSettings`/`setTeamVaultTabVisible` — both already compute
    * `updated` under this store's `queueMutation` lock; this only persists it. */
   private async persist(updated: AppSettings): Promise<AppSettings> {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(updated, null, 2), {
-      encoding: 'utf-8',
-      mode: 0o600,
-    });
-    try {
-      await fs.chmod(this.filePath, 0o600);
-    } catch {
-      // Ignore chmod failures on non-POSIX filesystems
-    }
+    await writeFileAtomic(this.filePath, JSON.stringify(updated, null, 2), { mode: 0o600 });
     return updated;
   }
 

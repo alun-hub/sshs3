@@ -7,6 +7,7 @@ import type { FileEntry, S3Config } from '../../shared/types/storage';
 import { TEAM_VAULT_PENDING_VAULT_ID } from '../../shared/types/teamVault';
 import { encryptSecretValue, decryptSecretValue, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 import { createLogger } from '../log/Logger';
+import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
 
 const teamVaultConfigLog = createLogger('team-vault-config');
 
@@ -114,11 +115,13 @@ export class TeamVaultConfigStore {
    * it under the pending sentinel keeps it discoverable without guessing. */
   private async readRaw(): Promise<TeamVaultConfigData> {
     let data: unknown;
+    let raw: string | undefined;
     try {
-      const raw = await fs.readFile(this.filePath, 'utf-8');
+      raw = await fs.readFile(this.filePath, 'utf-8');
       data = JSON.parse(raw);
     } catch (err: any) {
       if (err?.code === 'ENOENT') return { byVaultId: {} };
+      if (raw !== undefined && err instanceof SyntaxError) await backupCorruptFile(this.filePath, raw);
       // Anything else (corrupted JSON, an OS-keychain/decrypt failure after e.g. a machine
       // migration, a truncated secret field) was previously indistinguishable from "never
       // configured" — same empty result, zero diagnostic signal. Logged (not thrown): every
@@ -286,15 +289,6 @@ export class TeamVaultConfigStore {
         ])
       ),
     };
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(onDisk, null, 2), {
-      encoding: 'utf-8',
-      mode: 0o600,
-    });
-    try {
-      await fs.chmod(this.filePath, 0o600);
-    } catch {
-      // Ignore chmod failures on non-POSIX filesystems.
-    }
+    await writeFileAtomic(this.filePath, JSON.stringify(onDisk, null, 2), { mode: 0o600 });
   }
 }

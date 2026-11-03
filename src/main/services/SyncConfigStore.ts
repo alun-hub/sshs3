@@ -5,6 +5,7 @@ import { app } from 'electron';
 import type { StorageConnectConfig } from '../../shared/types/ipc';
 import type { SFTPConfig, S3Config } from '../../shared/types/storage';
 import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
+import { writeFileAtomic } from '../storage/atomicFile';
 
 const SFTP_SECRET_FIELDS: Array<keyof SFTPConfig> = ['password', 'passphrase'];
 const S3_SECRET_FIELDS: Array<keyof S3Config> = ['secretAccessKey', 'sessionToken'];
@@ -265,15 +266,6 @@ export class SyncConfigStore {
       ...data,
       target: data.target ? keepUndecryptableTargetSecrets(encryptTarget(data.target), existing) : undefined,
     };
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    await fs.writeFile(this.filePath, JSON.stringify(onDisk, null, 2), {
-      encoding: 'utf-8',
-      mode: 0o600,
-    });
-    try {
-      await fs.chmod(this.filePath, 0o600);
-    } catch {
-      // Ignore chmod failures on non-POSIX filesystems
-    }
+    await writeFileAtomic(this.filePath, JSON.stringify(onDisk, null, 2), { mode: 0o600 });
   }
 }

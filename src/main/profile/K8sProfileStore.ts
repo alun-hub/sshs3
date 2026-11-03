@@ -103,6 +103,16 @@ export class K8sProfileStore {
     return this.queueMutation(() => this.persist(profiles));
   }
 
+  /** Read, merge and write as one queued step (see `ProfileStore.mergeAll`); `compute` returns null to write nothing. */
+  public async mergeAll(compute: (current: K8sProfile[]) => K8sProfile[] | null): Promise<boolean> {
+    return this.queueMutation(async () => {
+      const next = compute(await this.listIncludingTombstones());
+      if (!next) return false;
+      await this.persist(next);
+      return true;
+    });
+  }
+
   private async persist(profiles: K8sProfile[]): Promise<void> {
     await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     const tempFile = `${this.filePath}.tmp-${process.pid}`;

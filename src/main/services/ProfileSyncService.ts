@@ -7,7 +7,7 @@ import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 import type { DotfilePool, DotfilePoolFile } from '../../shared/types/dotfiles';
 import type { AppSettings } from '../../shared/types/settings';
-import { ProfileStore, type ProfilesData } from '../profile/ProfileStore';
+import { ProfileStore } from '../profile/ProfileStore';
 import { DotfilePoolStore } from '../dotfiles/DotfilePoolStore';
 import type { DirectorySyncProfileStore } from '../dirsync/DirectorySyncProfileStore';
 import type { DirectorySyncProfile } from '../../shared/types/dirsync';
@@ -28,6 +28,7 @@ import {
   type KnownHostsConflict,
   type ManagedSshConfigBlock,
 } from './SshNativeFileMerger';
+import { writeFileAtomic } from '../storage/atomicFile';
 
 const SYNC_DIR_NAME = '.sshs3';
 
@@ -924,22 +925,25 @@ export class ProfileSyncService {
       const remoteSsh = stripLocalOnlyFields(joinById<SSHConnectionConfig>(topology.ssh, credentials.ssh), SSH_FIELD_SPLIT);
       const remoteS3 = stripLocalOnlyFields(joinById<S3Config>(topology.s3, credentials.s3), S3_FIELD_SPLIT);
 
-      const local = await this.profileStore.getProfilesIncludingTombstones();
       // Credentials not pulled (their password not given): the remote copy has none, which must not wipe the local ones.
       const credentialsPulled = credentialsRaw !== null;
-      const sshResult = mergeRecords(local.ssh, remoteSsh, {
-        onRemoteWins: replaceKeepingLocalOnly(SSH_FIELD_SPLIT, credentialsPulled),
+      let sshChanged = false;
+      // Read, merge and write in one queued step: a profile saved meanwhile must not be overwritten by a stale snapshot.
+      const written = await this.profileStore.mergeAll((local) => {
+        const sshResult = mergeRecords(local.ssh, remoteSsh, {
+          onRemoteWins: replaceKeepingLocalOnly(SSH_FIELD_SPLIT, credentialsPulled),
+        });
+        const s3Result = mergeRecords(local.s3, remoteS3, {
+          onRemoteWins: replaceKeepingLocalOnly(S3_FIELD_SPLIT, credentialsPulled),
+        });
+        if (!sshResult.changed && !s3Result.changed) return null;
+        sshChanged = sshResult.changed;
+        // Folders are local-only (not part of the sync payload); the store writes exactly what it is given.
+        return { ssh: sshResult.merged, s3: s3Result.merged, folders: local.folders };
       });
-      const s3Result = mergeRecords(local.s3, remoteS3, {
-        onRemoteWins: replaceKeepingLocalOnly(S3_FIELD_SPLIT, credentialsPulled),
-      });
-
-      if (sshResult.changed || s3Result.changed) {
-        // Folders are local-only (not part of the sync payload); replaceAll writes exactly what it is given.
-        const merged: ProfilesData = { ssh: sshResult.merged, s3: s3Result.merged, folders: local.folders };
-        await this.profileStore.replaceAll(merged);
+      if (written) {
         changedCategories.push('topology', 'credentials');
-        regenerateLocalSshConfig = sshResult.changed;
+        regenerateLocalSshConfig = sshChanged;
       }
     }
 
@@ -973,23 +977,21 @@ export class ProfileSyncService {
     // Remotes pushed by an older version have no dirsync-profiles file (null) — nothing to merge then.
     if (dirSyncRaw !== null && this.dirSyncProfileStore) {
       const remotePayload: DirSyncProfilesPayload = JSON.parse(dirSyncRaw);
-      const local = await this.dirSyncProfileStore.listIncludingTombstones();
-      const { merged, changed } = mergeRecords(local, remotePayload.profiles ?? []);
-      if (changed) {
-        await this.dirSyncProfileStore.replaceAll(merged);
-        changedCategories.push('dirsync-profiles');
-      }
+      const written = await this.dirSyncProfileStore.mergeAll((local) => {
+        const { merged, changed } = mergeRecords(local, remotePayload.profiles ?? []);
+        return changed ? merged : null;
+      });
+      if (written) changedCategories.push('dirsync-profiles');
     }
 
     // Same for k8s-profiles. Entries are validated and stripped of the machine-local context name.
     if (k8sRaw !== null && this.k8sProfileStore) {
       const remoteProfiles = fromRemotePayload(JSON.parse(k8sRaw));
-      const local = await this.k8sProfileStore.listIncludingTombstones();
-      const { merged, changed } = mergeRecords(local, remoteProfiles, { onRemoteWins: replaceKeepingContext });
-      if (changed) {
-        await this.k8sProfileStore.replaceAll(merged);
-        changedCategories.push('k8s-profiles');
-      }
+      const written = await this.k8sProfileStore.mergeAll((local) => {
+        const { merged, changed } = mergeRecords(local, remoteProfiles, { onRemoteWins: replaceKeepingContext });
+        return changed ? merged : null;
+      });
+      if (written) changedCategories.push('k8s-profiles');
     }
 
     let sshNativeConflicts: KnownHostsConflict[] = [];
@@ -1453,8 +1455,8 @@ export class ProfileSyncService {
   }
 
   private async writeLocalFile(filePath: string, content: string): Promise<void> {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, content, 'utf-8');
+    // Atomic, keeps the file's own mode and follows a symlink (~/.ssh/config is often one).
+    await writeFileAtomic(filePath, content);
   }
 
   // ---------------------------------------------------------------------
