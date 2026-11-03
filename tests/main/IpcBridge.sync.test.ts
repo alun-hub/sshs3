@@ -290,6 +290,31 @@ describe('IpcBridge — remote profile sync handlers', () => {
       expect(write).not.toHaveBeenCalled();
     });
 
+    // The renderer gives every sync target the same id, and the registry reuses a provider per id. A job that was
+    // already running when the target changed could re-create the old provider after the handler dropped it,
+    // and the next use of the new target would then talk to the old host.
+    it('never hands out a cached provider that belongs to another location', async () => {
+      const { bridge } = await harness();
+      const registry = (bridge as any).storageRegistry as { getOrCreate: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> };
+      const sftp = (host: string): StorageConnectConfig => ({
+        id: 'sshs3-remote-profile-sync', name: 'Remote profile sync', type: 'sftp',
+        sftpConfig: { host, port: 22, username: 'sync', authType: 'password', password: 'pw' } as any, // pragma: allowlist secret
+      });
+      registry.disconnect.mockClear();
+
+      await bridge.getSyncProvider(sftp('old.example.com'));
+      expect(registry.disconnect).not.toHaveBeenCalled();
+
+      await bridge.getSyncProvider(sftp('old.example.com'));
+      expect(registry.disconnect).not.toHaveBeenCalled();
+
+      await bridge.getSyncProvider(sftp('new.example.com'));
+      expect(registry.disconnect).toHaveBeenCalledTimes(1);
+      expect(registry.disconnect).toHaveBeenCalledWith('sshs3-remote-profile-sync');
+      // The cache entry is dropped before the new provider is requested.
+      expect(registry.disconnect.mock.invocationCallOrder[0]).toBeLessThan(registry.getOrCreate.mock.invocationCallOrder.at(-1)!);
+    });
+
     it('keeps everything when the same location is saved again with other credentials', async () => {
       const { ipc } = await harness();
       await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: TARGET, remoteBasePath: 'test-bucket' });

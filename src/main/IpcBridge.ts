@@ -35,6 +35,7 @@ import { PerfMetricsService } from './services/PerfMetricsService';
 import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
+import { syncTargetConnectionKey } from './services/syncTargetIdentity';
 import { TeamVaultService, redactS3Secrets } from './services/TeamVaultService';
 import { TeamVaultConfigStore } from './services/TeamVaultConfigStore';
 import {
@@ -215,6 +216,8 @@ export class IpcBridge {
   /** Owns the smartcard/FIDO2 agent state and its lifecycle (see smartcard/SmartcardCoordinator.ts). */
   public readonly smartcard: SmartcardCoordinator;
   private autoSyncTimer: NodeJS.Timeout | null = null;
+  /** Connection the cached sync provider was created for; see getSyncProvider. */
+  private syncProviderKey: string | undefined;
   private autoPullTimer: NodeJS.Timeout | null = null;
   // Per-vaultId: a team's auto-poll/auto-push timer must never be confused with another team's,
   // and starting/stopping one must never disturb another's (see TeamVaultService's class doc
@@ -872,6 +875,12 @@ export class IpcBridge {
    * PIN prompt whose answer then fell through to a password prompt and failed.
    */
   public async getSyncProvider(target: StorageConnectConfig): ReturnType<StorageRegistry["getOrCreate"]> {
+    // Every sync target has the same registry id, so a provider cached for a previous location would be reused.
+    const connectionKey = syncTargetConnectionKey(target);
+    if (this.syncProviderKey !== undefined && this.syncProviderKey !== connectionKey) {
+      await this.storageRegistry.disconnect?.(target.id);
+    }
+    this.syncProviderKey = connectionKey;
     // Windows-only: Linux keeps creating the sync provider straight from its saved config.
     if (process.platform !== 'win32' || target.type !== 'sftp' || !target.sftpConfig || this.storageRegistry.has(target.id)) {
       return await this.storageRegistry.getOrCreate(target);

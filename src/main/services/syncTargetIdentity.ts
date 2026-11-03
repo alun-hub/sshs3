@@ -43,16 +43,15 @@ function canonical(value: unknown, skip: Set<string> = new Set()): unknown {
   return value;
 }
 
-function locationKey({ target, remoteBasePath }: TargetLocation): string | null {
-  if (!target) return null;
-  const base = normalizePath(remoteBasePath);
+/** The connection part of a target (everything but the base path): what a cached provider was created from. */
+export function syncTargetConnectionKey(target: StorageConnectConfig): string {
   if (target.type === 'sftp') {
     const c = target.sftpConfig;
     const config = canonical(
       { ...c, host: (c?.host ?? '').trim().toLowerCase(), port: c?.port ?? 22 },
       SFTP_LOGIN_ONLY_FIELDS
     );
-    return JSON.stringify(['sftp', config, base]);
+    return JSON.stringify(['sftp', config]);
   }
   if (target.type === 's3') {
     const c = target.s3Config;
@@ -60,9 +59,14 @@ function locationKey({ target, remoteBasePath }: TargetLocation): string | null 
       { ...c, endpoint: normalizePath(c?.endpoint).toLowerCase(), region: (c?.region ?? '').trim() },
       S3_LOGIN_ONLY_FIELDS
     );
-    return JSON.stringify(['s3', config, base]);
+    return JSON.stringify(['s3', config]);
   }
-  return JSON.stringify([target.type, target.id, base]);
+  return JSON.stringify([target.type, target.id]);
+}
+
+function locationKey({ target, remoteBasePath }: TargetLocation): string | null {
+  if (!target) return null;
+  return JSON.stringify([syncTargetConnectionKey(target), normalizePath(remoteBasePath)]);
 }
 
 /**
