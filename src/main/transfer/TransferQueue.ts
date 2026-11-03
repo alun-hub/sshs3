@@ -430,7 +430,12 @@ export class TransferQueue extends EventEmitter {
       }
 
       const currentStatus = job.progress.status as TransferProgress['status'];
-      if (currentStatus !== 'cancelled') {
+      if (currentStatus === 'cancelled' || abortController.signal.aborted) {
+        // The cancel arrived while the copy was finishing (e.g. during the integrity checks, which do not
+        // look at the abort signal), so nothing threw. The job still needs its terminal state and its
+        // waiters released, or it would sit as "running" for ever (M8).
+        this.finishCancelled(job, context);
+      } else {
         job.progress.status = 'completed';
         job.progress.percentage = 100;
         job.completedAt = new Date();
@@ -446,11 +451,7 @@ export class TransferQueue extends EventEmitter {
         currentStatus === 'cancelled' ||
         err.name === 'AbortError'
       ) {
-        job.progress.status = 'cancelled';
-        job.progress.statusMessage = 'Cancelled';
-        this.emit('progress', job.progress, job);
-        this.emit('cancelled', job);
-        context.resolveWait(job);
+        this.finishCancelled(job, context);
       } else {
         job.progress.status = 'failed';
         job.error = err?.message || String(err);
@@ -466,6 +467,15 @@ export class TransferQueue extends EventEmitter {
       this.processQueue();
       this.checkDrain();
     }
+  }
+
+  /** Terminal state of a cancelled job that was running: final progress, the event, and the waiters released. */
+  private finishCancelled(job: TransferJob, context: InternalJobContext): void {
+    job.progress.status = 'cancelled';
+    job.progress.statusMessage = 'Cancelled';
+    this.emit('progress', job.progress, job);
+    this.emit('cancelled', job);
+    context.resolveWait(job);
   }
 
   private checkDrain(): void {

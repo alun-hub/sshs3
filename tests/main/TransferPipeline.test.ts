@@ -1205,6 +1205,45 @@ describe('TransferQueue', () => {
     await expect(queue.waitForJob('missing')).rejects.toThrow(/Job not found/);
   });
 
+  it('finishes a job that was cancelled while its transfer was already completing', async () => {
+    let finishTransfer!: () => void;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const fakePipeline = {
+      transferFile: () =>
+        new Promise<void>((resolve) => {
+          finishTransfer = resolve;
+          signalStarted();
+        }),
+      transferDirectory: async () => {},
+    };
+    const queue = new TransferQueue({ pipeline: fakePipeline as never });
+    const events: string[] = [];
+    queue.on('completed', () => events.push('completed'));
+    queue.on('cancelled', () => events.push('cancelled'));
+    queue.on('progress', (p: { status: string }) => events.push(`progress:${p.status}`));
+
+    const job = queue.addJob({ sourceProvider, sourcePath: 'f.txt', targetProvider, targetPath: 'f.txt' });
+    await started;
+
+    expect(queue.cancelJob(job.id)).toBe(true);
+    finishTransfer(); // the copy finishes anyway: the verification step does not look at the abort signal
+
+    const outcome = await Promise.race([
+      queue.waitForJob(job.id).then(() => 'resolved'),
+      new Promise<string>((resolve) => setTimeout(() => resolve('hung'), 500)),
+    ]);
+
+    expect(outcome).toBe('resolved');
+    expect(job.progress.status).toBe('cancelled');
+    expect(events).toContain('cancelled');
+    expect(events).not.toContain('completed');
+    expect(events.filter((e) => e === 'cancelled')).toHaveLength(1);
+    expect(queue.hasActiveTransfers()).toBe(false);
+  });
+
   it('fails a job whose source is a special file without opening it (M7)', async () => {
     sourceProvider.stat = vi.fn().mockResolvedValue({ name: 'pipe', path: 'pipe', size: 0, isDirectory: false, isSpecial: true });
     const readSpy = vi.spyOn(sourceProvider, 'createReadStream');
