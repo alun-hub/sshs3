@@ -8,6 +8,7 @@ import type { StorageRegistry } from '../storage/StorageRegistry';
 import { LocalStorageProvider } from '../storage/LocalStorageProvider';
 import { formatDate, getMimeType } from '../storage/StorageProvider';
 import type { FileReadResult, ExternalFileStatusEvent } from '../../shared/types/ipc';
+import { createUploadCoalescer, type UploadCoalescer } from './uploadCoalescer';
 
 export interface ExternalEditorSession {
   sessionToken: string;
@@ -16,7 +17,10 @@ export interface ExternalEditorSession {
   tempDir?: string;
   tempFilePath: string;
   watcher?: fs.FSWatcher;
-  debounceTimer?: NodeJS.Timeout;
+  /** Serialises the auto-uploads of this session's temp file. */
+  uploader?: UploadCoalescer;
+  /** Set once the session is being closed: stops re-attaching the file watch. */
+  closed?: boolean;
 }
 
 // eslint-disable-next-line security/detect-unsafe-regex -- anchored non-backtracking pattern matching windows reserved device names
@@ -68,14 +72,24 @@ export interface ShellOpener {
 export interface FileEditorServiceOptions {
   shell?: ShellOpener;
   baseTempDir?: string;
+  /** Quiet time after the last save before the file is uploaded. */
+  uploadDebounceMs?: number;
 }
+
+/** How long closing a session waits for a last pending upload before giving up on it. */
+const CLOSE_FLUSH_TIMEOUT_MS = 10_000;
+/** After an editor replaced the file (rename), how long to wait for the new file to appear before giving up. */
+const REATTACH_ATTEMPTS = 20;
+const REATTACH_DELAY_MS = 100;
 
 export class FileEditorService {
   private shell: ShellOpener;
   private baseTempDir: string;
   private sessions = new Map<string, ExternalEditorSession>();
+  private uploadDebounceMs: number;
 
   constructor(options: FileEditorServiceOptions = {}) {
+    this.uploadDebounceMs = options.uploadDebounceMs ?? 500;
     this.shell = options.shell ?? electronShell;
     this.baseTempDir = options.baseTempDir ?? path.join(os.tmpdir(), 'sshs3-editor');
   }
@@ -361,83 +375,120 @@ export class FileEditorService {
       throw new Error(openError);
     }
 
-    let debounceTimer: NodeJS.Timeout | undefined;
+    const session: ExternalEditorSession = { sessionToken, providerId, remotePath, tempDir, tempFilePath };
+    this.sessions.set(sessionToken, session);
+
+    const report = (status: 'uploaded' | 'error', error?: string): void => {
+      onStatus?.({
+        sessionToken,
+        providerId,
+        remotePath,
+        status,
+        ...(error !== undefined ? { error } : {}),
+        timestamp: formatDate(new Date()),
+      });
+    };
+
     let lastMtime = 0;
+    let lastSize = -1;
     try {
       const stats = await fsp.stat(tempFilePath);
       lastMtime = stats.mtimeMs;
+      lastSize = stats.size;
     } catch {
       // ignore
     }
 
-    let watcher: fs.FSWatcher | undefined;
-    try {
-      watcher = fs.watch(tempFilePath, (eventType) => {
-        if (eventType === 'change') {
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(async () => {
-            try {
-              const stats = await fsp.stat(tempFilePath);
-              if (stats.mtimeMs <= lastMtime) return;
-              lastMtime = stats.mtimeMs;
+    // One upload at a time, changes folded together (see createUploadCoalescer).
+    const uploadIfChanged = async (): Promise<void> => {
+      let stats: fs.Stats;
+      try {
+        stats = await fsp.stat(tempFilePath);
+      } catch {
+        return; // replaced or removed for a moment (rename-save): the re-attached watch triggers again
+      }
+      if (stats.mtimeMs <= lastMtime && stats.size === lastSize) return;
+      try {
+        const content = await fsp.readFile(tempFilePath);
+        const uploadStream = await provider.createWriteStream(remotePath);
 
-              const content = await fsp.readFile(tempFilePath);
-              const uploadStream = await provider.createWriteStream(remotePath);
-
-              await new Promise<void>((resolve, reject) => {
-                let settled = false;
-                const finish = () => {
-                  if (!settled) {
-                    settled = true;
-                    resolve();
-                  }
-                };
-                const fail = (err: any) => {
-                  if (!settled) {
-                    settled = true;
-                    reject(err);
-                  }
-                };
-                uploadStream.once('finish', finish);
-                uploadStream.once('close', finish);
-                uploadStream.once('error', fail);
-                uploadStream.end(content);
-              });
-
-              onStatus?.({
-                sessionToken,
-                providerId,
-                remotePath,
-                status: 'uploaded',
-                timestamp: formatDate(new Date()),
-              });
-            } catch (uploadErr) {
-              onStatus?.({
-                sessionToken,
-                providerId,
-                remotePath,
-                status: 'error',
-                error: uploadErr instanceof Error ? uploadErr.message : String(uploadErr),
-                timestamp: formatDate(new Date()),
-              });
+        await new Promise<void>((resolve, reject) => {
+          let settled = false;
+          const finish = () => {
+            if (!settled) {
+              settled = true;
+              resolve();
             }
-          }, 500);
+          };
+          const fail = (err: any) => {
+            if (!settled) {
+              settled = true;
+              reject(err);
+            }
+          };
+          uploadStream.once('finish', finish);
+          uploadStream.once('close', finish);
+          uploadStream.once('error', fail);
+          uploadStream.end(content);
+        });
+
+        // Only after it succeeded, so a failed upload is tried again on the next change.
+        lastMtime = stats.mtimeMs;
+        lastSize = stats.size;
+        report('uploaded');
+      } catch (uploadErr) {
+        report('error', uploadErr instanceof Error ? uploadErr.message : String(uploadErr));
+      }
+    };
+    const uploader = createUploadCoalescer(uploadIfChanged, this.uploadDebounceMs);
+    session.uploader = uploader;
+
+    const attach = (): boolean => {
+      try {
+        const watcher = fs.watch(tempFilePath, onFsEvent);
+        watcher.on('error', () => {
+          // The watched file went away; a 'rename' event normally handles that, nothing more to do here.
+        });
+        session.watcher = watcher;
+        return true;
+      } catch {
+        return false; // Watcher could not be attached; external editing still succeeds
+      }
+    };
+
+    // Editors that save by writing a new file and renaming it over the old one leave the old watch pointing at
+    // a deleted file: look the path up again and carry on from the new file.
+    let reattaching = false;
+    const reattach = async (): Promise<void> => {
+      if (reattaching) return;
+      reattaching = true;
+      try {
+        session.watcher?.close();
+        session.watcher = undefined;
+        for (let attempt = 0; attempt < REATTACH_ATTEMPTS && !session.closed; attempt++) {
+          try {
+            await fsp.access(tempFilePath);
+            if (attach()) {
+              uploader.trigger(); // the rename itself was a save
+              return;
+            }
+          } catch {
+            // not there yet
+          }
+          await new Promise((resolve) => setTimeout(resolve, REATTACH_DELAY_MS));
         }
-      });
-    } catch {
-      // Watcher could not be attached; external editing still succeeds
+        if (!session.closed) report('error', 'The file was removed by the external editor; automatic upload stopped.');
+      } finally {
+        reattaching = false;
+      }
+    };
+
+    function onFsEvent(eventType: string): void {
+      if (eventType === 'rename') void reattach();
+      else uploader.trigger();
     }
 
-    const session: ExternalEditorSession = {
-      sessionToken,
-      providerId,
-      remotePath,
-      tempDir,
-      tempFilePath,
-      watcher,
-      debounceTimer,
-    };
-    this.sessions.set(sessionToken, session);
+    attach();
 
     return { sessionToken, localPath: tempFilePath };
   }
@@ -449,10 +500,17 @@ export class FileEditorService {
     const session = this.sessions.get(sessionToken);
     if (!session) return;
 
-    if (session.debounceTimer) {
-      clearTimeout(session.debounceTimer);
-    }
+    session.closed = true;
     session.watcher?.close();
+    if (session.uploader) {
+      // A save made just before closing may still be waiting out the debounce: upload it rather than lose it.
+      // Bounded, so an unreachable server cannot keep the editor from closing.
+      await Promise.race([
+        session.uploader.flush(),
+        new Promise((resolve) => setTimeout(resolve, CLOSE_FLUSH_TIMEOUT_MS).unref?.()),
+      ]);
+      session.uploader.dispose();
+    }
 
     if (session.tempDir) {
       try {
@@ -478,9 +536,8 @@ export class FileEditorService {
    */
   public async dispose(): Promise<void> {
     for (const session of this.sessions.values()) {
-      if (session.debounceTimer) {
-        clearTimeout(session.debounceTimer);
-      }
+      session.closed = true;
+      session.uploader?.dispose();
       session.watcher?.close();
       if (session.tempDir) {
         try {

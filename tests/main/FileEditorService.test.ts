@@ -386,6 +386,114 @@ describe('FileEditorService', () => {
     });
   });
 
+  // M9 (code review 2026-11-03): uploads could overlap (two writers truncating the same remote file), an editor
+  // that saves by renaming a temp file over the original killed the file watch, and a change still waiting out
+  // the debounce was lost when the session was closed.
+  describe('external editor auto-upload (M9)', () => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    function remoteProvider(uploadMs = 0) {
+      const state = { open: 0, maxOpen: 0, uploads: [] as string[] };
+      const provider = {
+        id: 'sftp-up',
+        name: 'SFTP Up',
+        type: 'sftp' as const,
+        createReadStream: vi.fn().mockImplementation(() => Readable.from([Buffer.from('v0', 'utf-8')])),
+        createWriteStream: vi.fn().mockImplementation(async () => {
+          state.open++;
+          state.maxOpen = Math.max(state.maxOpen, state.open);
+          const chunks: Buffer[] = [];
+          return new Writable({
+            write(chunk, _enc, cb) {
+              chunks.push(chunk as Buffer);
+              cb();
+            },
+            final(cb) {
+              setTimeout(() => {
+                state.uploads.push(Buffer.concat(chunks).toString('utf-8'));
+                state.open--;
+                cb();
+              }, uploadMs);
+            },
+          });
+        }),
+      };
+      storageRegistry.register(provider as any);
+      return { provider, state };
+    }
+
+    function fastService() {
+      const s = new FileEditorService({ shell: mockShell, baseTempDir: tempBaseDir, uploadDebounceMs: 30 });
+      return s;
+    }
+
+    it('never has two uploads of the same file open at once, and ends with the latest content', async () => {
+      const fast = fastService();
+      const { state } = remoteProvider(200);
+      const events: Array<{ status: string }> = [];
+      const { localPath, sessionToken } = await fast.openInExternalEditor(storageRegistry, 'sftp-up', '/etc/a.ini', (e) => events.push(e));
+      await sleep(40);
+
+      await fsp.writeFile(localPath, 'first save');
+      await sleep(120); // the first upload is running (takes 200 ms)
+      await fsp.writeFile(localPath, 'second save, longer');
+      await sleep(120);
+      await fsp.writeFile(localPath, 'third save, even longer than that');
+
+      await vi.waitFor(() => expect(state.uploads.at(-1)).toBe('third save, even longer than that'), { timeout: 4000 });
+      expect(state.maxOpen).toBe(1);
+      expect(events.every((e) => e.status === 'uploaded')).toBe(true);
+      await fast.closeExternalEditor(sessionToken);
+      await fast.dispose();
+    });
+
+    it.skipIf(process.platform === 'win32')('keeps uploading after an editor saved by renaming a temp file over the original', async () => {
+      const fast = fastService();
+      const { state } = remoteProvider();
+      const { localPath, sessionToken } = await fast.openInExternalEditor(storageRegistry, 'sftp-up', '/etc/b.ini', () => {});
+      await sleep(40);
+
+      // vim, JetBrains IDEs and others: write a new file, then rename it over the old one.
+      await fsp.writeFile(`${localPath}.swp-new`, 'saved via rename');
+      await fsp.rename(`${localPath}.swp-new`, localPath);
+      await vi.waitFor(() => expect(state.uploads).toContain('saved via rename'), { timeout: 4000 });
+
+      await sleep(200); // the watch has to be re-established on the new file
+      await fsp.writeFile(localPath, 'plain save after the rename, longer');
+      await vi.waitFor(() => expect(state.uploads).toContain('plain save after the rename, longer'), { timeout: 4000 });
+      await fast.closeExternalEditor(sessionToken);
+      await fast.dispose();
+    });
+
+    it('uploads a change that is still waiting out the debounce when the session is closed', async () => {
+      const slowDebounce = new FileEditorService({ shell: mockShell, baseTempDir: tempBaseDir, uploadDebounceMs: 5000 });
+      const { state } = remoteProvider();
+      const { localPath, sessionToken } = await slowDebounce.openInExternalEditor(storageRegistry, 'sftp-up', '/etc/c.ini', () => {});
+      await sleep(40);
+
+      await fsp.writeFile(localPath, 'saved just before closing');
+      await sleep(50); // seen by the watcher, but nowhere near uploaded (5 s debounce)
+      await slowDebounce.closeExternalEditor(sessionToken);
+
+      expect(state.uploads).toEqual(['saved just before closing']);
+      await slowDebounce.dispose();
+    });
+
+    it('does not report an error for a pending upload after the session was disposed', async () => {
+      const slowDebounce = new FileEditorService({ shell: mockShell, baseTempDir: tempBaseDir, uploadDebounceMs: 100 });
+      remoteProvider();
+      const events: Array<{ status: string }> = [];
+      const { localPath } = await slowDebounce.openInExternalEditor(storageRegistry, 'sftp-up', '/etc/d.ini', (e) => events.push(e));
+      await sleep(40);
+      await fsp.writeFile(localPath, 'changed');
+      await sleep(30);
+      await slowDebounce.dispose();
+      await sleep(250);
+
+      expect(events).toEqual([]);
+    });
+  });
+
   describe('dispose', () => {
     it('cleans up all active sessions without errors', async () => {
       const mockProvider = {

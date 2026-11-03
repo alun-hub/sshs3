@@ -136,6 +136,7 @@ Inspect, edit, and preview remote files or monitor live server logs without open
 Right-click any file and select **Open in External Editor** to edit in your local desktop IDE (VS Code, Neovim, Sublime):
 - The file opens in your local editor.
 - When you save locally (<kbd>Ctrl</kbd>+<kbd>S</kbd>), sshs3 detects the filesystem event and streams the updated buffer back to the remote server automatically in the background!
+- **Saving by rename:** Editors that save by writing a new file and renaming it over the old one (Vim, JetBrains IDEs and others) keep working: sshs3 follows the new file. Saves made close together are uploaded one at a time, and a save made just before you close the editor tab is uploaded before the temporary copy is removed.
 - **Open in sshs3 as well:** If the same file is open in the built-in editor, it reloads after the upload. When it has unsaved edits, sshs3 asks first (**Reload and discard** or **Keep my edits**). Only the file on the same server and path is touched, never a file with the same path on another server.
 - **Security Guard:** For workstation security, executable binaries and scripts (`.exe`, `.bat`, `.ps1`, `.sh`, `.vbs`, `.jar`) are blocked from external launching to prevent accidental execution of untrusted remote payloads.
 
