@@ -3,6 +3,7 @@ import type { StorageRegistry } from '../storage/StorageRegistry';
 import { SFTPStorageProvider } from '../storage/SFTPStorageProvider';
 import { quotePathOperand } from '../search/shellQuote';
 import { createLogger } from '../log';
+import { StringDecoder } from 'node:string_decoder';
 const filetailserviceLog = createLogger('FileTailService');
 
 export interface FileTailDataEvent {
@@ -120,8 +121,10 @@ export class FileTailService {
                   return reject(err || new Error('Failed to open exec stream'));
                 }
 
+                const decoder = new StringDecoder('utf8'); // a character may be split across two chunks
                 stream.on('data', (data: Buffer) => {
-                  onData({ tailId, chunk: data.toString('utf-8') });
+                  const chunk = decoder.write(data);
+                  if (chunk) onData({ tailId, chunk });
                 });
 
                 stream.stderr?.on('data', (data: Buffer) => {
@@ -156,6 +159,7 @@ export class FileTailService {
     if (!startedSftpTail) {
       let lastSize = size;
       let isPolling = false;
+      const decoder = new StringDecoder('utf8');
 
       const intervalId = setInterval(async () => {
         if (isPolling) return;
@@ -163,7 +167,8 @@ export class FileTailService {
         try {
           const currentStat = await provider.stat(remotePath);
           if (currentStat.size > lastSize) {
-            const rangeStream = await provider.createReadStream(remotePath, lastSize, currentStat.size);
+            // The end of a range is inclusive: the last byte of the file is at size - 1.
+            const rangeStream = await provider.createReadStream(remotePath, lastSize, currentStat.size - 1);
             const chunks: Buffer[] = [];
             await new Promise<void>((resolve, reject) => {
               rangeStream.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -172,8 +177,9 @@ export class FileTailService {
             });
             const newBuf = Buffer.concat(chunks);
             lastSize = currentStat.size;
-            if (newBuf.length > 0) {
-              onData({ tailId, chunk: newBuf.toString('utf-8') });
+            const text = decoder.write(newBuf);
+            if (text) {
+              onData({ tailId, chunk: text });
             }
           } else if (currentStat.size < lastSize) {
             // File truncated or reset
