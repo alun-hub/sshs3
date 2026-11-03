@@ -1112,6 +1112,23 @@ describe('TransferQueue', () => {
     await expect(queue.waitForJob('missing')).rejects.toThrow(/Job not found/);
   });
 
+  it('refuses to copy a file onto itself on the same provider and leaves it intact', async () => {
+    sourceProvider.files.set('same.txt', Buffer.from('keep me'));
+    const queue = new TransferQueue();
+    const job = queue.addJob({
+      sourceProvider,
+      sourcePath: 'same.txt',
+      targetProvider: sourceProvider,
+      targetPath: 'same.txt',
+    });
+
+    await queue.waitForJob(job.id);
+
+    expect(job.progress.status).toBe('failed');
+    expect(job.error).toBe('Source and target are the same file');
+    expect(sourceProvider.files.get('same.txt')?.toString()).toBe('keep me');
+  });
+
   it('should reject duplicate job IDs in addJob', () => {
     const queue = new TransferQueue();
     queue.addJob({

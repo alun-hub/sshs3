@@ -1526,6 +1526,21 @@ describe('IpcBridge', () => {
       );
     });
 
+    it('rejects overwriting a file with itself in transferAdd and queues nothing', async () => {
+      mockTransferQueue.addJob.mockClear();
+
+      await expect(
+        mockIpc.invoke(IPC_CHANNELS.TRANSFER_ADD, {
+          sourceProviderId: 'test-storage',
+          sourcePath: '/src/file.txt',
+          targetProviderId: 'test-storage',
+          targetPath: '/src//file.txt',
+          conflictPolicy: 'overwrite',
+        })
+      ).rejects.toThrow('Source and target are the same file');
+      expect(mockTransferQueue.addJob).not.toHaveBeenCalled();
+    });
+
     it('resolves targetPath when target is a directory in transferAdd', async () => {
       const dirProvider = {
         ...mockStorageRegistry.providers.get('test-storage'),
