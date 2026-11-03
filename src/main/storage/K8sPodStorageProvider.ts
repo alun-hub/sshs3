@@ -18,6 +18,18 @@ import type { K8sStorageConfig } from '../../shared/types/kubernetes';
 /** How long a write stream waits, after its last byte, for the command in the pod to report back. */
 const WRITE_FINISH_TIMEOUT_MS = 60_000;
 
+/**
+ * Runs in the pod for every write ($1 = path, $2 = optional octal mode). `cat` must be allowed to fail the
+ * script: without `|| exit $?` the status of the trailing `if` (0 when there is no mode) hid a failed write
+ * such as "Permission denied" or "No space left on device", and the editor reported the file as saved.
+ * A failing `chmod` still fails the script, so a file is never silently left with the wrong permissions.
+ */
+export const POD_WRITE_SCRIPT = `
+mkdir -p "$(dirname "$1")" 2>/dev/null
+cat > "$1" || exit $?
+if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
+`;
+
 export class K8sPodStorageProvider extends BaseStorageProvider {
   readonly id: string;
   readonly name: string;
@@ -314,13 +326,8 @@ printf "%s\t%s\t%s\t%s\n" "$isDir" "$out" "$isLink" "$isReg"
   ): Promise<void> {
     const targetPath = path.posix.normalize(remotePath);
     const modeStr = options?.mode ? (options.mode & 0o777).toString(8) : '';
-    const script = `
-mkdir -p "$(dirname "$1")" 2>/dev/null
-cat > "$1"
-if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
-`;
     const inStream = stream.Readable.from([Buffer.from(data)]);
-    await this.runCommand(['sh', '-c', script, '--', targetPath, modeStr], inStream);
+    await this.runCommand(['sh', '-c', POD_WRITE_SCRIPT, '--', targetPath, modeStr], inStream);
   }
 
   public async createReadStream(
@@ -454,18 +461,13 @@ if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
     inStream.on('error', (err) => out.destroy(err));
 
     const modeStr = options?.mode ? (options.mode & 0o777).toString(8) : '';
-    const script = `
-mkdir -p "$(dirname "$1")" 2>/dev/null
-cat > "$1"
-if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
-`;
 
     try {
       const conn = await exec.exec(
         this.config.namespace,
         this.config.podName,
         this.config.containerName,
-        ['sh', '-c', script, '--', targetPath, modeStr],
+        ['sh', '-c', POD_WRITE_SCRIPT, '--', targetPath, modeStr],
         null,
         errStream,
         inStream,

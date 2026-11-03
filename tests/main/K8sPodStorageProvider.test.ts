@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { PassThrough, Readable } from 'node:stream';
 import type { K8sStorageConfig } from '../../src/shared/types/kubernetes';
@@ -24,7 +28,7 @@ vi.mock('@kubernetes/client-node', () => {
   return { KubeConfig, Exec };
 });
 
-import { K8sPodStorageProvider } from '../../src/main/storage/K8sPodStorageProvider';
+import { K8sPodStorageProvider, POD_WRITE_SCRIPT } from '../../src/main/storage/K8sPodStorageProvider';
 
 const CONFIG: K8sStorageConfig = {
   id: 'k8s-ctx/ns/test-pod/app',
@@ -307,7 +311,73 @@ describe('K8sPodStorageProvider', () => {
     expect(capturedInput).toBe('new content');
   });
 
-  describe('createWriteStream', () => {
+  it('writeFile and createWriteStream both run the shared pod write script', async () => {
+    const scripts: string[] = [];
+    execMock.mockImplementation(
+      async (_ns: string, _pod: string, _c: string, cmd: string[], _o: PassThrough, _e: PassThrough, stdin: Readable, _t: boolean, statusCb: any) => {
+        scripts.push(cmd[2]);
+        stdin.on('data', () => {});
+        stdin.on('end', () => statusCb({ status: 'Success' }));
+        return new FakeConnection();
+      }
+    );
+    await provider.writeFile('/tmp/a.txt', Buffer.from('x'));
+    const out = await provider.createWriteStream('/tmp/b.txt');
+    await new Promise<void>((resolve, reject) => {
+      out.once('finish', () => resolve());
+      out.once('error', reject);
+      out.end('x');
+    });
+    expect(scripts).toEqual([POD_WRITE_SCRIPT, POD_WRITE_SCRIPT]);
+  });
+
+  // The script runs in the pod's `sh`; run it for real so the exit status is what the pod would report.
+  describe.skipIf(process.platform === 'win32')('POD_WRITE_SCRIPT exit status (real sh)', () => {
+    const run = (script: string, target: string, mode: string) =>
+      spawnSync('sh', ['-c', script, '--', target, mode], { input: 'data', encoding: 'utf-8' });
+    const OLD_SCRIPT = `
+mkdir -p "$(dirname "$1")" 2>/dev/null
+cat > "$1"
+if [ -n "$2" ]; then chmod "$2" "$1" 2>/dev/null; fi
+`;
+
+    it('fails when cat cannot write the file, with and without a mode', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podwrite-'));
+      try {
+        const blocked = path.join(dir, 'a-file-not-a-dir', 'x.txt');
+        fs.writeFileSync(path.join(dir, 'a-file-not-a-dir'), '');
+        expect(run(POD_WRITE_SCRIPT, blocked, '').status).not.toBe(0);
+        expect(run(POD_WRITE_SCRIPT, blocked, '644').status).not.toBe(0);
+        // Control: the previous script reported success for the same failed write.
+        expect(run(OLD_SCRIPT, blocked, '').status).toBe(0);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('writes the file and applies the mode on success', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podwrite-'));
+      try {
+        const target = path.join(dir, 'sub', 'ok.txt');
+        expect(run(POD_WRITE_SCRIPT, target, '600').status).toBe(0);
+        expect(fs.readFileSync(target, 'utf-8')).toBe('data');
+        expect(fs.statSync(target).mode & 0o777).toBe(0o600);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('createWriteStream', () => {      const refused = (await provider.createWriteStream('/tmp/a.bin')) as NodeJS.WritableStream & { targetTouched: boolean };
+      refused.on('error', () => {});
+      expect(refused.targetTouched).toBe(false);
+
+      execMock.mockImplementationOnce(async () => new FakeConnection());
+      const started = (await provider.createWriteStream('/tmp/b.bin')) as NodeJS.WritableStream & { targetTouched: boolean };
+      started.on('error', () => {});
+      expect(started.targetTouched).toBe(true);
+    });
+
     /** Wires exec so the test decides when (and how) the command in the pod finishes. */
     function podWithManualExit() {
       const conn = new FakeConnection();
