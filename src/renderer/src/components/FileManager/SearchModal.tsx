@@ -17,6 +17,7 @@ import { SearchResultsList } from './SearchResultsList';
 import { SearchPreviewPane } from './SearchPreviewPane';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { createRequestGuard, startGuarded } from '../../lib/requestGuard';
 
 interface SearchWarning {
   path?: string;
@@ -107,16 +108,22 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     };
   }, []);
 
+  // A start that resolves after Cancel, close or unmount must stop its search instead of orphaning it (M10).
+  const [startGuard] = useState(createRequestGuard);
+
   const stopActiveSearch = useCallback(() => {
+    startGuard.invalidate();
     if (activeSearchIdRef.current) {
       void window.multissh.searchCancel(activeSearchIdRef.current);
       activeSearchIdRef.current = null;
     }
-  }, []);
+  }, [startGuard]);
 
   useEffect(() => {
     if (!open) stopActiveSearch();
   }, [open, stopActiveSearch]);
+
+  useEffect(() => () => stopActiveSearch(), [stopActiveSearch]);
 
   const handleSubmit = useCallback(
     async () => {
@@ -137,29 +144,36 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setHasSearched(true);
 
       try {
-        const { searchId } = await window.multissh.searchStart({
-          providerId,
-          sourceType,
-          rootPath,
-          query,
-          mode,
-          caseSensitive,
-          includeGlobs: includeGlobs
-            .split(',')
-            .map((g) => g.trim())
-            .filter(Boolean),
-          excludeGlobs: excludeGlobs
-            .split(',')
-            .map((g) => g.trim())
-            .filter(Boolean),
-        });
-        activeSearchIdRef.current = searchId;
+        const started = await startGuarded(
+          startGuard,
+          startGuard.begin(),
+          () =>
+            window.multissh.searchStart({
+              providerId,
+              sourceType,
+              rootPath,
+              query,
+              mode,
+              caseSensitive,
+              includeGlobs: includeGlobs
+                .split(',')
+                .map((g) => g.trim())
+                .filter(Boolean),
+              excludeGlobs: excludeGlobs
+                .split(',')
+                .map((g) => g.trim())
+                .filter(Boolean),
+            }),
+          ({ searchId }) => void window.multissh.searchCancel(searchId)
+        );
+        if (!started) return; // cancelled, closed or restarted while starting: whoever did that owns the state now
+        activeSearchIdRef.current = started.value.searchId;
       } catch (err) {
         setSearching(false);
         setError(describeIpcError(err, 'Failed to start search'));
       }
     },
-    [query, searching, providerId, sourceType, rootPath, mode, caseSensitive, includeGlobs, excludeGlobs, stopActiveSearch]
+    [query, searching, providerId, sourceType, rootPath, mode, caseSensitive, includeGlobs, excludeGlobs, stopActiveSearch, startGuard]
   );
 
   const handleCancel = useCallback(() => {

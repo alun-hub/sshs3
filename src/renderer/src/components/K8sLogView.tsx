@@ -15,6 +15,7 @@ import { formatDateTime } from '../lib/dateFormat';
 import { K8sPodMetrics } from './K8s/K8sPodMetrics';
 import { K8sLogHeader } from './K8s/K8sLogHeader';
 import { useConfirm } from './ConfirmDialog';
+import { createRequestGuard, startGuarded } from '../lib/requestGuard';
 import {
   calculateReconnectDelay,
   formatReconnectCountdown,
@@ -59,6 +60,8 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
   const retryAttemptRef = useRef(0);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isDisposedRef = useRef(false);
+  // Only the latest connect may take over the stream; an older one that finishes starting late is stopped (M10).
+  const [startGuard] = useState(createRequestGuard);
 
   const [currentPodName, setCurrentPodName] = useState(target.podName);
   const currentPodNameRef = useRef(target.podName);
@@ -151,6 +154,7 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
       if (isDisposedRef.current) return;
 
       stopActiveSession();
+      const token = startGuard.begin();
       setStatus(isInitial ? 'connecting' : 'reconnecting');
 
       const term = termRef.current;
@@ -164,16 +168,20 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
 
       try {
         const tailLines = isInitial ? 1000 : 100;
-        const { sessionId: id } = await window.multissh.k8sLogStart(currentTarget, {
-          tailLines,
-          timestamps: showTimestampsRef.current,
-          previous: showPreviousRef.current,
-        });
-
-        if (isDisposedRef.current) {
-          window.multissh.k8sLogStop(id);
-          return;
-        }
+        const started = await startGuarded(
+          startGuard,
+          token,
+          () =>
+            window.multissh.k8sLogStart(currentTarget, {
+              tailLines,
+              timestamps: showTimestampsRef.current,
+              previous: showPreviousRef.current,
+            }),
+          ({ sessionId }) => window.multissh.k8sLogStop(sessionId)
+        );
+        // Disposed, or a newer connect has begun: whatever was started has been stopped above.
+        if (!started) return;
+        const id = started.value.sessionId;
 
         sessionIdRef.current = id;
         retryAttemptRef.current = 0;
@@ -193,7 +201,7 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
         if (isPodNotFoundError(err) && window.multissh?.k8sListPods) {
           try {
             const pods = await window.multissh.k8sListPods(target.contextName, target.namespace);
-            if (!isDisposedRef.current) {
+            if (!isDisposedRef.current && startGuard.isCurrent(token)) {
               const stillExists = pods.some((p) => p.name === activePodName);
               if (!stillExists) {
                 const replacement = findReplacementPod(activePodName, activeContainerName, pods);
@@ -489,6 +497,7 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
 
     return () => {
       isDisposedRef.current = true;
+      startGuard.invalidate();
       clearRetryTimer();
       stopActiveSession();
       scrollSub.dispose();

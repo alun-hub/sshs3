@@ -159,6 +159,40 @@ describe('K8sLogView', () => {
     });
   });
 
+  // M10: two reconnects in a row (e.g. toggling timestamps twice) start two streams; the one that finishes
+  // starting last must not replace, and so leak, the one the user is looking at.
+  it('stops a stream whose start finished after a newer reconnect had begun', async () => {
+    await act(async () => {
+      render(<K8sLogView target={TARGET} />);
+      await Promise.resolve();
+    });
+    const finish: Array<(value: { sessionId: string }) => void> = [];
+    mockK8sLogStart.mockImplementation(() => new Promise((resolve) => finish.push(resolve)));
+    mockK8sLogStop.mockClear();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('toggle-timestamps'));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('toggle-timestamps'));
+      await Promise.resolve();
+    });
+    expect(finish).toHaveLength(2);
+
+    await act(async () => {
+      finish[1]({ sessionId: 'newest' });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      finish[0]({ sessionId: 'older' });
+      await Promise.resolve();
+    });
+
+    expect(mockK8sLogStop).toHaveBeenCalledWith('older');
+    expect(mockK8sLogStop).not.toHaveBeenCalledWith('newest');
+  });
+
   it('toggles previous container logs and reconnects with previous: true', async () => {
     await act(async () => {
       render(<K8sLogView target={TARGET} />);

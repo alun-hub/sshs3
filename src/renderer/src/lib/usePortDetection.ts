@@ -35,9 +35,12 @@ export function usePortDetection({
   }, [enabled]);
 
   // Clean up auto-created tunnels on unmount
+  const mountedRef = useRef(true);
   useEffect(() => {
+    mountedRef.current = true;
     const activeTunnels = activeTunnelsRef.current;
     return () => {
+      mountedRef.current = false;
       const tunnels = Array.from(activeTunnels.values());
       for (const tunnel of tunnels) {
         window.multissh?.sshTunnelStop?.(tunnel.id).catch(() => {});
@@ -115,6 +118,12 @@ export function usePortDetection({
         };
 
         const activeTunnel = await window.multissh?.sshTunnelStart?.(configRef.current, tunnelConfig);
+        if (!mountedRef.current) {
+          // The terminal was closed while the tunnel was starting: the cleanup above has already run, so this
+          // one would never be stopped (M10).
+          if (activeTunnel?.id) window.multissh?.sshTunnelStop?.(activeTunnel.id)?.catch(() => {});
+          return;
+        }
         if (activeTunnel?.id) {
           activeTunnelsRef.current.set(port, { id: activeTunnel.id, localPort: targetLocalPort });
         }

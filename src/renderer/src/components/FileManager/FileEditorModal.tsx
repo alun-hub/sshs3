@@ -45,6 +45,8 @@ import {
   isDirectPreviewFile,
 } from './fileTypeHelpers';
 import { formatJson } from '../../lib/jsonFormatter';
+import { createRequestGuard, startGuarded } from '../../lib/requestGuard';
+import { appendCapped } from '../../lib/tailBuffer';
 
 const MarkdownPreview = lazy(() => import('./MarkdownPreview'));
 const ImageViewer = lazy(() => import('./ImageViewer'));
@@ -146,14 +148,18 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
   });
   sessionsRef.current = { tailId, externalToken: externalSessionToken };
 
+  // A tail that is still starting when the editor closes or unmounts must be stopped when its start finishes (M10).
+  const [tailGuard] = useState(createRequestGuard);
+
   // An embedded editor tab is unmounted by its parent; release the tail/external sessions then.
   useEffect(
     () => () => {
+      tailGuard.invalidate();
       const { tailId: t, externalToken } = sessionsRef.current;
       if (t) void window.multissh?.fileTailStop?.(t);
       if (externalToken) void window.multissh?.fileCloseExternal?.(externalToken);
     },
-    []
+    [tailGuard]
   );
 
   const isDirty = useMemo(
@@ -173,12 +179,15 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
   // Stop tail session helper
   const stopTailSession = useCallback(async () => {
+    // Also cancels a tail that is still starting (its result is then stopped on arrival), and ends its spinner.
+    tailGuard.invalidate();
+    setLoading(false);
     if (tailId) {
       await window.multissh?.fileTailStop?.(tailId);
       setTailId(null);
     }
     setTailModeActive(false);
-  }, [tailId]);
+  }, [tailId, tailGuard]);
 
   const entryPath = entry?.path;
   const isDirectory = entry?.isDirectory;
@@ -241,7 +250,15 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     }
 
     try {
-      const res = await window.multissh.fileTailStart(providerId, entryPath);
+      const started = await startGuarded(
+        tailGuard,
+        tailGuard.begin(),
+        () => window.multissh.fileTailStart(providerId, entryPath),
+        (res) => void window.multissh?.fileTailStop?.(res.tailId)
+      );
+      // Closed, switched to normal mode or restarted while starting: that tail has been stopped above.
+      if (!started) return;
+      const res = started.value;
       setTailId(res.tailId);
       setContent(res.initialContent);
       setOriginalContent(res.initialContent);
@@ -257,11 +274,12 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [providerId, entryPath, isDirectory, tailId]);
+  }, [providerId, entryPath, isDirectory, tailId, tailGuard]);
 
   // Open modal effect
   useEffect(() => {
     if (!open || !entry) {
+      tailGuard.invalidate();
       setContent('');
       setOriginalContent('');
       originalEolRef.current = '\n';
@@ -321,7 +339,7 @@ export const FileEditorModal: React.FC<FileEditorModalProps> = ({
 
     const dataCleanup = window.multissh.onFileTailData((event) => {
       if (event.tailId === tailId) {
-        setContent((prev) => prev + event.chunk);
+        setContent((prev) => appendCapped(prev, event.chunk));
         if (autoScroll) {
           setTimeout(() => {
             editorRef.current?.scrollToBottom();

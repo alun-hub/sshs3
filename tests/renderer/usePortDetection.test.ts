@@ -182,4 +182,28 @@ describe('usePortDetection', () => {
     expect(window.multissh.openExternal).toHaveBeenNthCalledWith(1, 'http://localhost:9080');
     expect(window.multissh.openExternal).toHaveBeenNthCalledWith(2, 'http://localhost:9080');
   });
+
+  // M10: the tunnel is started with an await; if the terminal is closed meanwhile, nothing is left to stop it.
+  it('stops a tunnel that finished starting after the terminal was closed, and does not open the browser', async () => {
+    let finishTunnel!: (tunnel: { id: string; status: string }) => void;
+    (window.multissh.sshTunnelStart as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => (finishTunnel = resolve))
+    );
+    const { result, unmount } = renderHook(() => usePortDetection({ enabled: true, isRemote: true, config: sampleConfig }));
+
+    let forwarding!: Promise<void>;
+    await act(async () => {
+      forwarding = result.current.handleForwardAndOpen(8080, 'http');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    unmount();
+    await act(async () => {
+      finishTunnel({ id: 'late-tunnel', status: 'active' });
+      await forwarding;
+    });
+
+    expect(window.multissh.sshTunnelStop).toHaveBeenCalledWith('late-tunnel');
+    expect(window.multissh.openExternal).not.toHaveBeenCalled();
+  });
 });

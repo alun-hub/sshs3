@@ -291,6 +291,23 @@ describe('FileEditorModal', () => {
     });
   });
 
+  // M10: fileTailStart resolved after the editor had been closed, and nobody was left to stop the tail.
+  it('stops a tail that finished starting after the editor was closed', async () => {
+    let finishTail!: (value: { tailId: string; initialContent: string; size: number }) => void;
+    mockFileTailStart.mockImplementation(() => new Promise((resolve) => (finishTail = resolve)));
+
+    const { unmount } = render(
+      <FileEditorModal open={true} providerId="sftp-1" sourceType="sftp" entry={sampleEntry} onClose={vi.fn()} isTailMode={true} />
+    );
+    await waitFor(() => expect(mockFileTailStart).toHaveBeenCalled());
+    unmount();
+    mockFileTailStop.mockClear();
+
+    await act(async () => finishTail({ tailId: 'late-tail', initialContent: 'x', size: 1 }));
+
+    expect(mockFileTailStop).toHaveBeenCalledWith('late-tail');
+  });
+
   it('displays large file warning for files > 20 MB and offers switch to Tail -f', async () => {
     const largeEntry: FileEntry = {
       ...sampleEntry,
