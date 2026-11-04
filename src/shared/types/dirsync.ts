@@ -18,6 +18,11 @@ export interface DirectoryDiffResult {
   scannedAt: string;
   /** Subdirectories that could not be read (e.g. permission denied) and were skipped, per side. */
   skippedPaths: { source: string[]; target: string[] };
+  /**
+   * Symbolic links (files and folders), per side. They are left out of the comparison on both sides: nothing is
+   * copied from, written through or deleted at such a path, and nothing below it is compared.
+   */
+  skippedSymlinks: { source: string[]; target: string[] };
 }
 
 export interface DirectorySyncProfile {

@@ -32,7 +32,8 @@ export async function buildTree(
   rootPath: string,
   onScanProgress?: (filesCount: number, currentItem: string) => void,
   state: { count: number } = { count: 0 },
-  skipped: string[] = []
+  skipped: string[] = [],
+  symlinks: string[] = []
 ): Promise<Map<string, FileEntry>> {
   const result = new Map<string, FileEntry>();
 
@@ -67,17 +68,21 @@ export async function buildTree(
       const relativePath = relPrefix ? `${relPrefix}/${baseName}` : baseName;
       const childPath = entry.path || joinPaths(provider.type, currentPath, baseName);
 
+      // Symbolic links, files and folders alike, are left out and only reported (as transfers do). A folder link
+      // is never followed: a link back to an ancestor would expand into phantom entries until the OS gives up
+      // (ELOOP). A file link is not copied as content, and a link on the target is never written through (that
+      // could overwrite a file outside the target folder). Because the path is reported as skipped, nothing at or
+      // below it is copied as "new" or deleted as "extraneous" on the strength of the other side alone.
+      if (entry.isSymlink) {
+        symlinks.push(relativePath);
+        continue;
+      }
+
       result.set(relativePath, entry);
       state.count++;
       onScanProgress?.(state.count, relativePath);
 
-      // Symlinked directories are listed but never followed: a link back to an ancestor
-      // would otherwise expand into phantom entries until the OS gives up (ELOOP).
-      // Its contents are unknown to the diff, so it is reported as skipped: nothing below it may be
-      // copied as "new" or deleted as "extraneous" on the strength of the other side alone.
-      if (entry.isDirectory && entry.isSymlink) {
-        skipped.push(relativePath);
-      } else if (entry.isDirectory) {
+      if (entry.isDirectory) {
         await walk(childPath, relativePath, false);
       }
     }
@@ -101,12 +106,17 @@ export async function computeDiff(
   targetPath: string,
   onScanProgress?: ScanProgressCallback
 ): Promise<DirectoryDiffResult> {
-  const skippedSource: string[] = [];
-  const skippedTarget: string[] = [];
+  const unreadableSource: string[] = [];
+  const unreadableTarget: string[] = [];
+  const symlinksSource: string[] = [];
+  const symlinksTarget: string[] = [];
   const [sourceMap, targetMap] = await Promise.all([
-    buildTree(sourceProvider, sourcePath, (count, item) => onScanProgress?.('source', count, item), { count: 0 }, skippedSource),
-    buildTree(targetProvider, targetPath, (count, item) => onScanProgress?.('target', count, item), { count: 0 }, skippedTarget),
+    buildTree(sourceProvider, sourcePath, (count, item) => onScanProgress?.('source', count, item), { count: 0 }, unreadableSource, symlinksSource),
+    buildTree(targetProvider, targetPath, (count, item) => onScanProgress?.('target', count, item), { count: 0 }, unreadableTarget, symlinksTarget),
   ]);
+  // For the "unknown, not new/extraneous" rule an unreadable folder and a symlink behave the same.
+  const skippedSource = [...unreadableSource, ...symlinksSource];
+  const skippedTarget = [...unreadableTarget, ...symlinksTarget];
 
   const entries: DirectoryDiffEntry[] = [];
   const counts = { new: 0, changed: 0, onlyTarget: 0, same: 0, conflict: 0 };
@@ -178,7 +188,8 @@ export async function computeDiff(
     entries,
     counts,
     scannedAt: new Date().toISOString(),
-    skippedPaths: { source: skippedSource, target: skippedTarget },
+    skippedPaths: { source: unreadableSource, target: unreadableTarget },
+    skippedSymlinks: { source: symlinksSource, target: symlinksTarget },
   };
 }
 

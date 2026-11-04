@@ -766,6 +766,20 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
                 </div>
               )}
 
+              {(diff.skippedSymlinks.source.length > 0 || diff.skippedSymlinks.target.length > 0) && (
+                <div className="rounded-lg border border-border-subtle bg-app-surface p-2 text-xs text-txt-muted">
+                  {(['source', 'target'] as const).map((side) =>
+                    diff.skippedSymlinks[side].length > 0 ? (
+                      <div key={side}>
+                        {diff.skippedSymlinks[side].length} symbolic link(s) in the {side} are not synced:{' '}
+                        {diff.skippedSymlinks[side].slice(0, 5).join(', ')}
+                        {diff.skippedSymlinks[side].length > 5 ? ', …' : ''}
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              )}
+
               {/* Mirror / Safe Sync policy banner & toggle */}
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-app-surface px-3 py-2 text-xs">
                 <div className="flex items-center gap-2">

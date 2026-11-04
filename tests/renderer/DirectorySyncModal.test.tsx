@@ -22,6 +22,7 @@ const mockDiff: DirectoryDiffResult = {
   scannedAt: '2026-09-26T12:00:00.000Z',
   counts: { new: 2, changed: 1, onlyTarget: 1, same: 5, conflict: 0 },
   skippedPaths: { source: [], target: [] },
+  skippedSymlinks: { source: [], target: [] },
   entries: [
     {
       relativePath: 'assets/app.js',
@@ -174,6 +175,7 @@ describe('DirectorySyncModal', () => {
       scannedAt: '2026-11-03T12:00:00.000Z',
       counts: { new: 1, changed: 0, onlyTarget: 0, same: 0, conflict: 1 },
       skippedPaths: { source: [], target: [] },
+  skippedSymlinks: { source: [], target: [] },
       entries: [
         {
           relativePath: 'build',
@@ -208,5 +210,24 @@ describe('DirectorySyncModal', () => {
     await waitFor(() => expect(window.multissh.dirSyncApply).toHaveBeenCalled());
     const sent = (window.multissh.dirSyncApply as any).mock.calls[0][0].entries as Array<{ relativePath: string }>;
     expect(sent.map((e) => e.relativePath)).toEqual(['index.html']);
+  });
+
+  it('says which symbolic links were left out, without calling them unreadable', async () => {
+    (window.multissh as any).dirSyncComputeDiff = vi.fn().mockResolvedValue({
+      ...mockDiff,
+      skippedSymlinks: { source: ['current.log', 'node_modules/.bin'], target: ['shortcut'] },
+    });
+
+    render(
+      <ConfirmProvider>
+        <DirectorySyncModal open={true} onClose={() => {}} runProfile={mockProfile} />
+      </ConfirmProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 symbolic link\(s\) in the source are not synced/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/1 symbolic link\(s\) in the target are not synced/)).toBeInTheDocument();
+    expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument();
   });
 });

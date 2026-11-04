@@ -67,8 +67,10 @@ describe('DirectorySyncService', () => {
       '/src': [dir('/src', 'loop', { isSymlink: true }), file('/src', 'a.txt')],
       '/src/loop': [file('/src/loop', 'inner.txt')],
     });
-    const tree = await buildTree(provider, '/src');
-    expect([...tree.keys()].sort()).toEqual(['a.txt', 'loop']);
+    const symlinks: string[] = [];
+    const tree = await buildTree(provider, '/src', undefined, { count: 0 }, [], symlinks);
+    expect([...tree.keys()].sort()).toEqual(['a.txt']);
+    expect(symlinks).toEqual(['loop']);
   });
 
   it('reports a symlinked directory as skipped so nothing below it is copied or deleted', async () => {
@@ -82,8 +84,51 @@ describe('DirectorySyncService', () => {
 
     const diff = await computeDiff(source, '/src', target, '/dst');
 
-    expect(diff.skippedPaths.source).toEqual(['link']);
+    // A link is not "unreadable": it is left out on purpose and reported separately.
+    expect(diff.skippedPaths.source).toEqual([]);
+    expect(diff.skippedSymlinks.source).toEqual(['link']);
     expect(diff.entries.filter((e) => e.status === 'only-target')).toEqual([]);
+  });
+
+  // Decided with the user: like transfers, directory sync skips every symlink, on both sides. A link on the target
+  // used to be written through (overwriting a file outside the target folder), and an SFTP link to a folder was
+  // listed as a file and failed to copy.
+  describe('symbolic links (decided with the user: skipped on both sides)', () => {
+    const link = (parent: string, name: string): FileEntry =>
+      ({ name, path: `${parent}/${name}`, isDirectory: false, isSymlink: true, size: 7, modifiedTime: 1 }) as any;
+
+    it('does not offer a symlinked file on the source as new, and reports it', async () => {
+      const source = fakeProvider({ '/src': [link('/src', 'current.log'), file('/src', 'real.txt')] });
+      const target = fakeProvider({ '/dst': [] });
+
+      const result = await computeDiff(source, '/src', target, '/dst');
+
+      expect(result.entries.map((e) => e.relativePath)).toEqual(['real.txt']);
+      expect(result.skippedSymlinks).toEqual({ source: ['current.log'], target: [] });
+    });
+
+    it('never writes through a symlink on the target: a real source folder of that name is not copied into it', async () => {
+      const source = fakeProvider({
+        '/src': [dir('/src', 'data')],
+        '/src/data': [file('/src/data', 'a.txt')],
+      });
+      const target = fakeProvider({ '/dst': [{ ...dir('/dst', 'data'), isSymlink: true } as FileEntry] });
+
+      const result = await computeDiff(source, '/src', target, '/dst');
+
+      expect(result.entries).toEqual([]); // neither "data" nor "data/a.txt" is new
+      expect(result.skippedSymlinks.target).toEqual(['data']);
+    });
+
+    it('does not mark a symlink that exists only on the target as extraneous', async () => {
+      const source = fakeProvider({ '/src': [] });
+      const target = fakeProvider({ '/dst': [link('/dst', 'shortcut')] });
+
+      const result = await computeDiff(source, '/src', target, '/dst');
+
+      expect(result.entries).toEqual([]);
+      expect(result.counts.onlyTarget).toBe(0);
+    });
   });
 
   it('does not report source entries below an unreadable target folder as new', async () => {

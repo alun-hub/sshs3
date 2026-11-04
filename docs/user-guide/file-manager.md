@@ -107,7 +107,7 @@ Files are compared using file size and last modification timestamp. A configurab
 ### Good to Know & Limitations: Directory Synchronization & Mirroring
 - **One-Way Sync:** Synchronization is strictly one-way from the selected source to the target directory.
 - **New Target Folders:** The target folder does not have to exist: the first sync creates it, over SFTP as well.
-- **Symlinks & Unreadable Folders:** Symbolic links pointing to directories are listed but not recursively traversed. Folders that cannot be read (e.g. permission denied) are reported as skipped; nothing below a skipped folder is copied or, in Mirror mode, deleted, because its contents cannot be verified. If the root folder of the source or target cannot be listed for any reason other than not existing yet, the comparison stops with an error instead of treating it as empty.
+- **Symlinks & Unreadable Folders:** Symbolic links, to files and to folders, on the source or the target are not synced: they are never copied, compared, written through or deleted, and nothing below a linked folder is compared. The preview lists them as *symbolic links not synced*. (Copying files in the file manager also skips symbolic links.) Folders that cannot be read (e.g. permission denied) are reported as skipped; nothing below a skipped folder is copied or, in Mirror mode, deleted, because its contents cannot be verified. If the root folder of the source or target cannot be listed for any reason other than not existing yet, the comparison stops with an error instead of treating it as empty.
 
 ---
 
