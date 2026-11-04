@@ -1742,6 +1742,9 @@ export class TeamVaultService {
       // Starts false: a brand-new join (no localFile, nothing held yet) or an already-locked
       // session has nothing to preserve either way, and `lock()` on either is a no-op.
       let keyProvenStillValid = false;
+      // Whether this file's header was authenticated (MAC or rotation proof). Only then may its format version be remembered as the
+      // highest seen: a first join has no key yet, so an unverified file must not be able to set the downgrade barrier.
+      let headerVerified = false;
 
       const localFile = await this.readFile(vaultId);
       if (localFile) {
@@ -1803,6 +1806,7 @@ export class TeamVaultService {
             throw new TeamVaultHeaderIntegrityError();
           }
           keyProvenStillValid = true;
+          headerVerified = true;
         } else if (state.unlockedVaultKey && file.accessHeader.length < localFile.accessHeader.length) {
           // A shrunk header claims a `removeMember` rotation happened — which is the ONLY
           // operation allowed to change the Vault Key, so `accessHeaderMac` (now keyed by a
@@ -1818,13 +1822,20 @@ export class TeamVaultService {
           if (!file.prevKeyProof || expectedProof !== file.prevKeyProof) {
             throw new TeamVaultRotationProofError();
           }
+          headerVerified = true;
           // keyProvenStillValid stays false: the proof shows this rotation is legitimate, not
           // that our now-superseded key still works — lock() below is still the right call.
         }
       }
 
       await this.writeFile(vaultId, file);
-      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath), file.revision, file.formatVersion);
+      await this.setLastKnownRemoteEntry(
+        vaultId,
+        state,
+        await this.statOrNull(provider, remotePath),
+        file.revision,
+        headerVerified ? file.formatVersion : undefined
+      );
       // Only lock when the held key ISN'T proven still valid — e.g. after a removeMember
       // elsewhere rotated it (accessHeader.length dropped, so the check above never ran). A
       // background auto-poll (IpcBridge.runTeamVaultAutoPoll) pulling in a plain profile edit

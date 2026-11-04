@@ -2525,6 +2525,32 @@ describe('TeamVaultService', () => {
         await expect(service.pullFromRemote(vaultId, provider)).resolves.toBeUndefined();
       });
 
+      // Security audit of M1: a first join has no key, so the pulled file's header is not authenticated yet.
+      it('does not let a file nobody has authenticated set the mark, but does once a verified pull has seen it', async () => {
+        const { service, crypto2, provider, vaultId } = await newVault();
+        await service.pushToRemote(vaultId, provider);
+        const marks: Array<number | undefined> = [];
+        const configStore = {
+          getConfig: async () => ({}),
+          setLastKnownRemoteEntry: async (_id: string, _entry: unknown, _rev?: number, fmt?: number) => {
+            marks.push(fmt);
+          },
+          clearSyncState: async () => {},
+        };
+        const otherDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-team-vault-test-join-'));
+        try {
+          const joiner = new TeamVaultService({ cryptoService: crypto2, baseDir: otherDir, configStore });
+          await joiner.pullFromRemote(vaultId, provider); // first join: locked, nothing to verify against
+          expect(marks).toEqual([undefined]);
+
+          await joiner.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt');
+          await joiner.pullFromRemote(vaultId, provider); // now the header is checked against the held key
+          expect(marks.at(-1)).toBe(2);
+        } finally {
+          await fs.rm(otherDir, { recursive: true, force: true }).catch(() => {});
+        }
+      });
+
       it('remembers the mark across a restart (persisted in the config store) and forgets it when the target changes', async () => {
         const persisted: Record<string, any> = {};
         const configStore = {
