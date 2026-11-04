@@ -14,14 +14,29 @@ export function wasTargetTouched(stream: unknown): boolean {
   return typeof flag === 'boolean' ? flag : true;
 }
 
+/** Longest a failed transfer waits for an open that is on the wire; a hung server must not keep a cancel from finishing. */
+export const TARGET_SETTLE_TIMEOUT_MS = 5000;
+
 /**
- * Waits for an open that is still in flight, if the stream has one (SFTP opens lazily on the first write). Without this a
- * transfer that fails while the open is on the wire would be judged "untouched" although the server is about to truncate it.
+ * Waits (bounded) for an open that is still in flight, if the stream has one (SFTP opens lazily on the first write).
+ * Without this a transfer that fails while the open is on the wire would be judged "untouched" although the server is
+ * about to truncate it. On timeout the flag simply keeps its current value (untouched unless the open already succeeded),
+ * so an unanswered open never causes a delete of a file we may not have touched.
  */
-export async function settleTargetTouched(stream: unknown): Promise<void> {
+export async function settleTargetTouched(stream: unknown, timeoutMs = TARGET_SETTLE_TIMEOUT_MS): Promise<void> {
   const settle = (stream as { targetSettled?: unknown } | null | undefined)?.targetSettled;
-  if (typeof settle === 'function') {
-    await (settle as () => Promise<void>).call(stream).catch(() => {});
+  if (typeof settle !== 'function') return;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      (settle as () => Promise<void>).call(stream).catch(() => {}),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

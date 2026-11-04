@@ -1,3 +1,4 @@
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import type { StorageType } from '../../shared/types/storage';
 
@@ -23,4 +24,20 @@ export function comparablePath(providerType: StorageType, p: string): string {
  */
 export function isSamePathOnProvider(providerType: StorageType, sourcePath: string, targetPath: string): boolean {
   return comparablePath(providerType, sourcePath) === comparablePath(providerType, targetPath);
+}
+
+/**
+ * Like `isSamePathOnProvider`, but for local files it also compares device and inode when the spelling differs. That
+ * catches a differently-cased name on a case-insensitive filesystem (default on macOS), a symlink and a hard link to
+ * the source, none of which a string comparison can see. A target that does not exist yet is never the same file.
+ */
+export async function isSameFileOnProvider(providerType: StorageType, sourcePath: string, targetPath: string): Promise<boolean> {
+  if (isSamePathOnProvider(providerType, sourcePath, targetPath)) return true;
+  if (providerType !== 'local') return false;
+  try {
+    const [a, b] = await Promise.all([fsp.stat(sourcePath, { bigint: true }), fsp.stat(targetPath, { bigint: true })]);
+    return a.ino !== 0n && a.ino === b.ino && a.dev === b.dev;
+  } catch {
+    return false;
+  }
 }

@@ -1,5 +1,5 @@
 import { getBaseName, isDirectoryPath, pathExists, resolveNonConflictingPath, joinPaths } from '../transfer/TransferPipeline';
-import { SAME_FILE_ERROR, isSamePathOnProvider } from '../transfer/transferPaths';
+import { SAME_FILE_ERROR, isSameFileOnProvider } from '../transfer/transferPaths';
 import { IPC_CHANNELS, type TransferConflictResolution } from '../../shared/types/ipc';
 import type { TransferProgress } from '../../shared/types/storage';
 import type { IpcBridge } from '../IpcBridge';
@@ -102,7 +102,7 @@ export function registerTransferHandlers(bridge: TransferHost): void {
       // produced a different path by now, so copying into the same folder still works as a duplicate).
       if (
         options.sourceProviderId === options.targetProviderId &&
-        isSamePathOnProvider(sourceProvider.type, options.sourcePath, resolvedTargetPath)
+        (await isSameFileOnProvider(sourceProvider.type, options.sourcePath, resolvedTargetPath))
       ) {
         throw new Error(SAME_FILE_ERROR);
       }
