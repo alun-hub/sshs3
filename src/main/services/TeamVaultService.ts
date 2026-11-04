@@ -1793,7 +1793,8 @@ export class TeamVaultService {
       }
       // The local copy's own format is a floor too: it can be ahead of the mark (upgraded here but not pushed yet, or the mark was
       // lost), and a replay of the pre-upgrade file carries the SAME revision. An older-format file is accepted only when its
-      // revision is strictly higher, which only someone holding the Vault Key can produce: an older client that wrote to a remote
+      // revision is strictly higher (the v1 MAC covers the revision, so the header is genuine, but it does NOT vouch for the payload: this is the
+      // known v1 weakness, open only while the remote has never been seen as v2, see team-vault-plan §0.8): an older client that wrote to a remote
       // that was never seen in the newer format (the mixed-team transition). Never at an equal or lower revision.
       const localForFloor = await this.readFile(vaultId);
       if (
