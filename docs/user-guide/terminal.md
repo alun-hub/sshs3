@@ -214,7 +214,7 @@ Pressing <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> offers to re-run the last
 | **Copy text automatically on selection** | `Off` | Copies highlighted text to the clipboard and records it in encrypted history. |
 | **Clipboard history scope** | `Global` | **Global (shared by all hosts and terminals)** or **Per host (follows the connection)**. |
 | **Empty clipboard history on exit** | `Off` | Wipes the encrypted clipboard history when sshs3 quits. |
-| **On Logout / Session End** | **Reconnect** | Action when the session ends: **Reconnect**, close the tab, or **Keep Open**. |
+| **On Logout / Session End** | **Reconnect** | Action when the session ends: **Reconnect**, close the tab, or **Keep Open**. **Reconnect** only runs after a lost connection (ssh exit code 255) or a killed process; a normal logout (`exit`) does not reconnect. |
 | **Local Terminal SSH Agent**| `Auto` | Selects agent injection for local workstation shell tabs: **Auto**, **System Only**, or **Disabled**. |
 | **Keep `~/.ssh/config` in sync with saved SSH profiles** | `On` | Maintains a marked block in `~/.ssh/config` so external terminals can connect to profiles. |
 

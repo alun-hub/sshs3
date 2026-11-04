@@ -120,7 +120,7 @@ A profile lives in one folder but can carry several tags, so the same server can
 | **Username** | *Required* | Remote user account (e.g. `ubuntu`, `root`, `deploy`). | POSIX username standards. |
 | **Initial SFTP Path** | *Empty* | Default folder opened in the file manager upon connecting. | Defaults to remote home directory. |
 | **Jump Host / ProxyJump**| *None* | Reach the server through another saved profile or manual bastion (`user@bastion:22`). | Target host must be accessible from jump host. |
-| **Outgoing Proxy** | *Off* | Route connection through an HTTP, SOCKS4, or SOCKS5 proxy. | Credentials encrypted in OS keyring. |
+| **Outgoing Proxy** | *Off* | Route connection through an HTTP, SOCKS4, or SOCKS5 proxy. | Credentials encrypted in OS keyring. A target host with spaces or control characters is refused, and so is a SOCKS5 host, user name or password longer than 255 bytes. |
 | **Dotfiles Pool & Sync** | *Not assigned* | Assign a dotfiles pool to this profile and select sync behavior. | See [Environment & Profile Sync](/docs/security/sync-environment/). |
 
 ### Technical Architecture: Storage & Secret Encryption
@@ -146,7 +146,7 @@ sshs3 supports five distinct authentication mechanisms:
 5. **Smartcard (PKCS#11)**: Smartcards (PIV, CAC, SITHS) via native PKCS#11 libraries (`p11-kit`, `opensc`, `libykcs11`).
 
 > [!NOTE]
-> **A saved password or passphrase is only used where it belongs.** It answers ssh's own prompt for it. If a server asks something else, such as a verification code, you are asked instead.
+> **A saved password or passphrase is only used where it belongs.** It answers ssh's own prompt for it. If a server asks something else, such as a verification code, you are asked instead. On a profile with a jump host, the saved password answers only a prompt addressed to that profile's own `user@host`; the jump host's password is not stored, so you are asked for it.
 
 ![FIDO2 Authentication](/img/docs/profile-auth-fido2.png)
 ![Smartcard Authentication](/img/docs/profile-auth-smartcard.png)

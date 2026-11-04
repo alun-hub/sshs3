@@ -114,7 +114,7 @@ Host prod-db
 
 - **Allowlist Filtering:** To prevent malicious configuration injection from shared profiles, only safe directives are written: `Host`, `HostName`, `Port`, `User`, `IdentityFile`, `PKCS11Provider`, `ProxyJump`, `ForwardAgent`, and safe network options (`ServerAliveInterval`, `Compression`, `Ciphers`). Executable options (`ProxyCommand`, `LocalCommand`, `Match`, `Include`) are strictly filtered out.
 - **Received blocks are filtered too:** a managed block arriving from another machine passes the same allowlist before it is written, and configuration outside the managed block is never touched.
-- **Free-form extra options:** a profile's extra SSH options follow the same allowlist, both in this block and on the `ssh` command line sshs3 starts; other options are ignored. Use the profile's own fields for identity files, jump hosts, agent forwarding and X11.
+- **Free-form extra options:** a profile's extra SSH options follow the same allowlist, both in this block and on the `ssh` command line sshs3 starts; other options are ignored (`SendEnv` is not accepted, so a synced or imported profile cannot send your environment variables to a server). Use the profile's own fields for identity files, jump hosts, agent forwarding and X11.
 - **Queue-Safe Writes:** `SshNativeFileMerger` serializes all file mutations through `queueMutation`, ensuring concurrent saves and background syncs never corrupt `~/.ssh/config`.
 
 ---

@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.3] - 2026-11-04
+
+Team Vault payloads are now protected against being swapped for an older copy, and a large set of fixes from a code review: transfers, file sync, jump hosts and smartcards.
+
+### Changed
+- **Update sshs3 on every member's machine.** A Team Vault now uses file format 2, in which the encrypted profiles are covered by the vault's integrity check, so anyone with write access to the S3 bucket can no longer put an older copy of the profiles under the current vault file. The first member to unlock an existing team with this version upgrades the file automatically; nobody has to click anything and it does not count as an unsynced change. **Older versions of sshs3 cannot read or sync an upgraded vault** and cannot join one; update everyone at about the same time.
+- Team Vault: a vault file in an older format than one already seen on the remote is refused instead of pulled. Profile types that a newer version adds to the vault are kept when you save, and not shown until you update.
+- SSH: `SendEnv` is no longer accepted in a profile's extra options or in a synced `~/.ssh/config` block, so a shared or imported profile cannot send your environment variables to a server. Profiles that had it stop sending them.
+- Directory sync leaves every symbolic link out, on both sides, instead of copying it as a file or writing through it. They are listed as *symbolic links not synced*.
+- SSH auto-reconnect now only runs after a lost connection (exit code 255) or a killed process. A normal `exit` no longer reconnects.
+
+### Fixed
+- Copying a file onto itself no longer destroys it ("Source and target are the same file"), including through a hard link or symbolic link on a local disk.
+- A failed or cancelled transfer no longer deletes an existing target it never replaced, and a cancelled transfer can no longer leave a truncated or empty file behind (local disk and SFTP).
+- A transfer cancelled while the copy is being verified now ends as cancelled instead of hanging. Named pipes, sockets and devices are skipped instead of blocking a transfer.
+- SFTP: an error the server reports when a written file is closed (disk full, quota) now fails the transfer.
+- Kubernetes: writing a file to a pod reports a failure when the write fails, and terminal output no longer breaks a multi-byte character split across two chunks. The file tail no longer reads one byte too many.
+- Directory sync: a file and a folder with the same name are shown as a conflict and skipped, instead of being treated as identical (and, in Mirror mode, deleting the folder's contents).
+- Changing the profile sync target now locks sync and drops the old key and settings, so the next automatic push cannot write to the new target with the old key. A cached connection to the old target is dropped as well.
+- A saved password is no longer sent to a jump host's password prompt, and key install no longer sends the passphrase or password to prompts that are not its own.
+- Profile sync: a profile you saved while a pull was merging is no longer lost, a host key that ssh added to `known_hosts` during a pull is kept, and a pull now reports an error if `known_hosts` keeps changing instead of skipping it silently. Settings and profile files are written atomically, and an unreadable one is kept as `.corrupt` instead of being replaced by defaults.
+- The external editor uploads one change at a time, keeps working when your editor saves by renaming a file, uploads a save made just before you close it, and only reloads the tab of its own server (it asks before discarding unsaved edits).
+- Smartcards: **Lock** now cancels card loads that are running or queued, so no PIN prompt appears after locking; the FIDO2 PIN is not replayed twice in a row, and a failed start no longer leaves its helper process or temporary folder behind.
+- The ssh connection-sharing socket is kept in a private folder instead of the shared temp folder.
+- Proxy: a target host with spaces or control characters, and SOCKS5 fields over 255 bytes, are refused instead of corrupting the handshake.
+- Several screens could finish an operation after you had cancelled, closed or restarted it (search, port detection, log views, the editor's tail view). The tail text is now capped.
+- Terminal zoom reacts to the typed character, so <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>-</kbd> reaches the shell. The Kubernetes sign-in dialog clears the token when it closes.
+- Unlocking profile sync no longer freezes the app for a few seconds.
+
 ## [0.97.2] - 2026-11-01
 
 The start screen's Quick Connect box uses the same fuzzy search as Ctrl+Shift+G, and profiles you edit are found there right away.

@@ -80,6 +80,10 @@ flowchart LR
 - **Zero-Disk Staging:** When copying from SFTP directly to an Amazon S3 bucket (or between two remote servers), bytes stream directly through workstation memory via Node.js stream pipes.
 - **Interactive Collision Handling:** When a destination file already exists, choose **Overwrite**, **Skip**, or **Rename** with an optional *Apply to all remaining conflicts* checkbox.
 - **Default Action:** Configure your preferred collision policy under *Settings → Files & Storage*.
+- **A Failed or Cancelled Transfer Keeps Your Original:** sshs3 only removes a partly written target when the transfer had already opened (and so replaced) it. A transfer that fails or is cancelled before that leaves an existing file untouched. A size or checksum mismatch after a complete write still removes the bad copy.
+- **Same File:** Copying a file onto itself is refused ("Source and target are the same file"), including through a hard link or symbolic link on a local disk. **Rename** still copies into the same folder as a duplicate.
+- **Special Files:** Named pipes (FIFOs), sockets and devices are skipped when copying folders, and a single one fails with "Not a regular file", instead of hanging the transfer.
+- **Write Errors on Close:** If the server reports a failed write only when the file is closed (disk full, quota), the transfer fails instead of looking successful.
 
 ### Good to Know & Limitations: In-Memory Stream Transfers
 - **Workstation Bandwidth:** When copying between two remote servers (or from SFTP directly to S3), data streams through your local workstation's network interface; transfer speed is bound by your local upload and download bandwidth.
