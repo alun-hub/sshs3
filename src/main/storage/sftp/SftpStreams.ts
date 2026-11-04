@@ -216,10 +216,16 @@ export class SftpWriteStream extends Writable {
       try {
         // A zero-byte stream never reaches _write, so the file would otherwise never be created.
         if (!this.handle && !this.isOpening) {
-          this.handle = await this.protocol.open(this.remotePath, this.openFlags, {
-            mode: this.options?.mode,
-          });
+          const opening = this.protocol.open(this.remotePath, this.openFlags, { mode: this.options?.mode });
+          this.openInFlight = opening;
+          const opened = await opening;
           this.opened = true;
+          if (this.isClosed) {
+            await this.protocol.close(opened).catch(() => {});
+            callback(new Error('Stream is closed'));
+            return;
+          }
+          this.handle = opened;
         }
         await this.closeHandle(true);
         callback();

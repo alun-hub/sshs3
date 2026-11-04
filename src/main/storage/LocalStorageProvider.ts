@@ -19,7 +19,7 @@ import type {
   WinAttributes,
   WriteStreamOptions,
 } from '../../shared/types/storage';
-import { defineTargetTouched } from './targetTouched';
+import { defineTargetSettled, defineTargetTouched } from './targetTouched';
 
 const execFileAsync = promisify(execFile);
 
@@ -284,19 +284,20 @@ export class LocalStorageProvider extends BaseStorageProvider {
     const parentDir = path.dirname(fullPath);
     await fsp.mkdir(parentDir, { recursive: true });
     const stream = fs.createWriteStream(fullPath);
-    // Wait for the open to settle before handing the stream out. The open (and the truncation) is already under way when
-    // createWriteStream returns, so a cancelled transfer could otherwise look "untouched" while the file was about to be
-    // truncated. A failed open leaves the target alone and is reported here, before anyone holds a stream.
+    // 'open' means the file was opened for writing (and truncated); a failed open leaves the target alone. The open is already
+    // under way when this returns, so `targetSettled` lets a failed transfer wait for it (bounded, see settleTargetTouched)
+    // before it decides whether the target was touched. Not awaited here: a FIFO or a stalled mount would block the cancel.
     // (`stream.pending` is not usable: it turns true again once the stream has closed.)
-    await new Promise<void>((resolve, reject) => {
-      const onError = (err: Error): void => reject(err);
-      stream.once('error', onError);
+    let opened = false;
+    const settled = new Promise<void>((resolve) => {
       stream.once('open', () => {
-        stream.off('error', onError);
+        opened = true;
         resolve();
       });
+      stream.once('error', () => resolve());
+      stream.once('close', () => resolve());
     });
-    return defineTargetTouched(stream, () => true);
+    return defineTargetSettled(defineTargetTouched(stream, () => opened), () => settled);
   }
 
   async writeFile(

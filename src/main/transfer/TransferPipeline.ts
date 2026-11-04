@@ -8,7 +8,7 @@ import type {
   StorageType,
   TransferProgress,
 } from '../../shared/types/storage';
-import { settleTargetTouched, wasTargetTouched } from '../storage/targetTouched';
+import { settleTargetTouched, wasTargetTouched, whenTargetSettledLater } from '../storage/targetTouched';
 
 /**
  * Controller to pause and resume streaming in TransferPipeline.
@@ -611,9 +611,14 @@ async function executeTransferFile(options: TransferOptions): Promise<void> {
     // or replaced the target. A cancelled S3 overwrite, a read-only file that
     // could not be opened or an SFTP open that never happened leave the
     // original in place, and deleting it would destroy the user's data.
-    if (writeStream) await settleTargetTouched(writeStream);
+    const settled = writeStream ? await settleTargetTouched(writeStream) : true;
     if (writeStream && wasTargetTouched(writeStream)) {
       await options.targetProvider.delete(resolvedTargetPath, false).catch(() => {});
+    } else if (writeStream && !settled) {
+      // The server has not answered the open yet and may still truncate the file: clean up if it did, without holding up the error.
+      whenTargetSettledLater(writeStream, async () => {
+        if (wasTargetTouched(writeStream)) await options.targetProvider.delete(resolvedTargetPath, false).catch(() => {});
+      });
     }
     throw err;
   }

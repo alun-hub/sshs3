@@ -62,6 +62,24 @@ describe('SftpWriteStream', () => {
     expect(protocol.close).toHaveBeenCalledWith(Buffer.from('late'));
   });
 
+  // Code review: the zero-byte path in _final had the same hole as _write.
+  it('closes a handle that arrives after an empty stream was destroyed, and settles first', async () => {
+    const protocol = makeProtocol();
+    let answer!: (h: Buffer) => void;
+    protocol.open.mockReturnValue(new Promise<Buffer>((resolve) => { answer = resolve; }));
+    const stream = new SftpWriteStream(protocol as any, '/remote/empty.txt');
+    stream.on('error', () => {});
+    stream.end();
+    await new Promise((r) => setImmediate(r));
+    stream.destroy(new Error('cancelled'));
+    const settled = stream.targetSettled();
+    answer(Buffer.from('late'));
+    await settled;
+    expect(stream.targetTouched).toBe(true);
+    await new Promise((r) => setImmediate(r));
+    expect(protocol.close).toHaveBeenCalledWith(Buffer.from('late'));
+  });
+
   it('stays untouched when the open fails (H2)', async () => {
     const protocol = makeProtocol();
     protocol.open.mockRejectedValue(new Error('permission denied'));

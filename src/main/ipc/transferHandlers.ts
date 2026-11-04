@@ -102,7 +102,7 @@ export function registerTransferHandlers(bridge: TransferHost): void {
       // produced a different path by now, so copying into the same folder still works as a duplicate).
       if (
         options.sourceProviderId === options.targetProviderId &&
-        (await isSameFileOnProvider(sourceProvider.type, options.sourcePath, resolvedTargetPath))
+        (await isSameFileOnProvider(sourceProvider.type, options.sourcePath, resolvedTargetPath, (p: string) => (sourceProvider as { resolvePath?: (x: string) => string }).resolvePath?.(p) ?? p))
       ) {
         throw new Error(SAME_FILE_ERROR);
       }

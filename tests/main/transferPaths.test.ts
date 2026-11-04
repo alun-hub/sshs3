@@ -61,6 +61,17 @@ describe('isSameFileOnProvider', () => {
     });
   });
 
+  // Code review: a provider with a base path resolves relative paths against it, not against the process's cwd.
+  it('uses the resolver to find the real files', async () => {
+    await withTemp(async (dir) => {
+      await fsp.writeFile(path.join(dir, 'a.txt'), 'x');
+      await fsp.link(path.join(dir, 'a.txt'), path.join(dir, 'b.txt'));
+      const resolve = (p: string): string => path.join(dir, p);
+      expect(await isSameFileOnProvider('local', 'a.txt', 'b.txt')).toBe(false); // relative to cwd: nothing there
+      expect(await isSameFileOnProvider('local', 'a.txt', 'b.txt', resolve)).toBe(true);
+    });
+  });
+
   it('keeps the string rules for remote providers', async () => {
     expect(await isSameFileOnProvider('sftp', '/data/a.txt', '/data//a.txt')).toBe(true);
     expect(await isSameFileOnProvider('s3', 'bucket/Key.txt', 'bucket/key.txt')).toBe(false);

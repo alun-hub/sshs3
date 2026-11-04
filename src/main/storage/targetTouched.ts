@@ -23,21 +23,38 @@ export const TARGET_SETTLE_TIMEOUT_MS = 5000;
  * about to truncate it. On timeout the flag simply keeps its current value (untouched unless the open already succeeded),
  * so an unanswered open never causes a delete of a file we may not have touched.
  */
-export async function settleTargetTouched(stream: unknown, timeoutMs = TARGET_SETTLE_TIMEOUT_MS): Promise<void> {
+export async function settleTargetTouched(stream: unknown, timeoutMs = TARGET_SETTLE_TIMEOUT_MS): Promise<boolean> {
   const settle = (stream as { targetSettled?: unknown } | null | undefined)?.targetSettled;
-  if (typeof settle !== 'function') return;
+  if (typeof settle !== 'function') return true;
   let timer: NodeJS.Timeout | undefined;
   try {
-    await Promise.race([
-      (settle as () => Promise<void>).call(stream).catch(() => {}),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, timeoutMs);
+    return await Promise.race([
+      (settle as () => Promise<void>).call(stream).then(() => true, () => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
         timer.unref?.();
       }),
     ]);
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Runs `then` once an open that did not settle in time finally has, so a late truncation can still be cleaned up. */
+export function whenTargetSettledLater(stream: unknown, then: () => Promise<void> | void): void {
+  const settle = (stream as { targetSettled?: unknown } | null | undefined)?.targetSettled;
+  if (typeof settle !== 'function') return;
+  void (settle as () => Promise<void>)
+    .call(stream)
+    .catch(() => {})
+    .then(then)
+    .catch(() => {});
+}
+
+/** Adds the `targetSettled` hook (resolves once the open has succeeded or failed) to a stream object that is not one of our own classes. */
+export function defineTargetSettled<T extends object>(stream: T, settled: () => Promise<void>): T {
+  Object.defineProperty(stream, 'targetSettled', { value: settled, configurable: true });
+  return stream;
 }
 
 /** Adds the `targetTouched` getter to a stream object that is not one of our own classes. */
