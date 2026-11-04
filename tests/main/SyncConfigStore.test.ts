@@ -129,7 +129,7 @@ describe('SyncConfigStore', () => {
   it('replaceTarget() swaps the location and drops the salts, last sync and auto-sync, but keeps the smartcard link', async () => {
     const store = new SyncConfigStore(storePath);
     const target = (host: string): StorageConnectConfig => ({
-      id: 'sync', name: 'Sync', type: 'sftp', sftpConfig: { host, port: 22, username: 'u', authType: 'password', password: 'pw' } as any,
+      id: 'sync', name: 'Sync', type: 'sftp', sftpConfig: { host, port: 22, username: 'u', authType: 'password', password: 'pw' } as any, // pragma: allowlist secret
     });
     await store.setTarget(target('old.example.com'), '/old');
     await store.setSalts({ topologySalt: Buffer.from('a'), credentialsSalt: Buffer.from('b') });

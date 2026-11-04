@@ -909,7 +909,7 @@ describe('format v2: computeFileMac / computeFileRotationProof', () => {
   });
 
   it('payloadDigest is SHA-256 of the ciphertext string, base64', () => {
-    expect(payloadDigest('abc')).toBe('ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=');
+    expect(payloadDigest('abc')).toBe('ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0='); // pragma: allowlist secret
   });
 });
 
