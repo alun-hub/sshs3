@@ -209,7 +209,7 @@ function foreignVaultFileJson(
   accessHeader: unknown[] = []
 ): string {
   return JSON.stringify({
-    formatVersion: 1,
+    formatVersion: 2,
     vaultId,
     revision,
     updatedAt: '2026-01-01T00:00:00Z',
@@ -2490,6 +2490,79 @@ describe('TeamVaultService', () => {
       await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify({ ...v2, accessHeaderMac: v1Mac }));
       service.lock(vaultId);
       await expect(service.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(/integrity check/);
+    });
+
+    // Without a revision bump on upgrade, a replayed pre-upgrade v1 file can carry the SAME revision as the v2 file. Its v1 MAC
+    // does not cover the payload, so it must be refused once the remote has been seen in v2 (and would otherwise be re-signed as
+    // a valid v2 by the next automatic upgrade).
+    describe('downgrade barrier (highest remote format seen)', () => {
+      async function v1Variant(crypto2: TeamVaultCryptoService, vaultId: string) {
+        const v2 = await readLocal(vaultId);
+        const unsigned = { ...v2, formatVersion: 1, encryptedPayload: crypto2.encryptPayload(fixedKey, vaultId, 1, '{}') };
+        return { ...unsigned, accessHeaderMac: crypto2.computeFileMac(fixedKey, unsigned as never) };
+      }
+
+      it('refuses a v1 file once the remote has been seen as v2, even with the same revision and even with force', async () => {
+        const { service, crypto2, provider, vaultId } = await newVault();
+        await service.pushToRemote(vaultId, provider); // the remote is now v2
+        await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(await v1Variant(crypto2, vaultId))));
+
+        await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(/older format/);
+        await expect(service.pullFromRemote(vaultId, provider, '', { force: true })).rejects.toThrow(/older format/);
+      });
+
+      it('accepts a v1 file while the remote has never been seen as v2 (a mixed team that has not upgraded yet)', async () => {
+        const { service, crypto2, provider, vaultId } = await newVault();
+        const v1 = await v1Variant(crypto2, vaultId);
+        await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify(v1)); // local v1 too
+        await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(v1)));
+
+        await expect(service.pullFromRemote(vaultId, provider)).resolves.toBeUndefined();
+      });
+
+      it('remembers the mark across a restart (persisted in the config store) and forgets it when the target changes', async () => {
+        const persisted: Record<string, any> = {};
+        const configStore = {
+          getConfig: async (id: string) => ({ ...(persisted[id] ?? {}) }),
+          setLastKnownRemoteEntry: async (id: string, entry: unknown, rev?: number, fmt?: number) => {
+            persisted[id] = {
+              ...(persisted[id] ?? {}),
+              lastKnownRemoteEntry: entry,
+              ...(rev !== undefined ? { lastSyncedRevision: rev } : {}),
+              ...(fmt !== undefined ? { remoteFormatVersion: Math.max(fmt, persisted[id]?.remoteFormatVersion ?? 0) } : {}),
+            };
+          },
+          clearSyncState: async (id: string) => {
+            const { remoteFormatVersion: _f, lastSyncedRevision: _r, lastKnownRemoteEntry: _e, ...rest } = persisted[id] ?? {};
+            persisted[id] = rest;
+          },
+        };
+        const crypto2 = fakeCrypto();
+        crypto2.generateVaultKey = () => fixedKey;
+        const first = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir, configStore });
+        const provider = fakeProvider();
+        const vaultId = (await first.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+        await first.pushToRemote(vaultId, provider);
+        expect(persisted[vaultId].remoteFormatVersion).toBe(2);
+        await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(await v1Variant(crypto2, vaultId))));
+
+        const restarted = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir, configStore });
+        await restarted.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt');
+        await expect(restarted.pullFromRemote(vaultId, provider)).rejects.toThrow(/older format/);
+
+        await restarted.resetRemoteState(vaultId); // a new target is a new trust boundary
+        expect(persisted[vaultId].remoteFormatVersion).toBeUndefined();
+        await expect(restarted.pullFromRemote(vaultId, provider, '', { force: true })).resolves.toBeUndefined();
+      });
+
+      it('refuses to push a local v1 file over a remote that is already v2', async () => {
+        const { service, crypto2, provider, vaultId } = await newVault();
+        await service.pushToRemote(vaultId, provider);
+        const v1 = await v1Variant(crypto2, vaultId);
+        await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify(v1));
+
+        await expect(service.pushToRemote(vaultId, provider)).rejects.toThrow(/newer format.*pull first/i);
+      });
     });
 
     it('removeMember on a v2 vault leaves a file the remaining member can verify and unlock', async () => {

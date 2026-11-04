@@ -116,6 +116,22 @@ describe('TeamVaultConfigStore', () => {
     expect(config.target?.s3Config?.secretAccessKey).toBe('top-secret');
   });
 
+  // M1: the highest format the remote file has had, so that a lower one (a replayed pre-upgrade file) is refused later.
+  it('remembers the highest remote format seen, never lowers it, and forgets it with the rest of the sync state', async () => {
+    const store = new TeamVaultConfigStore(storePath);
+    await store.setLastKnownRemoteEntry('vlt_a', { name: 'vault.json', path: 'p', size: 1, isDirectory: false } as any, 3, 2);
+    expect((await store.getConfig('vlt_a')).remoteFormatVersion).toBe(2);
+
+    await store.setLastKnownRemoteEntry('vlt_a', null, 4, 1); // a lower format never lowers the mark
+    expect((await store.getConfig('vlt_a')).remoteFormatVersion).toBe(2);
+
+    await store.setLastKnownRemoteEntry('vlt_a', null, 5); // omitting it leaves the mark alone
+    expect((await store.getConfig('vlt_a')).remoteFormatVersion).toBe(2);
+
+    await store.clearSyncState('vlt_a');
+    expect((await store.getConfig('vlt_a')).remoteFormatVersion).toBeUndefined();
+  });
+
   it('records the last successful sync timestamp', async () => {
     const store = new TeamVaultConfigStore(storePath);
     await store.setLastSyncAt(VAULT_ID, '2026-01-01T00:00:00.000Z');

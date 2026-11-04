@@ -41,6 +41,11 @@ export interface TeamVaultConfigEntry {
    * edits made before a restart are still recognised as unpushed afterwards (otherwise the first
    * pull after a restart would silently overwrite them). Absent == never synced from this device. */
   lastSyncedRevision?: number;
+  /** The highest `formatVersion` the remote vault file has had when this device last pushed or pulled it. Once the remote
+   * has been seen in format N, a pulled file in a lower format is refused (`TeamVaultFormatDowngradeError`): a legitimate
+   * older-format file can no longer appear after that, so one that does is a replay. Never lowered; cleared with the rest of
+   * the sync state when the target changes. Absent == never seen. */
+  remoteFormatVersion?: number;
 }
 
 /** On-disk shape, keyed by `vaultId` — one entry per team this device knows about (multi-team
@@ -188,7 +193,8 @@ export class TeamVaultConfigStore {
   public async setLastKnownRemoteEntry(
     vaultId: string,
     entry: FileEntry | null,
-    lastSyncedRevision?: number
+    lastSyncedRevision?: number,
+    remoteFormatVersion?: number
   ): Promise<void> {
     return this.queueMutation(async () => {
       const current = await this.getConfig(vaultId);
@@ -196,6 +202,9 @@ export class TeamVaultConfigStore {
         ...current,
         lastKnownRemoteEntry: entry,
         ...(lastSyncedRevision !== undefined ? { lastSyncedRevision } : {}),
+        ...(remoteFormatVersion !== undefined
+          ? { remoteFormatVersion: Math.max(remoteFormatVersion, current.remoteFormatVersion ?? 0) }
+          : {}),
       });
     });
   }
@@ -203,7 +212,12 @@ export class TeamVaultConfigStore {
   /** Forgets the remembered remote state and synced revision, e.g. when the sync target changes. */
   public async clearSyncState(vaultId: string): Promise<void> {
     return this.queueMutation(async () => {
-      const { lastKnownRemoteEntry: _entry, lastSyncedRevision: _revision, ...rest } = await this.getConfig(vaultId);
+      const {
+        lastKnownRemoteEntry: _entry,
+        lastSyncedRevision: _revision,
+        remoteFormatVersion: _format,
+        ...rest
+      } = await this.getConfig(vaultId);
       await this.persistEntry(vaultId, rest);
     });
   }

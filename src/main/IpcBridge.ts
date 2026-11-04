@@ -1191,6 +1191,11 @@ export class IpcBridge {
       }
     } catch (err) {
       autosyncLog.warn(`Team Vault background poll failed (vaultId=${vaultId}):`, err);
+      // A remote file in an older format than the one already seen on it is refused (see TeamVaultFormatDowngradeError), and the
+      // user should know the remote changed, not only find a line in the log.
+      if ((err as { name?: string } | null)?.name === 'TeamVaultFormatDowngradeError') {
+        this.broadcast(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED, { vaultId });
+      }
     }
   }
 

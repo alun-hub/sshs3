@@ -67,6 +67,20 @@ export class TeamVaultUnsupportedFormatError extends Error {
   }
 }
 
+/** A vault file is in an OLDER format than the remote has already been seen in (or than the remote now is, on push). A legitimate
+ * older-format file cannot appear after that (older versions cannot write over a newer vault), so on pull this is a replay of a
+ * pre-upgrade file, whose MAC does not cover the payload; on push it would overwrite a newer-format vault with an older one. */
+export class TeamVaultFormatDowngradeError extends Error {
+  constructor(direction: 'pull' | 'push') {
+    super(
+      direction === 'pull'
+        ? 'The remote Team Vault is in an older format than the one already seen on it — refusing to accept it (possible replay of an old file by whoever has S3 write access).'
+        : 'The remote Team Vault is in a newer format than this machine\'s copy — pull first, then push again.'
+    );
+    this.name = 'TeamVaultFormatDowngradeError';
+  }
+}
+
 export class TeamVaultRollbackError extends Error {
   constructor() {
     super(
@@ -500,8 +514,14 @@ export interface TeamVaultConfigReader {
     remoteBasePath?: string;
     lastKnownRemoteEntry?: FileEntry | null;
     lastSyncedRevision?: number;
+    remoteFormatVersion?: number;
   }>;
-  setLastKnownRemoteEntry(vaultId: string, entry: FileEntry | null, lastSyncedRevision?: number): Promise<void>;
+  setLastKnownRemoteEntry(
+    vaultId: string,
+    entry: FileEntry | null,
+    lastSyncedRevision?: number,
+    remoteFormatVersion?: number
+  ): Promise<void>;
   clearSyncState?(vaultId: string): Promise<void>;
 }
 
@@ -547,6 +567,9 @@ interface VaultRuntimeState {
    * (see `TeamVaultUnpushedChangesError`). Distinct from `lastKnownRemoteEntry`, which tracks the
    * *remote* side for push's conflict check. */
   lastSyncedRevision: number | undefined;
+  /** The highest `formatVersion` the remote vault file has had when this instance last pushed or pulled it (never lowered).
+   * `pullFromRemote` refuses a lower-format file once this is set — see `TeamVaultFormatDowngradeError`. */
+  remoteFormatVersion: number | undefined;
 }
 
 function freshRuntimeState(): VaultRuntimeState {
@@ -555,6 +578,7 @@ function freshRuntimeState(): VaultRuntimeState {
     unlockedAsRecipientId: null,
     lastKnownRemoteEntry: undefined,
     lastSyncedRevision: undefined,
+    remoteFormatVersion: undefined,
   };
 }
 
@@ -650,7 +674,10 @@ export class TeamVaultService {
    * `configStore` (most tests) or a read failure just leaves the state as `stateFor` would. */
   private async hydratedState(vaultId: string): Promise<VaultRuntimeState> {
     const state = this.stateFor(vaultId);
-    if ((state.lastKnownRemoteEntry === undefined || state.lastSyncedRevision === undefined) && this.configStore) {
+    if (
+      (state.lastKnownRemoteEntry === undefined || state.lastSyncedRevision === undefined || state.remoteFormatVersion === undefined) &&
+      this.configStore
+    ) {
       try {
         const config = await this.configStore.getConfig(vaultId);
         if (state.lastKnownRemoteEntry === undefined && config.lastKnownRemoteEntry !== undefined) {
@@ -659,6 +686,9 @@ export class TeamVaultService {
         // Without this, unpushed local edits made before a restart look "in sync" and the next pull overwrites them.
         if (state.lastSyncedRevision === undefined && config.lastSyncedRevision !== undefined) {
           state.lastSyncedRevision = config.lastSyncedRevision;
+        }
+        if (state.remoteFormatVersion === undefined && config.remoteFormatVersion !== undefined) {
+          state.remoteFormatVersion = config.remoteFormatVersion;
         }
       } catch (err) {
         teamVaultLog.warn(`Failed to restore the last known remote state for vaultId=${vaultId} (non-fatal):`, err);
@@ -675,13 +705,17 @@ export class TeamVaultService {
     vaultId: string,
     state: VaultRuntimeState,
     entry: FileEntry | null,
-    syncedRevision?: number
+    syncedRevision?: number,
+    remoteFormatVersion?: number
   ): Promise<void> {
     state.lastKnownRemoteEntry = entry;
     if (syncedRevision !== undefined) state.lastSyncedRevision = syncedRevision;
+    if (remoteFormatVersion !== undefined) {
+      state.remoteFormatVersion = Math.max(remoteFormatVersion, state.remoteFormatVersion ?? 0);
+    }
     if (this.configStore) {
       try {
-        await this.configStore.setLastKnownRemoteEntry(vaultId, entry, syncedRevision);
+        await this.configStore.setLastKnownRemoteEntry(vaultId, entry, syncedRevision, remoteFormatVersion);
       } catch (err) {
         teamVaultLog.warn(`Failed to persist the last known remote state for vaultId=${vaultId} (non-fatal):`, err);
       }
@@ -1508,6 +1542,7 @@ export class TeamVaultService {
     if (state) {
       state.lastKnownRemoteEntry = undefined;
       state.lastSyncedRevision = undefined;
+      state.remoteFormatVersion = undefined;
     }
     // Also forget the persisted copy, or hydratedState would restore the old target's values. Awaited, so
     // that a status refresh straight after cannot read the file before the clear has been written.
@@ -1563,6 +1598,11 @@ export class TeamVaultService {
         if (remoteFile.vaultId !== file.vaultId) {
           throw new TeamVaultForeignVaultError();
         }
+        // This machine's copy is older than the remote (it has not been upgraded or pulled yet): pushing it would replace a
+        // newer-format vault with an older one.
+        if (remoteFile.formatVersion > file.formatVersion) {
+          throw new TeamVaultFormatDowngradeError('push');
+        }
       }
 
       if (state.lastKnownRemoteEntry !== undefined) {
@@ -1576,7 +1616,7 @@ export class TeamVaultService {
       }
 
       await this.writeProviderFile(provider, remotePath, Buffer.from(JSON.stringify(file), 'utf-8'));
-      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath), file.revision);
+      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath), file.revision, file.formatVersion);
     });
   }
 
@@ -1628,6 +1668,11 @@ export class TeamVaultService {
       // as for every later pull.
       if (file.vaultId !== vaultId) {
         throw new TeamVaultForeignVaultError();
+      }
+      // Once the remote has been seen in a newer format, an older-format file is a replay (its MAC does not cover the
+      // payload). No `force` exemption: unlike unpushed local changes, this is not something the user can decide.
+      if (state.remoteFormatVersion !== undefined && file.formatVersion < state.remoteFormatVersion) {
+        throw new TeamVaultFormatDowngradeError('pull');
       }
 
       // Whether the currently-held Vault Key is proven to still decrypt the pulled file —
@@ -1717,7 +1762,7 @@ export class TeamVaultService {
       }
 
       await this.writeFile(vaultId, file);
-      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath), file.revision);
+      await this.setLastKnownRemoteEntry(vaultId, state, await this.statOrNull(provider, remotePath), file.revision, file.formatVersion);
       // Only lock when the held key ISN'T proven still valid — e.g. after a removeMember
       // elsewhere rotated it (accessHeader.length dropped, so the check above never ran). A
       // background auto-poll (IpcBridge.runTeamVaultAutoPoll) pulling in a plain profile edit

@@ -118,4 +118,18 @@ describe('IpcBridge — Team Vault sync status (TEAM_VAULT_SYNC_STATUS reference
       ])
     );
   });
+
+  // M1: a refused downgrade must be visible to the user, not just a log line in a background poll.
+  it('tells the renderer when the poll finds a remote file in an older format than the one already seen', async () => {
+    const { bridge, teamVaultService } = makeBridge();
+    teamVaultService.pullFromRemote.mockImplementation(() =>
+      Promise.reject(Object.assign(new Error('older format'), { name: 'TeamVaultFormatDowngradeError' }))
+    );
+    const channels: string[] = [];
+    bridge.getWebContents = (() => ({ isDestroyed: () => false, send: (channel: string) => channels.push(channel) })) as any;
+
+    await (bridge as any).runTeamVaultAutoPoll(VAULT_ID);
+
+    expect(channels).toContain(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED);
+  });
 });
