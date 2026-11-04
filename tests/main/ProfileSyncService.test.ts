@@ -807,6 +807,32 @@ describe('ProfileSyncService', () => {
     expect(merged).toContain('just-connected.example.com');
   });
 
+  // Code review of the unpushed commits: after five "file moved" rounds the merge used to give up without a word.
+  it('fails the pull, instead of reporting success, when known_hosts keeps changing under the merge', async () => {
+    const machineA = await harness();
+    await fs.writeFile(machineA.knownHostsPath, 'from-remote.example.com ssh-ed25519 AAAAremote\n', 'utf-8');
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await fs.writeFile(machineB.knownHostsPath, 'already-here.example.com ssh-ed25519 AAAAlocal\n', 'utf-8');
+    const service = machineB.sync as any;
+    const realRead = service.readLocalFile.bind(service);
+    let n = 0;
+    vi.spyOn(service, 'readLocalFile').mockImplementation(async (...args: unknown[]) => {
+      const filePath = args[0] as string;
+      const content = await realRead(filePath);
+      if (filePath === machineB.knownHostsPath && n % 2 === 0) {
+        // ssh keeps appending between our read and the re-read
+        await fs.appendFile(machineB.knownHostsPath, `host${n}.example.com ssh-ed25519 AAAA${n}\n`, 'utf-8');
+      }
+      if (filePath === machineB.knownHostsPath) n++;
+      return content;
+    });
+
+    await expect(machineB.sync.pullFromRemote(provider)).rejects.toThrow(/known_hosts kept changing/);
+    expect(await fs.readFile(machineB.knownHostsPath, 'utf-8')).not.toContain('from-remote.example.com'); // nothing half-applied
+  });
+
   it('generates a managed ~/.ssh/config block from SSH profiles on push, so native ssh sees the same host', async () => {
     const machineA = await harness();
     await machineA.profileStore.saveSSH({
