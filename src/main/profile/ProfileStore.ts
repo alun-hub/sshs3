@@ -7,7 +7,7 @@ import type { S3Config } from '../../shared/types/storage';
 import { withNormalizedTags } from '../../shared/tags';
 import { withNormalizedSystem } from '../../shared/system';
 import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
-import { writeFileAtomic } from '../storage/atomicFile';
+import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
 
 /** Fills in `name` for tunnels saved before it existed, so old profiles.json files still load. */
 function defaultTunnelName(tunnel: SSHTunnelConfig): string {
@@ -307,11 +307,7 @@ export class ProfileStore {
         }
       }
     } catch {
-      try {
-        await fs.writeFile(`${this.filePath}.corrupt`, raw, { encoding: 'utf-8', mode: 0o600 });
-      } catch {
-        // Best effort only.
-      }
+      await backupCorruptFile(this.filePath, raw);
     }
     return byId;
   }

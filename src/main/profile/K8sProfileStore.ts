@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
 import path from 'node:path';
 import os from 'node:os';
 import { app } from 'electron';
@@ -54,11 +55,7 @@ export class K8sProfileStore {
       }
       return profiles;
     } catch {
-      try {
-        await fs.writeFile(`${this.filePath}.corrupt`, raw, { encoding: 'utf-8', mode: 0o600 });
-      } catch {
-        // Best effort only.
-      }
+      await backupCorruptFile(this.filePath, raw);
       return [];
     }
   }
@@ -114,9 +111,6 @@ export class K8sProfileStore {
   }
 
   private async persist(profiles: K8sProfile[]): Promise<void> {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
-    const tempFile = `${this.filePath}.tmp-${process.pid}`;
-    await fs.writeFile(tempFile, JSON.stringify({ profiles }, null, 2), { encoding: 'utf-8', mode: 0o600 });
-    await fs.rename(tempFile, this.filePath);
+    await writeFileAtomic(this.filePath, JSON.stringify({ profiles }, null, 2), { mode: 0o600 });
   }
 }

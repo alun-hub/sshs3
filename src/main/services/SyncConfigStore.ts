@@ -5,7 +5,7 @@ import { app } from 'electron';
 import type { StorageConnectConfig } from '../../shared/types/ipc';
 import type { SFTPConfig, S3Config } from '../../shared/types/storage';
 import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
-import { writeFileAtomic } from '../storage/atomicFile';
+import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
 
 const SFTP_SECRET_FIELDS: Array<keyof SFTPConfig> = ['password', 'passphrase'];
 const S3_SECRET_FIELDS: Array<keyof S3Config> = ['secretAccessKey', 'sessionToken'];
@@ -251,11 +251,7 @@ export class SyncConfigStore {
     try {
       return JSON.parse(raw) as SyncConfigData;
     } catch {
-      try {
-        await fs.writeFile(`${this.filePath}.corrupt`, raw, { encoding: 'utf-8', mode: 0o600 });
-      } catch {
-        // Best effort only.
-      }
+      await backupCorruptFile(this.filePath, raw);
       return undefined;
     }
   }
