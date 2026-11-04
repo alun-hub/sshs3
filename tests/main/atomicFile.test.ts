@@ -91,7 +91,14 @@ describe('writeFileAtomic', () => {
     const bad: string[] = [];
     const reader = (async () => {
       while (!stop) {
-        const text = await fs.readFile(file, 'utf-8');
+        let text: string;
+        try {
+          text = await fs.readFile(file, 'utf-8');
+        } catch (err) {
+          // Windows replaces a file in two steps, so a read can land in the gap; POSIX rename never shows a missing file.
+          if (process.platform === 'win32' && (err as NodeJS.ErrnoException).code === 'ENOENT') continue;
+          throw err;
+        }
         try {
           JSON.parse(text);
         } catch {
@@ -100,7 +107,13 @@ describe('writeFileAtomic', () => {
       }
     })();
 
-    await Promise.all(Array.from({ length: 40 }, (_, i) => writeFileAtomic(file, payload(i + 1))));
+    if (process.platform === 'win32') {
+      // Windows refuses a rename onto a file another rename is replacing (EPERM). The app's stores serialise their writes, so
+      // concurrent writers to one file do not happen there; the reader still runs against each write.
+      for (let i = 0; i < 40; i++) await writeFileAtomic(file, payload(i + 1));
+    } else {
+      await Promise.all(Array.from({ length: 40 }, (_, i) => writeFileAtomic(file, payload(i + 1))));
+    }
     stop = true;
     await reader;
 

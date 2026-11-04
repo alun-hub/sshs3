@@ -149,6 +149,8 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
   const storageRegistry = {
     getOrCreate: vi.fn().mockResolvedValue(sharedProvider),
     disconnect: vi.fn().mockResolvedValue(undefined),
+    // IpcBridge.getSyncProvider asks this on Windows before creating an SFTP provider.
+    has: vi.fn().mockReturnValue(true),
   };
 
   const ipc = new MockIpcMain();

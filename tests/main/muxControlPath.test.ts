@@ -6,7 +6,7 @@ import { buildMuxControlPath, createMuxControlPath } from '../../src/main/ssh/mu
 
 describe('buildMuxControlPath', () => {
   it('names the socket after the id inside the given folder', () => {
-    expect(buildMuxControlPath('/run/user/1000/sshs3', 'abcd1234')).toBe('/run/user/1000/sshs3/s3m-abcd1234.sock');
+    expect(buildMuxControlPath('/run/user/1000/sshs3', 'abcd1234')).toBe(path.join('/run/user/1000/sshs3', 's3m-abcd1234.sock'));
   });
 
   it('shortens the name when the path plus the temp suffix ssh adds while binding would not fit', () => {
