@@ -2707,6 +2707,21 @@ describe('TeamVaultService', () => {
         expect([after.formatVersion, after.revision]).toEqual([2, v1.revision + 1]); // pulled, then upgraded again
       });
 
+      // Code review of M1: a remote that was only ever seen as v1 sets the mark (1), which must not make a newer v1 revision unpullable.
+      it('still accepts a strictly newer v1 revision from an older client when the mark only says "seen as v1"', async () => {
+        const { service, crypto2, provider, vaultId } = await newVault();
+        const v1 = await downgradeToV1(service, crypto2, vaultId);
+        await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(v1)));
+        await service.pushToRemote(vaultId, provider); // mark = 1
+        await service.unlock(vaultId, 'alice@piv:abc', identity); // local is v2 at the same revision
+        const unsigned = { ...v1, revision: v1.revision + 1, encryptedPayload: crypto2.encryptPayload(fixedKey, vaultId, 1, '{}') };
+        const newer = { ...unsigned, accessHeaderMac: crypto2.computeFileMac(fixedKey, unsigned as never) };
+        await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(newer)));
+
+        await expect(service.pullFromRemote(vaultId, provider, '')).resolves.toBeUndefined();
+        expect((await readLocal(vaultId)).revision).toBe(v1.revision + 1);
+      });
+
       // Security review of M1: the mark can be unset (never pushed since the upgrade, or lost) while the local copy is already v2.
       it('treats the local copy\'s own format as a floor, so a replayed pre-upgrade file at the same revision is refused even with no mark', async () => {
         const { service, crypto2, provider, vaultId } = await newVault();

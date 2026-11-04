@@ -463,6 +463,8 @@ function assertValidVaultFile(file: any): asserts file is TeamVaultFile {
     !AGE_RECIPIENT_SHAPE.test(file.recovery.ageRecipient) ||
     typeof file.recovery.wrappedVaultKey !== 'string' ||
     typeof file.encryptedPayload !== 'string' ||
+    typeof file.updatedAt !== 'string' ||
+    typeof file.updatedBy !== 'string' ||
     typeof file.accessHeaderMac !== 'string' ||
     !file.accessHeaderMac
   ) {
@@ -1797,7 +1799,7 @@ export class TeamVaultService {
       if (
         localForFloor &&
         file.formatVersion < localForFloor.formatVersion &&
-        (state.remoteFormatVersion !== undefined || file.revision <= localForFloor.revision)
+        file.revision <= localForFloor.revision
       ) {
         throw new TeamVaultFormatDowngradeError('pull');
       }
