@@ -72,7 +72,10 @@ describe('SftpWriteStream', () => {
     stream.end();
     await new Promise((r) => setImmediate(r));
     stream.destroy(new Error('cancelled'));
-    const settled = stream.targetSettled();
+    let resolved = false;
+    const settled = stream.targetSettled().then(() => { resolved = true; });
+    await new Promise((r) => setImmediate(r));
+    expect(resolved).toBe(false); // the open is on the wire: not settled yet
     answer(Buffer.from('late'));
     await settled;
     expect(stream.targetTouched).toBe(true);
