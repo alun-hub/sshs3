@@ -138,6 +138,49 @@ function fakeCrypto(): TeamVaultCryptoService {
         .createHmac('sha256', vaultKey)
         .update(JSON.stringify({ vaultId, revision, vaultName, accessHeader, recovery }))
         .digest('base64'),
+    // Format-aware stand-ins used by TeamVaultService itself. v1 reproduces the header-only coverage above; v2 also
+    // covers the payload ciphertext, updatedAt/updatedBy and the description, like the real implementation, and a
+    // different label per version so a v1 tag never equals a v2 tag.
+    computeFileMac: (vaultKey: Buffer, file: any) =>
+      crypto
+        .createHmac('sha256', vaultKey)
+        .update(
+          JSON.stringify(
+            file.formatVersion === 1
+              ? { vaultId: file.vaultId, revision: file.revision, vaultName: file.vaultName ?? '', accessHeader: file.accessHeader, recovery: file.recovery }
+              : {
+                  label: 'file-mac-v2',
+                  formatVersion: file.formatVersion,
+                  vaultId: file.vaultId,
+                  revision: file.revision,
+                  updatedAt: file.updatedAt,
+                  updatedBy: file.updatedBy,
+                  vaultName: file.vaultName ?? '',
+                  vaultDescription: file.vaultDescription ?? '',
+                  accessHeader: file.accessHeader,
+                  recovery: file.recovery,
+                  encryptedPayload: file.encryptedPayload,
+                }
+          )
+        )
+        .digest('base64'),
+    computeFileRotationProof: (oldVaultKey: Buffer, file: any) =>
+      crypto
+        .createHmac('sha256', oldVaultKey)
+        .update(
+          JSON.stringify({
+            label: file.formatVersion === 1 ? 'rotation-proof' : 'rotation-proof-v2',
+            vaultId: file.vaultId,
+            revision: file.revision,
+            updatedAt: file.formatVersion === 1 ? undefined : file.updatedAt,
+            updatedBy: file.formatVersion === 1 ? undefined : file.updatedBy,
+            vaultName: file.vaultName ?? '',
+            accessHeader: file.accessHeader,
+            recovery: file.recovery,
+            encryptedPayload: file.formatVersion === 1 ? undefined : file.encryptedPayload,
+          })
+        )
+        .digest('base64'),
     // Same shape as computeAccessHeaderMac above, but under a distinct fixed label so a rotation
     // proof (keyed by the OLD Vault Key) can never collide with a header MAC (keyed by the NEW
     // one) even when both happen to cover the exact same fields — mirrors the real
@@ -712,17 +755,13 @@ describe('TeamVaultService', () => {
       // still-valid Vault Key, rather than relying on a placeholder that only slipped past
       // verification before this test's own fix (see TeamVaultRotationProofError's doc comment).
       const newRevision = localRaw.revision + 1;
-      const remoteFile = {
+      const unsigned1 = {
         ...localRaw,
         revision: newRevision,
-        accessHeaderMac: await crypto2.computeAccessHeaderMac(
-          fixedKey,
-          vaultId,
-          newRevision,
-          localRaw.vaultName ?? '',
-          localRaw.accessHeader,
-          localRaw.recovery
-        ),
+      };
+      const remoteFile = {
+        ...unsigned1,
+        accessHeaderMac: await crypto2.computeFileMac(fixedKey, unsigned1 as never),
       };
       await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
@@ -841,18 +880,14 @@ describe('TeamVaultService', () => {
           addedBy: 'alice@piv:abc',
         },
       ];
-      const remoteFile = {
+      const unsigned2 = {
         ...localRaw,
         revision: newRevision,
         accessHeader: newAccessHeader,
-        accessHeaderMac: await crypto2.computeAccessHeaderMac(
-          fixedKey,
-          localRaw.vaultId,
-          newRevision,
-          localRaw.vaultName ?? '',
-          newAccessHeader,
-          localRaw.recovery
-        ),
+      };
+      const remoteFile = {
+        ...unsigned2,
+        accessHeaderMac: await crypto2.computeFileMac(fixedKey, unsigned2 as never),
       };
       await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
@@ -1174,18 +1209,14 @@ describe('TeamVaultService', () => {
 
       const provider = fakeProvider();
       const newRevision = localRaw.revision + 1;
-      const remoteFile = {
+      const unsigned3 = {
         ...localRaw,
         revision: newRevision,
         encryptedPayload: 'new-payload-content',
-        accessHeaderMac: await crypto2.computeAccessHeaderMac(
-          fixedKey,
-          localRaw.vaultId,
-          newRevision,
-          localRaw.vaultName ?? '',
-          localRaw.accessHeader,
-          localRaw.recovery
-        ),
+      };
+      const remoteFile = {
+        ...unsigned3,
+        accessHeaderMac: await crypto2.computeFileMac(fixedKey, unsigned3 as never),
       };
       await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
@@ -1217,27 +1248,16 @@ describe('TeamVaultService', () => {
       const newAccessHeader = [{ ...aliceEntry, wrappedVaultKey: `wrapped:age1yubikey1alice:${newKey.toString('hex')}` }];
       const newRecovery = { ...localRaw.recovery, wrappedVaultKey: `wrapped:${localRaw.recovery.ageRecipient}:${newKey.toString('hex')}` };
       const newRevision = localRaw.revision + 1;
-      const remoteFile = {
+      const unsigned4 = {
         ...localRaw,
         revision: newRevision,
         accessHeader: newAccessHeader,
         recovery: newRecovery,
-        accessHeaderMac: await crypto2.computeAccessHeaderMac(
-          newKey,
-          vaultId,
-          newRevision,
-          localRaw.vaultName ?? '',
-          newAccessHeader,
-          newRecovery
-        ),
-        prevKeyProof: await crypto2.computeRotationProof(
-          oldKey,
-          vaultId,
-          newRevision,
-          localRaw.vaultName ?? '',
-          newAccessHeader,
-          newRecovery
-        ),
+      };
+      const remoteFile = {
+        ...unsigned4,
+        accessHeaderMac: await crypto2.computeFileMac(newKey, unsigned4 as never),
+        prevKeyProof: await crypto2.computeFileRotationProof(oldKey, unsigned4 as never),
       };
       await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
@@ -1300,17 +1320,13 @@ describe('TeamVaultService', () => {
       await service.pushToRemote(vaultId, provider);
       await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
       const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
-      const remoteFile = {
+      const unsigned5 = {
         ...localRaw,
         revision: 3,
-        accessHeaderMac: await crypto2.computeAccessHeaderMac(
-          fixedKey,
-          vaultId,
-          3,
-          localRaw.vaultName ?? '',
-          localRaw.accessHeader,
-          localRaw.recovery
-        ),
+      };
+      const remoteFile = {
+        ...unsigned5,
+        accessHeaderMac: await crypto2.computeFileMac(fixedKey, unsigned5 as never),
       };
       await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
@@ -1326,17 +1342,13 @@ describe('TeamVaultService', () => {
       const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
       await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
       const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
-      const remoteFile = {
+      const unsigned6 = {
         ...localRaw,
         revision: 3,
-        accessHeaderMac: await crypto2.computeAccessHeaderMac(
-          fixedKey,
-          vaultId,
-          3,
-          localRaw.vaultName ?? '',
-          localRaw.accessHeader,
-          localRaw.recovery
-        ),
+      };
+      const remoteFile = {
+        ...unsigned6,
+        accessHeaderMac: await crypto2.computeFileMac(fixedKey, unsigned6 as never),
       };
       await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
@@ -1352,17 +1364,13 @@ describe('TeamVaultService', () => {
       const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
       await service.pushToRemote(vaultId, provider);
       const localRaw = JSON.parse(await fs.readFile(path.join(tempDir, "team-vaults", `${vaultId}.json`), 'utf-8'));
-      const remoteFile = {
+      const unsigned7 = {
         ...localRaw,
         revision: 2,
-        accessHeaderMac: await crypto2.computeAccessHeaderMac(
-          fixedKey,
-          vaultId,
-          2,
-          localRaw.vaultName ?? '',
-          localRaw.accessHeader,
-          localRaw.recovery
-        ),
+      };
+      const remoteFile = {
+        ...unsigned7,
+        accessHeaderMac: await crypto2.computeFileMac(fixedKey, unsigned7 as never),
       };
       await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(remoteFile)));
 
@@ -2371,6 +2379,126 @@ describe('TeamVaultService', () => {
       const { vaultId } = await service.createVault('alice@piv:abc', 'age1yubikey1alice');
       await service.setDescription(vaultId, 'Acme Infra team');
 
+      service.lock(vaultId);
+      await expect(service.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).resolves.toBeUndefined();
+    });
+  });
+
+  // M1 (code review 2026-11-03): the header MAC did not cover the payload, so an older payload (same Vault Key) could be
+  // put under a current header with a valid MAC and revision. Format v2 covers the payload ciphertext.
+  describe('format v2: the payload is bound to the header (M1)', () => {
+    const fixedKey = Buffer.alloc(32, 7);
+    const profile = (id: string) =>
+      ({ id, name: id, host: `${id}.example.com`, port: 22, username: 'u', authType: 'agent' }) as unknown as SSHConnectionConfig;
+    const readLocal = async (vaultId: string) =>
+      JSON.parse(await fs.readFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), 'utf-8'));
+
+    async function newVault() {
+      const crypto2 = fakeCrypto();
+      crypto2.generateVaultKey = () => fixedKey;
+      const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
+      const provider = fakeProvider();
+      const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+      return { service, crypto2, provider, vaultId };
+    }
+
+    it('writes new vaults in format 2', async () => {
+      const { vaultId } = await newVault();
+      expect((await readLocal(vaultId)).formatVersion).toBe(2);
+    });
+
+    it('refuses a pull whose payload was taken from an older revision, and writes nothing locally', async () => {
+      const { service, provider, vaultId } = await newVault();
+      await service.saveSSHProfile(vaultId, profile('p1'));
+      const olderPayload = (await readLocal(vaultId)).encryptedPayload;
+      await service.saveSSHProfile(vaultId, profile('p2'));
+      const current = await readLocal(vaultId);
+      await service.pushToRemote(vaultId, provider);
+
+      // The attacker keeps the current header (valid MAC, current revision) and swaps in the older payload.
+      const spliced = { ...current, encryptedPayload: olderPayload };
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(spliced)));
+
+      await expect(service.pullFromRemote(vaultId, provider, '', { force: true })).rejects.toThrow(/integrity check/);
+      expect((await readLocal(vaultId)).encryptedPayload).toBe(current.encryptedPayload);
+    });
+
+    it('refuses to unlock a local file whose payload was swapped', async () => {
+      const { service, vaultId } = await newVault();
+      await service.saveSSHProfile(vaultId, profile('p1'));
+      const olderPayload = (await readLocal(vaultId)).encryptedPayload;
+      await service.saveSSHProfile(vaultId, profile('p2'));
+      const current = await readLocal(vaultId);
+      await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify({ ...current, encryptedPayload: olderPayload }));
+      service.lock(vaultId);
+
+      await expect(service.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(/integrity check/);
+    });
+
+    it('refuses a pull with a forged "last written by" (updatedBy is authenticated in v2)', async () => {
+      const { service, provider, vaultId } = await newVault();
+      await service.saveSSHProfile(vaultId, profile('p1'));
+      await service.pushToRemote(vaultId, provider);
+      const current = await readLocal(vaultId);
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify({ ...current, updatedBy: 'mallory' })));
+
+      await expect(service.pullFromRemote(vaultId, provider, '', { force: true })).rejects.toThrow(/integrity check/);
+    });
+
+    it('still accepts an honest pull of a newer revision', async () => {
+      const { service, provider, vaultId } = await newVault();
+      await service.pushToRemote(vaultId, provider);
+      await service.saveSSHProfile(vaultId, profile('p1'));
+      await service.pushToRemote(vaultId, provider);
+      await expect(service.pullFromRemote(vaultId, provider)).resolves.toBeUndefined();
+    });
+
+    it('rejects a file in a format newer than this version understands, with a message that says to update', async () => {
+      const { service, provider, vaultId } = await newVault();
+      await service.pushToRemote(vaultId, provider);
+      const current = await readLocal(vaultId);
+      await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify({ ...current, formatVersion: 3 })));
+
+      await expect(service.pullFromRemote(vaultId, provider)).rejects.toThrow(/Update sshs3 to open it/);
+      await expect(service.pushToRemote(vaultId, provider)).rejects.toThrow(/Update sshs3 to open it/);
+    });
+
+    it('refuses to unlock a local file in an unknown newer format', async () => {
+      const { service, vaultId } = await newVault();
+      const current = await readLocal(vaultId);
+      await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify({ ...current, formatVersion: 3 }));
+      service.lock(vaultId);
+      await expect(service.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(/Update sshs3 to open it/);
+    });
+
+    it('keeps reading a v1 vault: unlock verifies it with the v1 MAC', async () => {
+      const { service, crypto2, vaultId } = await newVault();
+      const v2 = await readLocal(vaultId);
+      const v1Unsigned = { ...v2, formatVersion: 1, encryptedPayload: crypto2.encryptPayload(fixedKey, vaultId, 1, '{}') };
+      const v1 = { ...v1Unsigned, accessHeaderMac: crypto2.computeFileMac(fixedKey, v1Unsigned as never) };
+      await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify(v1));
+      service.lock(vaultId);
+
+      await expect(service.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).resolves.toBeUndefined();
+      expect(await service.getPayload(vaultId)).toMatchObject({ ssh: [], s3: [] });
+    });
+
+    it('a v1 header MAC does not verify on a file that claims to be v2', async () => {
+      const { service, crypto2, vaultId } = await newVault();
+      const v2 = await readLocal(vaultId);
+      const v1Mac = crypto2.computeFileMac(fixedKey, { ...v2, formatVersion: 1 } as never);
+      await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify({ ...v2, accessHeaderMac: v1Mac }));
+      service.lock(vaultId);
+      await expect(service.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).rejects.toThrow(/integrity check/);
+    });
+
+    it('removeMember on a v2 vault leaves a file the remaining member can verify and unlock', async () => {
+      const { service, vaultId } = await newVault();
+      await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+      await service.removeMember(vaultId, 'bob@piv:def');
+      const after = await readLocal(vaultId);
+      expect(after.formatVersion).toBe(2);
+      expect(after.prevKeyProof).toBeTruthy();
       service.lock(vaultId);
       await expect(service.unlock(vaultId, 'alice@piv:abc', '/tmp/fake-admin-identity.txt')).resolves.toBeUndefined();
     });

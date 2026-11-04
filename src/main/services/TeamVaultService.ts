@@ -25,7 +25,10 @@ import { writeFileAtomic } from '../storage/atomicFile';
 
 const teamVaultLog = createLogger('team-vault');
 
-const FORMAT_VERSION = 1 as const;
+/** The format new vaults are written in, and the one `upgradeFormatIfNeeded` brings older vaults to. */
+const CURRENT_FORMAT_VERSION = 2 as const;
+/** Oldest format this app still reads. v1 files carry a header-only MAC (no payload coverage), see `computeFileMac`. */
+const SUPPORTED_FORMAT_VERSIONS: readonly number[] = [1, 2];
 /** A real vault file (JSON, base64-wrapped keys, every shared SSH/S3 profile) stays well under
  * this even for a large team — see `readRemoteVaultFile`'s doc comment for why it exists. */
 const MAX_REMOTE_VAULT_FILE_SIZE = 50 * 1024 * 1024;
@@ -50,6 +53,17 @@ export class TeamVaultForeignVaultError extends Error {
         'at a different bucket/prefix.'
     );
     this.name = 'TeamVaultForeignVaultError';
+  }
+}
+
+/** A vault file written by a NEWER version of sshs3 than this one understands. Distinct from a malformed file so that
+ * the user is told to update the app rather than that the vault is broken. */
+export class TeamVaultUnsupportedFormatError extends Error {
+  constructor(formatVersion: unknown) {
+    super(
+      `This Team Vault uses format version ${String(formatVersion)}, which is newer than this version of sshs3 understands. Update sshs3 to open it.`
+    );
+    this.name = 'TeamVaultUnsupportedFormatError';
   }
 }
 
@@ -414,9 +428,12 @@ function isValidAccessEntry(e: any): e is TeamVaultAccessEntry {
  * missing `ageRecipient`) would otherwise only fail later, deep inside `removeMember`'s re-wrap
  * loop, with a confusing error. */
 function assertValidVaultFile(file: any): asserts file is TeamVaultFile {
+  if (file && Number.isInteger(file.formatVersion) && file.formatVersion > CURRENT_FORMAT_VERSION) {
+    throw new TeamVaultUnsupportedFormatError(file.formatVersion);
+  }
   if (
     !file ||
-    file.formatVersion !== FORMAT_VERSION ||
+    !SUPPORTED_FORMAT_VERSIONS.includes(file.formatVersion) ||
     typeof file.vaultId !== 'string' ||
     !file.vaultId ||
     (file.vaultName !== undefined && typeof file.vaultName !== 'string') ||
@@ -798,8 +815,8 @@ export class TeamVaultService {
         wrappedVaultKey: await this.cryptoService.wrapVaultKeyForRecipient(vaultKey, recoveryRecipient),
       };
       const accessHeader = [selfEntry];
-      const file: TeamVaultFile = {
-        formatVersion: FORMAT_VERSION,
+      const unsigned = {
+        formatVersion: CURRENT_FORMAT_VERSION,
         vaultId,
         vaultName: trimmedName || undefined,
         revision: 1,
@@ -807,16 +824,9 @@ export class TeamVaultService {
         updatedBy: selfRecipientId,
         accessHeader,
         recovery,
-        encryptedPayload: this.cryptoService.encryptPayload(vaultKey, vaultId, FORMAT_VERSION, '{}'),
-        accessHeaderMac: this.cryptoService.computeAccessHeaderMac(
-          vaultKey,
-          vaultId,
-          1,
-          trimmedName,
-          accessHeader,
-          recovery
-        ),
+        encryptedPayload: this.cryptoService.encryptPayload(vaultKey, vaultId, CURRENT_FORMAT_VERSION, '{}'),
       };
+      const file: TeamVaultFile = { ...unsigned, accessHeaderMac: this.cryptoService.computeFileMac(vaultKey, unsigned) };
 
       await this.writeFile(vaultId, file);
       const state = this.stateFor(vaultId);
@@ -854,15 +864,6 @@ export class TeamVaultService {
     });
   }
 
-  /** The `vaultDescription` argument every `computeAccessHeaderMac`/`computeRotationProof` call
-   * site needs — centralized so the `?? ''` default/normalization (an absent description must
-   * MAC the same as an explicitly empty one, since `TeamVaultFile.vaultDescription` was added
-   * after `vaultName`) can't be missed at one of the 7 call sites and silently produce a MAC
-   * mismatch for another member reading the same file. */
-  private descriptionForMac(file: TeamVaultFile): string {
-    return file.vaultDescription ?? '';
-  }
-
   /** Shared tail of every admin mutation that only touches the plaintext header (`addMember`,
    * `setRole`, `renameVault` — NOT `removeMember`, which also re-keys and re-encrypts the
    * payload, a materially different operation): bump `revision`, stamp `updatedAt`/`updatedBy`,
@@ -880,15 +881,7 @@ export class TeamVaultService {
     file.revision += 1;
     file.updatedAt = new Date().toISOString();
     file.updatedBy = updatedBy;
-    file.accessHeaderMac = this.cryptoService.computeAccessHeaderMac(
-      vaultKey,
-      file.vaultId,
-      file.revision,
-      file.vaultName ?? '',
-      file.accessHeader,
-      file.recovery,
-      this.descriptionForMac(file)
-    );
+    file.accessHeaderMac = this.cryptoService.computeFileMac(vaultKey, file);
     await this.writeFile(vaultId, file);
   }
 
@@ -934,7 +927,7 @@ export class TeamVaultService {
         wrappedVaultKey: await this.cryptoService.wrapVaultKeyForRecipient(newVaultKey, file.recovery.ageRecipient),
       };
 
-      const updated: TeamVaultFile = {
+      const rotated: TeamVaultFile = {
         ...file,
         revision: newRevision,
         updatedAt: now,
@@ -942,27 +935,14 @@ export class TeamVaultService {
         accessHeader: rewrapped,
         recovery: newRecovery,
         encryptedPayload: this.cryptoService.encryptPayload(newVaultKey, file.vaultId, file.formatVersion, plaintext),
-        accessHeaderMac: this.cryptoService.computeAccessHeaderMac(
-          newVaultKey,
-          file.vaultId,
-          newRevision,
-          file.vaultName ?? '',
-          rewrapped,
-          newRecovery,
-          this.descriptionForMac(file)
-        ),
+      };
+      const updated: TeamVaultFile = {
+        ...rotated,
+        accessHeaderMac: this.cryptoService.computeFileMac(newVaultKey, rotated),
         // Proves to anyone still holding the OLD key (`vaultKey`, about to be replaced below)
         // that THIS specific rotation is the real one — see `TeamVaultRotationProofError`'s doc
-        // comment and `computeRotationProof`'s.
-        prevKeyProof: this.cryptoService.computeRotationProof(
-          vaultKey,
-          file.vaultId,
-          newRevision,
-          file.vaultName ?? '',
-          rewrapped,
-          newRecovery,
-          this.descriptionForMac(file)
-        ),
+        // comment and `computeFileRotationProof`'s.
+        prevKeyProof: this.cryptoService.computeFileRotationProof(vaultKey, rotated),
       };
 
       await this.writeFile(vaultId, updated);
@@ -1326,23 +1306,15 @@ export class TeamVaultService {
   ): Promise<void> {
     const updatedBy = this.requireUnlockedRecipientId(vaultId);
     const newRevision = file.revision + 1;
-    const updated: TeamVaultFile = {
+    const changed: TeamVaultFile = {
       ...file,
       revision: newRevision,
       updatedAt: new Date().toISOString(),
       updatedBy,
       encryptedPayload: this.cryptoService.encryptPayload(vaultKey, file.vaultId, file.formatVersion, JSON.stringify(payload)),
-      accessHeaderMac: this.cryptoService.computeAccessHeaderMac(
-        vaultKey,
-        file.vaultId,
-        newRevision,
-        file.vaultName ?? '',
-        file.accessHeader,
-        file.recovery,
-        this.descriptionForMac(file)
-      ),
     };
-    await this.writeFile(vaultId, updated);
+    // The MAC is computed over the finished file, so in format v2 it covers the new ciphertext too.
+    await this.writeFile(vaultId, { ...changed, accessHeaderMac: this.cryptoService.computeFileMac(vaultKey, changed) });
   }
 
   /** Removes the Team Vault from THIS machine only — the local file and the in-memory unlocked
@@ -1412,15 +1384,10 @@ export class TeamVaultService {
     // disk, or some future bug writing one without recomputing the MAC — since
     // `computeAccessHeaderMac` with the just-unwrapped key must reproduce exactly what's already
     // stored in `accessHeaderMac` for any header this service itself ever wrote.
-    const expectedMac = this.cryptoService.computeAccessHeaderMac(
-      vaultKey,
-      file.vaultId,
-      file.revision,
-      file.vaultName ?? '',
-      file.accessHeader,
-      file.recovery,
-      this.descriptionForMac(file)
-    );
+    if (!SUPPORTED_FORMAT_VERSIONS.includes(file.formatVersion)) {
+      throw new TeamVaultUnsupportedFormatError(file.formatVersion);
+    }
+    const expectedMac = this.cryptoService.computeFileMac(vaultKey, file);
     if (expectedMac !== file.accessHeaderMac) {
       throw new TeamVaultHeaderIntegrityError();
     }
@@ -1724,15 +1691,7 @@ export class TeamVaultService {
         // Key, for the exact `vaultId`/`revision`/`accessHeader`/`recovery` being pulled — there
         // is no revision value an attacker can choose their way around.
         if (state.unlockedVaultKey && file.accessHeader.length >= localFile.accessHeader.length) {
-          const expectedMac = this.cryptoService.computeAccessHeaderMac(
-            state.unlockedVaultKey,
-            file.vaultId,
-            file.revision,
-            file.vaultName ?? '',
-            file.accessHeader,
-            file.recovery,
-            this.descriptionForMac(file)
-          );
+          const expectedMac = this.cryptoService.computeFileMac(state.unlockedVaultKey, file);
           if (expectedMac !== file.accessHeaderMac) {
             throw new TeamVaultHeaderIntegrityError();
           }
@@ -1748,15 +1707,7 @@ export class TeamVaultService {
           // Vault Key we're still holding (the real previous one) — only whoever actually
           // rotated away from that key could have produced it. See
           // `TeamVaultRotationProofError`'s doc comment for the multi-step-offline caveat.
-          const expectedProof = this.cryptoService.computeRotationProof(
-            state.unlockedVaultKey,
-            file.vaultId,
-            file.revision,
-            file.vaultName ?? '',
-            file.accessHeader,
-            file.recovery,
-            this.descriptionForMac(file)
-          );
+          const expectedProof = this.cryptoService.computeFileRotationProof(state.unlockedVaultKey, file);
           if (!file.prevKeyProof || expectedProof !== file.prevKeyProof) {
             throw new TeamVaultRotationProofError();
           }
