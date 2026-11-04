@@ -1434,12 +1434,20 @@ export class ProfileSyncService {
       if (wrote) changed = true;
     }
 
-    const localKnownHosts = (await this.readLocalFile(this.knownHostsPath)) ?? '';
-    const knownHostsResult = mergeKnownHosts(localKnownHosts, remotePayload.knownHostsContent);
-    conflicts.push(...knownHostsResult.conflicts);
-    if (knownHostsResult.changed) {
+    // ssh appends to known_hosts whenever it meets a new host, outside our control. Re-read right before writing and
+    // merge again if the file moved, so a key added during the merge is not replaced by the older merged text.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const localKnownHosts = (await this.readLocalFile(this.knownHostsPath)) ?? '';
+      const knownHostsResult = mergeKnownHosts(localKnownHosts, remotePayload.knownHostsContent);
+      if (!knownHostsResult.changed) {
+        conflicts.push(...knownHostsResult.conflicts);
+        break;
+      }
+      if (((await this.readLocalFile(this.knownHostsPath)) ?? '') !== localKnownHosts) continue; // moved: merge again
       await this.writeLocalFile(this.knownHostsPath, knownHostsResult.mergedContent);
+      conflicts.push(...knownHostsResult.conflicts);
       changed = true;
+      break;
     }
 
     return { changed, conflicts };

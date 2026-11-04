@@ -776,6 +776,37 @@ describe('ProfileSyncService', () => {
     expect(merged).toContain('other-host.example.com');
   });
 
+  // Low finding (code review 2026-11-03): known_hosts was read, merged and written without checking that ssh had not
+  // appended a host key in between; that key was lost when the merged text replaced the file.
+  it('keeps a host key that ssh appended to known_hosts while the pull was merging', async () => {
+    const machineA = await harness();
+    await fs.writeFile(machineA.knownHostsPath, 'from-remote.example.com ssh-ed25519 AAAAremote\n', 'utf-8');
+    await machineA.sync.pushToRemote(provider);
+
+    const machineB = await harness();
+    await fs.writeFile(machineB.knownHostsPath, 'already-here.example.com ssh-ed25519 AAAAlocal\n', 'utf-8');
+    const service = machineB.sync as any;
+    const realRead = service.readLocalFile.bind(service);
+    let appended = false;
+    vi.spyOn(service, 'readLocalFile').mockImplementation(async (...args: unknown[]) => {
+      const filePath = args[0] as string;
+      const content = await realRead(filePath);
+      if (filePath === machineB.knownHostsPath && !appended) {
+        appended = true;
+        // ssh connects to a new host right now and appends its key.
+        await fs.appendFile(machineB.knownHostsPath, 'just-connected.example.com ssh-ed25519 AAAAappended\n', 'utf-8');
+      }
+      return content;
+    });
+
+    await machineB.sync.pullFromRemote(provider);
+
+    const merged = await fs.readFile(machineB.knownHostsPath, 'utf-8');
+    expect(merged).toContain('from-remote.example.com');
+    expect(merged).toContain('already-here.example.com');
+    expect(merged).toContain('just-connected.example.com');
+  });
+
   it('generates a managed ~/.ssh/config block from SSH profiles on push, so native ssh sees the same host', async () => {
     const machineA = await harness();
     await machineA.profileStore.saveSSH({
