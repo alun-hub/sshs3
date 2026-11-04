@@ -16,6 +16,7 @@ import { toTeamK8sProfile } from '../services/teamVaultK8s';
 import { withNormalizedTags } from '../../shared/tags';
 import { withNormalizedSystem } from '../../shared/system';
 import { createLogger } from '../log';
+import { isSyncTargetChanged } from '../services/syncTargetIdentity';
 
 const teamVaultLog = createLogger('team-vault');
 
@@ -374,7 +375,8 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
       // the saved secret back the way the admin UI does) — never the admin-permission check
       // guardS3SecretWrite does for shared member profiles, since this channel is already
       // admin-only at the UI layer; purely "don't let blank silently beat real".
-      const existingTarget = (await bridge.teamVaultConfigStore.getConfig(vid)).target;
+      const existingConfig = await bridge.teamVaultConfigStore.getConfig(vid);
+      const existingTarget = existingConfig.target;
       if (
         target.s3Config &&
         !target.s3Config.secretAccessKey &&
@@ -386,10 +388,20 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
       }
       await bridge.teamVaultConfigStore.setTarget(vid, target, remoteBasePath);
       await bridge.storageRegistry.disconnect?.(target.id);
+      // Re-saving the same location (e.g. rotated credentials) keeps the remembered remote state: it holds the
+      // unpushed-changes guard and the highest remote format seen (the downgrade barrier).
+      const sameLocation =
+        existingTarget !== undefined &&
+        !isSyncTargetChanged(
+          { target: existingTarget, remoteBasePath: existingConfig.remoteBasePath },
+          { target, remoteBasePath }
+        );
       // The (app-lifetime) TeamVaultService instance otherwise keeps comparing against whatever
       // remote state it last observed on the *previous* target — same reasoning as
       // ProfileSyncService.resetRemoteState() in syncHandlers.ts.
-      await bridge.teamVaultService.resetRemoteState(vid);
+      if (!sameLocation) {
+        await bridge.teamVaultService.resetRemoteState(vid);
+      }
       // Restart rather than merely leave running: a stale timer would otherwise keep polling
       // against whatever target it captured when first started, not this new one.
       if (bridge.teamVaultService.isUnlocked(vid)) {

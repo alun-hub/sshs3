@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 vi.mock('electron', () => {
   const mockObj = {
@@ -16,6 +19,7 @@ vi.mock('electron', () => {
 
 import { IpcBridge } from '../../src/main/IpcBridge';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';
+import { TeamVaultConfigStore } from '../../src/main/services/TeamVaultConfigStore';
 
 /** Resolves only when `.resolve()` is called — lets a test hold a push/pull "in flight" for as
  * long as it needs, to deliberately create the overlap `beginTeamVaultSync`/`endTeamVaultSync`
@@ -131,5 +135,27 @@ describe('IpcBridge — Team Vault sync status (TEAM_VAULT_SYNC_STATUS reference
     await (bridge as any).runTeamVaultAutoPoll(VAULT_ID);
 
     expect(channels).toContain(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED);
+  });
+
+  // Security review of M1: the adapter that hands the config store to TeamVaultService forwarded only (vaultId, entry), so
+  // lastSyncedRevision and the highest-format mark were never persisted and clearSyncState was never wired. Goes through
+  // the REAL adapter and the REAL store, not a fake one.
+  it('persists the synced revision and the highest remote format through the real config-store adapter, and clears them', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-tv-adapter-'));
+    try {
+      const store = new TeamVaultConfigStore(path.join(dir, 'team-vault-sync-config.json'));
+      const bridge = new IpcBridge({ teamVaultConfigStore: store } as any);
+      const adapter = (bridge.teamVaultService as any).configStore;
+
+      await adapter.setLastKnownRemoteEntry('vlt_x', null, 7, 2);
+      expect(await store.getConfig('vlt_x')).toMatchObject({ lastSyncedRevision: 7, remoteFormatVersion: 2 });
+
+      await adapter.clearSyncState('vlt_x');
+      const cleared = await store.getConfig('vlt_x');
+      expect(cleared.lastSyncedRevision).toBeUndefined();
+      expect(cleared.remoteFormatVersion).toBeUndefined();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
   });
 });

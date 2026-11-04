@@ -349,8 +349,14 @@ export class IpcBridge {
         // time `buildInvite()` actually calls it, not at this object literal's own construction.
         configStore: {
           getConfig: (vaultId) => this.teamVaultConfigStore.getConfig(vaultId),
-          setLastKnownRemoteEntry: (vaultId, entry) => this.teamVaultConfigStore.setLastKnownRemoteEntry(vaultId, entry),
+          // Every argument is forwarded: the synced revision (unpushed-changes guard) and the highest remote format (downgrade
+          // barrier) are only worth anything if they survive a restart. clearSyncState is what resetRemoteState relies on.
+          setLastKnownRemoteEntry: (vaultId, entry, lastSyncedRevision, remoteFormatVersion) =>
+            this.teamVaultConfigStore.setLastKnownRemoteEntry(vaultId, entry, lastSyncedRevision, remoteFormatVersion),
+          clearSyncState: (vaultId) => this.teamVaultConfigStore.clearSyncState(vaultId),
         },
+        // After a vault was upgraded to the current format on this machine, push it (auto-push does nothing without a target).
+        onFormatUpgraded: (vaultId) => this.scheduleTeamVaultAutoPush(vaultId),
       });
     this.teamVaultConfigStore = options.teamVaultConfigStore ?? new TeamVaultConfigStore();
     if (migratedVaultId) {

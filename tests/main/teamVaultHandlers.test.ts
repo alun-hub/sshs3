@@ -513,6 +513,20 @@ describe('Team Vault IPC handlers', () => {
       expect(teamVaultService.resetRemoteState).toHaveBeenCalledWith(VAULT_ID);
     });
 
+    it('keeps the remembered remote state when the same location is saved again with other credentials, and drops it when the location changes', async () => {
+      const saved = { id: 't1', name: 'Team bucket', type: 's3' as const, s3Config: { id: 't1', name: 'n', region: 'eu-north-1', accessKeyId: 'old', secretAccessKey: 'old' } }; // pragma: allowlist secret
+      teamVaultConfigStore.getConfig.mockResolvedValue({ target: saved, remoteBasePath: 'team-bucket' });
+      const rotated = { ...saved, s3Config: { ...saved.s3Config, accessKeyId: 'new', secretAccessKey: 'new' } }; // pragma: allowlist secret
+      teamVaultService.resetRemoteState.mockClear();
+
+      await call(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, VAULT_ID, rotated, 'team-bucket/');
+      expect(teamVaultService.resetRemoteState).not.toHaveBeenCalled();
+
+      await call(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, VAULT_ID, rotated, 'another-bucket');
+      expect(teamVaultService.resetRemoteState).toHaveBeenCalledWith(VAULT_ID);
+      teamVaultConfigStore.getConfig.mockResolvedValue({});
+    });
+
     it('restarts the auto-poll for that vaultId when the vault is already unlocked', async () => {
       teamVaultService.isUnlocked.mockReturnValue(true);
       await call(IPC_CHANNELS.TEAM_VAULT_SET_TARGET, VAULT_ID, s3Target, 'team-bucket');

@@ -2496,9 +2496,14 @@ describe('TeamVaultService', () => {
     // does not cover the payload, so it must be refused once the remote has been seen in v2 (and would otherwise be re-signed as
     // a valid v2 by the next automatic upgrade).
     describe('downgrade barrier (highest remote format seen)', () => {
-      async function v1Variant(crypto2: TeamVaultCryptoService, vaultId: string) {
+      async function v1Variant(crypto2: TeamVaultCryptoService, vaultId: string, revision?: number) {
         const v2 = await readLocal(vaultId);
-        const unsigned = { ...v2, formatVersion: 1, encryptedPayload: crypto2.encryptPayload(fixedKey, vaultId, 1, '{}') };
+        const unsigned = {
+          ...v2,
+          formatVersion: 1,
+          revision: revision ?? v2.revision,
+          encryptedPayload: crypto2.encryptPayload(fixedKey, vaultId, 1, '{}'),
+        };
         return { ...unsigned, accessHeaderMac: crypto2.computeFileMac(fixedKey, unsigned as never) };
       }
 
@@ -2552,6 +2557,10 @@ describe('TeamVaultService', () => {
 
         await restarted.resetRemoteState(vaultId); // a new target is a new trust boundary
         expect(persisted[vaultId].remoteFormatVersion).toBeUndefined();
+        // The mark is gone, but this machine's own v2 copy is still a floor: a replay at the same revision stays refused ...
+        await expect(restarted.pullFromRemote(vaultId, provider, '', { force: true })).rejects.toThrow(/older format/);
+        // ... while an older-format file with a strictly higher revision (only a Vault Key holder can make one) is accepted.
+        await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(await v1Variant(crypto2, vaultId, 2))));
         await expect(restarted.pullFromRemote(vaultId, provider, '', { force: true })).resolves.toBeUndefined();
       });
 
@@ -2562,6 +2571,195 @@ describe('TeamVaultService', () => {
         await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify(v1));
 
         await expect(service.pushToRemote(vaultId, provider)).rejects.toThrow(/newer format.*pull first/i);
+      });
+    });
+
+    // Automatic upgrade of a v1 vault, done by whoever unlocks it first with this version (any role): no admin action.
+    describe('automatic upgrade of a v1 vault', () => {
+      const identity = '/tmp/fake-admin-identity.txt';
+
+      /** Rewrites the vault on disk as a genuine v1 file (v1 MAC, payload encrypted with the v1 AAD) and locks it. */
+      async function downgradeToV1(service: TeamVaultService, crypto2: TeamVaultCryptoService, vaultId: string, payload = '{}') {
+        const v2 = await readLocal(vaultId);
+        const unsigned = { ...v2, formatVersion: 1, encryptedPayload: crypto2.encryptPayload(fixedKey, vaultId, 1, payload) };
+        const v1 = { ...unsigned, accessHeaderMac: crypto2.computeFileMac(fixedKey, unsigned as never) };
+        await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify(v1));
+        service.lock(vaultId);
+        return v1;
+      }
+
+      it('upgrades on unlock to v2 without touching revision, updatedAt or updatedBy, and tells the app to push it', async () => {
+        const upgraded: string[] = [];
+        const crypto2 = fakeCrypto();
+        crypto2.generateVaultKey = () => fixedKey;
+        const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir, onFormatUpgraded: (id) => upgraded.push(id) });
+        const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+        await service.saveSSHProfile(vaultId, profile('p1'));
+        const v1 = await downgradeToV1(service, crypto2, vaultId, JSON.stringify({ ssh: [profile('p1')], s3: [] }));
+
+        await service.unlock(vaultId, 'alice@piv:abc', identity);
+
+        const after = await readLocal(vaultId);
+        expect(after.formatVersion).toBe(2);
+        expect([after.revision, after.updatedAt, after.updatedBy]).toEqual([v1.revision, v1.updatedAt, v1.updatedBy]);
+        expect((await service.getPayload(vaultId)).ssh.map((p) => p.id)).toEqual(['p1']);
+        expect(upgraded).toEqual([vaultId]);
+
+        // The upgraded file verifies on its own, and a second unlock does not upgrade again.
+        service.lock(vaultId);
+        await service.unlock(vaultId, 'alice@piv:abc', identity);
+        expect(upgraded).toEqual([vaultId]);
+      });
+
+      it('lets a plain member upgrade (it needs the Vault Key only), and so does the recovery identity', async () => {
+        const crypto2 = fakeCrypto();
+        crypto2.generateVaultKey = () => fixedKey;
+        const service = new TeamVaultService({ cryptoService: crypto2, baseDir: tempDir });
+        const vaultId = (await service.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+        await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+
+        await downgradeToV1(service, crypto2, vaultId);
+        await service.unlock(vaultId, 'bob@piv:def', identity);
+        expect((await readLocal(vaultId)).formatVersion).toBe(2);
+
+        await downgradeToV1(service, crypto2, vaultId);
+        await service.unlockWithRecoveryText(vaultId, 'AGE-SECRET-KEY-1TEST');
+        expect((await readLocal(vaultId)).formatVersion).toBe(2);
+      });
+
+      it('does not upgrade a locked vault', async () => {
+        const { service, crypto2, vaultId } = await newVault();
+        await downgradeToV1(service, crypto2, vaultId);
+        expect(await service.upgradeFormatIfNeeded(vaultId)).toBe(false);
+        expect((await readLocal(vaultId)).formatVersion).toBe(1);
+      });
+
+      it('never lets a failing upgrade (e.g. a payload that cannot be decrypted) block the unlock; the vault stays v1', async () => {
+        const { service, crypto2, vaultId } = await newVault();
+        const v1Unsigned = { ...(await readLocal(vaultId)), formatVersion: 1, encryptedPayload: 'not-decryptable' };
+        const v1 = { ...v1Unsigned, accessHeaderMac: crypto2.computeFileMac(fixedKey, v1Unsigned as never) };
+        await fs.writeFile(path.join(tempDir, 'team-vaults', `${vaultId}.json`), JSON.stringify(v1));
+        service.lock(vaultId);
+
+        await expect(service.unlock(vaultId, 'alice@piv:abc', identity)).resolves.toBeUndefined();
+        expect((await readLocal(vaultId)).formatVersion).toBe(1);
+      });
+
+      it('re-verifies the v1 MAC before re-signing, so a file changed on disk after unlock is not blessed', async () => {
+        const { service, crypto2, vaultId } = await newVault();
+        const v1 = await downgradeToV1(service, crypto2, vaultId);
+        await service.unlock(vaultId, 'alice@piv:abc', identity).then(async () => {
+          // unlock already upgraded it; put the v1 file back and tamper with it while the session is open
+          await fs.writeFile(
+            path.join(tempDir, 'team-vaults', `${vaultId}.json`),
+            JSON.stringify({ ...v1, accessHeader: [{ ...v1.accessHeader[0], role: 'member' }] })
+          );
+        });
+
+        expect(await service.upgradeFormatIfNeeded(vaultId)).toBe(false);
+        expect((await readLocal(vaultId)).formatVersion).toBe(1);
+      });
+
+      it('converges without anyone clicking: the second member to upgrade pulls the first one\'s file as a plain pull', async () => {
+        // Machine A and machine B hold the same v1 vault and have both synced it (remote is v1, revision N).
+        const dirB = await fs.mkdtemp(path.join(os.tmpdir(), 'sshs3-team-vault-test-b-'));
+        try {
+          const cryptoA = fakeCrypto();
+          cryptoA.generateVaultKey = () => fixedKey;
+          const a = new TeamVaultService({ cryptoService: cryptoA, baseDir: tempDir });
+          const provider = fakeProvider();
+          const vaultId = (await a.createVault('alice@piv:abc', 'age1yubikey1alice')).vaultId;
+          const v1 = await downgradeToV1(a, cryptoA, vaultId);
+          await fs.mkdir(path.join(dirB, 'team-vaults'), { recursive: true });
+          await fs.writeFile(path.join(dirB, 'team-vaults', `${vaultId}.json`), JSON.stringify(v1));
+          const b = new TeamVaultService({ cryptoService: cryptoA, baseDir: dirB });
+          await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(v1)));
+          await b.pushToRemote(vaultId, provider); // B has observed the v1 remote: lastSyncedRevision = N
+
+          // A unlocks (upgrades) and pushes v2.
+          await a.unlock(vaultId, 'alice@piv:abc', identity);
+          await a.pushToRemote(vaultId, provider);
+
+          // B unlocks later with the new version: its own upgrade is NOT an unpushed change.
+          await b.unlock(vaultId, 'alice@piv:abc', identity);
+          expect(await b.hasUnpushedLocalChanges(vaultId)).toBe(false);
+          expect(await b.hasRemoteChangedSinceLastSync(vaultId, provider)).toBe(true);
+          await expect(b.pushToRemote(vaultId, provider)).rejects.toThrow(/changed since|newer version|conflict/i); // quiet conflict
+          await expect(b.pullFromRemote(vaultId, provider)).resolves.toBeUndefined(); // no force, no click
+          expect(JSON.parse(await fs.readFile(path.join(dirB, 'team-vaults', `${vaultId}.json`), 'utf-8')).formatVersion).toBe(2);
+        } finally {
+          await fs.rm(dirB, { recursive: true, force: true }).catch(() => {});
+        }
+      });
+
+      it('upgrades after a pull that brought in a v1 file written by an older client (a mixed team that had not upgraded yet)', async () => {
+        const { service, crypto2, provider, vaultId } = await newVault();
+        const v1 = await downgradeToV1(service, crypto2, vaultId);
+        await service.unlock(vaultId, 'alice@piv:abc', identity); // upgrades locally to v2, revision N, not pushed
+        // An older client wrote to the (never v2) remote meanwhile: revision N + 1, still v1.
+        const unsigned = { ...v1, revision: v1.revision + 1, encryptedPayload: crypto2.encryptPayload(fixedKey, vaultId, 1, '{}') };
+        const older = { ...unsigned, accessHeaderMac: crypto2.computeFileMac(fixedKey, unsigned as never) };
+        await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(older)));
+
+        await service.pullFromRemote(vaultId, provider, '', { force: true });
+
+        const after = await readLocal(vaultId);
+        expect([after.formatVersion, after.revision]).toEqual([2, v1.revision + 1]); // pulled, then upgraded again
+      });
+
+      // Security review of M1: the mark can be unset (never pushed since the upgrade, or lost) while the local copy is already v2.
+      it('treats the local copy\'s own format as a floor, so a replayed pre-upgrade file at the same revision is refused even with no mark', async () => {
+        const { service, crypto2, provider, vaultId } = await newVault();
+        const v1 = await downgradeToV1(service, crypto2, vaultId);
+        await service.unlock(vaultId, 'alice@piv:abc', identity); // local is now v2, nothing pushed: no mark
+        await provider.writeFile!(`team-vault/${vaultId}/vault.json`, Buffer.from(JSON.stringify(v1))); // the pre-upgrade file
+
+        await expect(service.pullFromRemote(vaultId, provider, '', { force: true })).rejects.toThrow(/older format/);
+        expect((await readLocal(vaultId)).formatVersion).toBe(2);
+      });
+    });
+
+    // Payload keys this version does not know are kept when the payload is written, and never reach the renderer.
+    describe('unknown payload keys', () => {
+      async function vaultWithFutureKey() {
+        const { service, crypto2, vaultId } = await newVault();
+        const payload = JSON.stringify({ ssh: [], s3: [], futureFeature: { secret: 'shh' } }); // pragma: allowlist secret
+        const base = await readLocal(vaultId);
+        const unsigned = { ...base, encryptedPayload: crypto2.encryptPayload(fixedKey, vaultId, 2, payload) };
+        await fs.writeFile(
+          path.join(tempDir, 'team-vaults', `${vaultId}.json`),
+          JSON.stringify({ ...unsigned, accessHeaderMac: crypto2.computeFileMac(fixedKey, unsigned as never) })
+        );
+        const rawPayload = async () => JSON.parse(crypto2.decryptPayload(fixedKey, vaultId, 2, (await readLocal(vaultId)).encryptedPayload));
+        return { service, vaultId, rawPayload };
+      }
+
+      it('survives a profile save and a member removal, without a stray "unknownKeys" key', async () => {
+        const { service, vaultId, rawPayload } = await vaultWithFutureKey();
+        await service.saveSSHProfile(vaultId, profile('p1'));
+        expect(await rawPayload()).toMatchObject({ futureFeature: { secret: 'shh' } }); // pragma: allowlist secret
+        expect(await rawPayload()).not.toHaveProperty('unknownKeys');
+
+        await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+        await service.removeMember(vaultId, 'bob@piv:def');
+        expect(await rawPayload()).toMatchObject({ futureFeature: { secret: 'shh' } }); // pragma: allowlist secret
+      });
+
+      it('is never returned to the renderer, for an admin or a member', async () => {
+        const { service, vaultId } = await vaultWithFutureKey();
+        expect(await service.getPayloadForRenderer(vaultId)).not.toHaveProperty('futureFeature');
+        expect(await service.getPayloadForRenderer(vaultId)).not.toHaveProperty('unknownKeys');
+        await service.addMember(vaultId, 'bob@piv:def', 'age1yubikey1bob', 'member');
+        service.lock(vaultId);
+        await service.unlock(vaultId, 'bob@piv:def', '/tmp/fake-admin-identity.txt');
+        expect(await service.getPayloadForRenderer(vaultId)).not.toHaveProperty('futureFeature');
+      });
+
+      it('writes a payload with no unknown keys exactly as before', async () => {
+        const { service, crypto2, vaultId } = await newVault();
+        await service.saveSSHProfile(vaultId, profile('p1'));
+        const raw = JSON.parse(crypto2.decryptPayload(fixedKey, vaultId, 2, (await readLocal(vaultId)).encryptedPayload));
+        expect(Object.keys(raw).sort()).toEqual(['folderIcons', 'folders', 'k8s', 's3', 'ssh']);
       });
     });
 

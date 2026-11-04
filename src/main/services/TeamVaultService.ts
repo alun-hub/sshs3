@@ -538,6 +538,9 @@ export interface TeamVaultServiceOptions {
   /** Required in production for `buildInvite()` to read the vault's configured S3 target —
    * omitted in most tests that never call it. */
   configStore?: TeamVaultConfigReader;
+  /** Called after a vault file was upgraded to the current format on this machine (see `upgradeFormatIfNeeded`), so the app can push
+   * it. Fire-and-forget; omitted in most tests. */
+  onFormatUpgraded?: (vaultId: string) => void;
 }
 
 /** Per-vault in-memory state — never persisted, cleared on `lock()`/app quit, and deliberately
@@ -582,6 +585,53 @@ function freshRuntimeState(): VaultRuntimeState {
   };
 }
 
+const KNOWN_PAYLOAD_KEYS = ['ssh', 's3', 'folders', 'folderIcons', 'k8s', 'unknownKeys'] as const;
+
+/** Top-level payload keys this version does not know, or undefined when there are none. */
+function unknownPayloadKeys(parsed: unknown): Record<string, unknown> | undefined {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const extra = Object.fromEntries(
+    Object.entries(parsed as Record<string, unknown>).filter(([key]) => !(KNOWN_PAYLOAD_KEYS as readonly string[]).includes(key))
+  );
+  return Object.keys(extra).length > 0 ? extra : undefined;
+}
+
+/** The JSON that is encrypted: the known fields plus any unknown keys carried along. Known fields win, and `unknownKeys` itself is
+ * never written (it is only how the keys travel in memory). */
+function serializePayload(payload: TeamVaultPayload): string {
+  const { unknownKeys, ...known } = payload;
+  return JSON.stringify({ ...unknownKeys, ...known });
+}
+
+/**
+ * One step of a format upgrade. `requires` says what the unlocked session needs for it: a migration that only re-encrypts and re-signs with
+ * the Vault Key (every member has it) can run on any unlock, so nobody has to click anything; one that needed an admin's signature would
+ * only run when an admin unlocks. A later format is one more entry here and one more row in `TeamVaultCryptoService`'s `FORMAT_SPECS`.
+ */
+interface FormatMigration {
+  requires: 'vaultKey' | 'admin';
+  /** The file as it is after this step, minus the MAC, which is recomputed once at the end of the chain. */
+  apply(file: TeamVaultFile, vaultKey: Buffer, crypto: TeamVaultCryptoService): TeamVaultFile;
+}
+
+const FORMAT_MIGRATIONS: Record<number, FormatMigration> = {
+  // v1 -> v2: the payload is re-encrypted with the v2 AAD (which names the format). Revision, updatedAt and updatedBy are left alone:
+  // this is not an edit, and a bumped revision would make every member's own upgrade look like an unpushed change.
+  1: {
+    requires: 'vaultKey',
+    apply: (file, vaultKey, crypto) => ({
+      ...file,
+      formatVersion: 2,
+      encryptedPayload: crypto.encryptPayload(
+        vaultKey,
+        file.vaultId,
+        2,
+        crypto.decryptPayload(vaultKey, file.vaultId, file.formatVersion, file.encryptedPayload)
+      ),
+    }),
+  },
+};
+
 /**
  * Owns every local Team Vault file this machine knows about
  * (`<userData>/team-vaults/<vaultId>.json`, same directory convention as `SyncConfigStore`) and
@@ -612,11 +662,13 @@ export class TeamVaultService {
   private readonly writeQueues = new Map<string, Promise<void>>();
   private readonly pinPrompter?: TeamVaultPinPrompter;
   private readonly configStore?: TeamVaultConfigReader;
+  private readonly onFormatUpgraded?: (vaultId: string) => void;
 
   constructor(options: TeamVaultServiceOptions = {}) {
     this.cryptoService = options.cryptoService ?? new TeamVaultCryptoService();
     this.pinPrompter = options.pinPrompter;
     this.configStore = options.configStore;
+    this.onFormatUpgraded = options.onFormatUpgraded;
 
     let baseDir: string;
     if (options.baseDir) {
@@ -1056,13 +1108,22 @@ export class TeamVaultService {
     const vaultKey = this.requireUnlocked(vaultId);
     const recipientId = this.requireUnlockedRecipientId(vaultId);
     const payload = await this.decryptPayload(file, vaultKey);
+    // Only the fields this version knows: keys it preserves but does not understand (`unknownKeys`) never reach the renderer, so
+    // they can neither be shown unredacted nor depended on before a version that knows them exists.
+    const known: TeamVaultPayload = {
+      ssh: payload.ssh,
+      s3: payload.s3,
+      folders: payload.folders,
+      folderIcons: payload.folderIcons,
+      k8s: payload.k8s,
+    };
     if (this.isSelfAdmin(file, recipientId)) {
-      return payload;
+      return known;
     }
     return {
-      ...payload,
-      ssh: payload.ssh.map((p) => redactSshSecrets(p)),
-      s3: payload.s3.map((p) => redactS3Secrets(p)),
+      ...known,
+      ssh: known.ssh.map((p) => redactSshSecrets(p)),
+      s3: known.s3.map((p) => redactS3Secrets(p)),
     };
   }
 
@@ -1202,12 +1263,14 @@ export class TeamVaultService {
           : {};
       // Defense in depth against a legacy entry stored by an older app version that still wrote
       // a `pin` — never surfaced on read, same as it's never accepted on write (withoutPin).
+      const unknownKeys = unknownPayloadKeys(parsed);
       return {
         ssh: ssh.map((p: SSHConnectionConfig) => withoutPin(p)),
         s3,
         folders,
         folderIcons,
         k8s: normalizeK8sList(parsed?.k8s),
+        ...(unknownKeys ? { unknownKeys } : {}),
       };
     } catch {
       // The original `createVault` payload is the literal string '{}' (pre-dating this feature),
@@ -1345,7 +1408,7 @@ export class TeamVaultService {
       revision: newRevision,
       updatedAt: new Date().toISOString(),
       updatedBy,
-      encryptedPayload: this.cryptoService.encryptPayload(vaultKey, file.vaultId, file.formatVersion, JSON.stringify(payload)),
+      encryptedPayload: this.cryptoService.encryptPayload(vaultKey, file.vaultId, file.formatVersion, serializePayload(payload)),
     };
     // The MAC is computed over the finished file, so in format v2 it covers the new ciphertext too.
     await this.writeFile(vaultId, { ...changed, accessHeaderMac: this.cryptoService.computeFileMac(vaultKey, changed) });
@@ -1408,6 +1471,46 @@ export class TeamVaultService {
       this.buildPtyCallbacks(recipientId, `Team Vault: ${file.vaultName || vaultId}`)
     );
     this.completeUnlock(vaultId, file, recipientId, vaultKey);
+    await this.upgradeFormatIfNeeded(vaultId);
+  }
+
+  /**
+   * Brings an older-format vault file to the current format, if this session is unlocked and allowed to (see `FormatMigration.requires`).
+   * Automatic and role-independent for the steps that need only the Vault Key: whoever unlocks first with this version does it, and the
+   * app is told (`onFormatUpgraded`) so it can push the result. Best-effort by design: a failure is logged and the vault simply stays in
+   * its old format, it never blocks an unlock or a pull. Revision, `updatedAt` and `updatedBy` do not change.
+   *
+   * The file's current MAC is verified again first, so a local file that was changed after the unlock check is not re-signed. What this
+   * cannot know is whether a v1 payload is the genuine latest one (v1 never covered it): the protection starts from the upgrade.
+   */
+  async upgradeFormatIfNeeded(vaultId: string): Promise<boolean> {
+    try {
+      const upgraded = await this.queueMutation(vaultId, async () => {
+        const file = await this.readFile(vaultId);
+        const state = this.states.get(vaultId);
+        const vaultKey = state?.unlockedVaultKey;
+        if (!file || !vaultKey || file.formatVersion >= CURRENT_FORMAT_VERSION) return false;
+        if (this.cryptoService.computeFileMac(vaultKey, file) !== file.accessHeaderMac) return false;
+
+        const isAdmin = this.isSelfAdmin(file, state?.unlockedAsRecipientId ?? '');
+        let migrated: TeamVaultFile = file;
+        while (migrated.formatVersion < CURRENT_FORMAT_VERSION) {
+          const step = FORMAT_MIGRATIONS[migrated.formatVersion];
+          if (!step || (step.requires === 'admin' && !isAdmin)) return false;
+          migrated = step.apply(migrated, vaultKey, this.cryptoService);
+        }
+        await this.writeFile(vaultId, { ...migrated, accessHeaderMac: this.cryptoService.computeFileMac(vaultKey, migrated) });
+        return true;
+      });
+      if (upgraded) {
+        teamVaultLog.info(`Team Vault ${vaultId} upgraded to format ${CURRENT_FORMAT_VERSION}`);
+        this.onFormatUpgraded?.(vaultId);
+      }
+      return upgraded;
+    } catch (err) {
+      teamVaultLog.warn(`Could not upgrade Team Vault ${vaultId} to the current format (non-fatal, it stays as it is):`, err);
+      return false;
+    }
   }
 
   /** Verifies the just-unwrapped Vault Key against the stored header MAC and caches it. */
@@ -1445,6 +1548,7 @@ export class TeamVaultService {
       identityText
     );
     this.completeUnlock(vaultId, file, file.recovery.recipientId, vaultKey);
+    await this.upgradeFormatIfNeeded(vaultId);
   }
 
   /**
@@ -1653,6 +1757,17 @@ export class TeamVaultService {
     remoteBasePath = '',
     options: { force?: boolean } = {}
   ): Promise<void> {
+    await this.pullFromRemoteQueued(vaultId, provider, remoteBasePath, options);
+    // A pulled older-format file (a mixed team that has not upgraded yet) is brought to the current format straight away.
+    await this.upgradeFormatIfNeeded(vaultId);
+  }
+
+  private async pullFromRemoteQueued(
+    vaultId: string,
+    provider: IStorageProvider,
+    remoteBasePath: string,
+    options: { force?: boolean }
+  ): Promise<void> {
     return this.queueMutation(vaultId, async () => {
       const remotePath = this.remoteVaultPath(remoteBasePath, vaultId);
       const file = await this.readRemoteVaultFile(provider, remotePath);
@@ -1672,6 +1787,18 @@ export class TeamVaultService {
       // Once the remote has been seen in a newer format, an older-format file is a replay (its MAC does not cover the
       // payload). No `force` exemption: unlike unpushed local changes, this is not something the user can decide.
       if (state.remoteFormatVersion !== undefined && file.formatVersion < state.remoteFormatVersion) {
+        throw new TeamVaultFormatDowngradeError('pull');
+      }
+      // The local copy's own format is a floor too: it can be ahead of the mark (upgraded here but not pushed yet, or the mark was
+      // lost), and a replay of the pre-upgrade file carries the SAME revision. An older-format file is accepted only when its
+      // revision is strictly higher, which only someone holding the Vault Key can produce: an older client that wrote to a remote
+      // that was never seen in the newer format (the mixed-team transition). Never at an equal or lower revision.
+      const localForFloor = await this.readFile(vaultId);
+      if (
+        localForFloor &&
+        file.formatVersion < localForFloor.formatVersion &&
+        (state.remoteFormatVersion !== undefined || file.revision <= localForFloor.revision)
+      ) {
         throw new TeamVaultFormatDowngradeError('pull');
       }
 

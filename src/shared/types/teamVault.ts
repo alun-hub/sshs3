@@ -49,6 +49,10 @@ export interface TeamVaultPayload {
    * before this field existed; treat as `[]`. An app version without this field drops it the next
    * time it writes the payload, so members should update before K8s profiles are shared. */
   k8s?: K8sProfile[];
+  /** Top-level payload keys this version does not know (written by a newer version). Kept as they are when the payload is
+   * written, so an older client never deletes a newer feature's data; never sent to the renderer (`getPayloadForRenderer`
+   * returns only the known fields). Internal: not part of the serialized payload under this name. */
+  unknownKeys?: Record<string, unknown>;
 }
 
 /** The fixed set of icons a Team Vault folder can be given (`TeamVaultPayload.folderIcons`) —
