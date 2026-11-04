@@ -103,13 +103,18 @@ describe('LocalStorageProvider', () => {
       // A directory cannot be opened for writing (EISDIR), on every platform.
       const dirPath = path.join(testDir, 'a-directory');
       await fs.mkdir(dirPath);
-      const writeStream = (await provider.createWriteStream(dirPath)) as NodeJS.WritableStream & { targetTouched: boolean };
+      // The failure is reported by createWriteStream itself, so no stream exists that a caller could treat as touched.
+      await expect(provider.createWriteStream(dirPath)).rejects.toThrow(/EISDIR/);
+    });
 
-      await new Promise<void>((resolve) => {
-        writeStream.on('error', () => resolve());
-        writeStream.end('x');
-      });
-      expect(writeStream.targetTouched).toBe(false);
+    // Code review of the unpushed commits: the open is already under way when the stream is returned.
+    it('has already truncated the file when it hands the stream out, and says so', async () => {
+      const filePath = path.join(testDir, 'existing.txt');
+      await fs.writeFile(filePath, 'original content');
+      const writeStream = (await provider.createWriteStream(filePath)) as NodeJS.WritableStream & { targetTouched: boolean };
+      expect(writeStream.targetTouched).toBe(true);
+      expect(await fs.readFile(filePath, 'utf-8')).toBe('');
+      (writeStream as unknown as { destroy(): void }).destroy();
     });
 
     it('should automatically create parent directories when writing a file', async () => {

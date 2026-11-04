@@ -284,13 +284,19 @@ export class LocalStorageProvider extends BaseStorageProvider {
     const parentDir = path.dirname(fullPath);
     await fsp.mkdir(parentDir, { recursive: true });
     const stream = fs.createWriteStream(fullPath);
-    // 'open' means the file was opened for writing (and truncated); a failed open leaves the target alone.
+    // Wait for the open to settle before handing the stream out. The open (and the truncation) is already under way when
+    // createWriteStream returns, so a cancelled transfer could otherwise look "untouched" while the file was about to be
+    // truncated. A failed open leaves the target alone and is reported here, before anyone holds a stream.
     // (`stream.pending` is not usable: it turns true again once the stream has closed.)
-    let opened = false;
-    stream.once('open', () => {
-      opened = true;
+    await new Promise<void>((resolve, reject) => {
+      const onError = (err: Error): void => reject(err);
+      stream.once('error', onError);
+      stream.once('open', () => {
+        stream.off('error', onError);
+        resolve();
+      });
     });
-    return defineTargetTouched(stream, () => opened);
+    return defineTargetTouched(stream, () => true);
   }
 
   async writeFile(

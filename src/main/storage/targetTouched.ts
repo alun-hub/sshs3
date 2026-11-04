@@ -14,6 +14,17 @@ export function wasTargetTouched(stream: unknown): boolean {
   return typeof flag === 'boolean' ? flag : true;
 }
 
+/**
+ * Waits for an open that is still in flight, if the stream has one (SFTP opens lazily on the first write). Without this a
+ * transfer that fails while the open is on the wire would be judged "untouched" although the server is about to truncate it.
+ */
+export async function settleTargetTouched(stream: unknown): Promise<void> {
+  const settle = (stream as { targetSettled?: unknown } | null | undefined)?.targetSettled;
+  if (typeof settle === 'function') {
+    await (settle as () => Promise<void>).call(stream).catch(() => {});
+  }
+}
+
 /** Adds the `targetTouched` getter to a stream object that is not one of our own classes. */
 export function defineTargetTouched<T extends object>(stream: T, isTouched: () => boolean): T & TargetTouchedSignal {
   Object.defineProperty(stream, 'targetTouched', { get: isTouched, configurable: true });

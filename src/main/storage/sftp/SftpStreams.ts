@@ -124,6 +124,7 @@ export class SftpWriteStream extends Writable {
   private isClosed = false;
   private openFlags: number;
   private opened = false;
+  private openInFlight: Promise<unknown> | null = null;
 
   constructor(
     private protocol: SftpPacketProtocol,
@@ -140,6 +141,11 @@ export class SftpWriteStream extends Writable {
   /** True once the remote file has been opened with TRUNC; the open is lazy, so a source failure before the first byte never touches it. */
   public get targetTouched(): boolean {
     return this.opened;
+  }
+
+  /** Resolves once an open that is on the wire has finished (successfully or not), so `targetTouched` can be trusted. */
+  public async targetSettled(): Promise<void> {
+    await this.openInFlight?.catch(() => {});
   }
 
   public override _write(
@@ -160,11 +166,22 @@ export class SftpWriteStream extends Writable {
             return;
           }
           this.isOpening = true;
-          this.handle = await this.protocol.open(this.remotePath, this.openFlags, {
-            mode: this.options?.mode,
-          });
+          const opening = this.protocol.open(this.remotePath, this.openFlags, { mode: this.options?.mode });
+          this.openInFlight = opening;
+          let opened: Buffer;
+          try {
+            opened = await opening;
+          } finally {
+            this.isOpening = false;
+          }
           this.opened = true;
-          this.isOpening = false;
+          if (this.isClosed) {
+            // Destroyed while the open was on the wire: _destroy found no handle to close, so close it here.
+            await this.protocol.close(opened).catch(() => {});
+            callback(new Error('Stream is closed'));
+            return;
+          }
+          this.handle = opened;
         }
 
         const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);

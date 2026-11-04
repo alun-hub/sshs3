@@ -42,6 +42,26 @@ describe('SftpWriteStream', () => {
     expect(stream.targetTouched).toBe(true);
   });
 
+  // Code review of the unpushed commits: destroying the stream while the open is on the wire must neither leak the handle
+  // nor let the caller judge the target "untouched" before the server has answered.
+  it('closes a handle that arrives after the stream was destroyed, and settles before the touched flag is read', async () => {
+    const protocol = makeProtocol();
+    let answer!: (h: Buffer) => void;
+    protocol.open.mockReturnValue(new Promise<Buffer>((resolve) => { answer = resolve; }));
+    const stream = new SftpWriteStream(protocol as any, '/remote/a.txt');
+    stream.on('error', () => {});
+    stream.write(Buffer.from('abc'));
+    await new Promise((r) => setImmediate(r));
+    stream.destroy(new Error('cancelled'));
+
+    const settled = stream.targetSettled();
+    answer(Buffer.from('late'));
+    await settled;
+
+    expect(stream.targetTouched).toBe(true);
+    expect(protocol.close).toHaveBeenCalledWith(Buffer.from('late'));
+  });
+
   it('stays untouched when the open fails (H2)', async () => {
     const protocol = makeProtocol();
     protocol.open.mockRejectedValue(new Error('permission denied'));
