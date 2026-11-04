@@ -1701,7 +1701,7 @@ describe('TransferQueue', () => {
   });
 });
 
-// Code review of the unpushed commits: the deferred clean-up for an open that answered after the wait ran out.
+// The deferred clean-up for an open that answered after the failed transfer stopped waiting for it.
 describe('late open after a failed transfer', () => {
   function slowOpenStream(touchedAfter: { value: boolean }, settle: Promise<void>) {
     const stream = defineTargetTouched(
@@ -1723,7 +1723,8 @@ describe('late open after a failed transfer', () => {
     if (targetContent !== undefined) memTarget.files.set('data.txt', Buffer.from(targetContent));
     const touched = { value: false };
     let release!: () => void;
-    const settle = new Promise<void>((r) => { release = r; });
+    let lateRuns = 0;
+    const settle = new Promise<void>((r) => { release = r; }).then(() => { lateRuns++; });
     memTarget.createWriteStream = vi.fn().mockImplementation(async () => slowOpenStream(touched, settle));
     const deleteSpy = vi.spyOn(memTarget, 'delete');
     await expect(
@@ -1732,7 +1733,9 @@ describe('late open after a failed transfer', () => {
     expect(deleteSpy).not.toHaveBeenCalled(); // nothing is deleted while the open is unanswered
     resolveOpen(touched);
     release();
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => setTimeout(r, 0));
+    await vi.waitFor(() => expect(lateRuns).toBeGreaterThan(0), { timeout: 2000 });
+    await new Promise((r) => setTimeout(r, 20)); // let the stat and delete after the settle finish
     return { memTarget, deleteSpy };
   }
 
