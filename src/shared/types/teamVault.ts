@@ -105,7 +105,10 @@ export interface TeamVaultRecovery {
 }
 
 export interface TeamVaultFile {
-  formatVersion: 1;
+  /** 1: the original format (header-only MAC). 2: the MAC also covers the payload ciphertext, `updatedAt`, `updatedBy`,
+   * the format version and the recovery note — see `TeamVaultCryptoService.computeFileMac`. Existing v1 vaults are
+   * upgraded to 2 automatically on unlock (`TeamVaultService.upgradeFormatIfNeeded`). */
+  formatVersion: 1 | 2;
   vaultId: string;
   /** Creator-chosen descriptive name (e.g. "Acme Infra Team"), shown in the UI instead of the
    * opaque `vaultId`. Optional for files written before this field existed — the UI falls back to

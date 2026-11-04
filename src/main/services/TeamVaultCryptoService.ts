@@ -6,7 +6,7 @@ import path from 'node:path';
 import { resolveAgeBinary } from './AgeBinaryResolver';
 import { runAgeCommandViaPty, createSecretOutputChannel, readChannelAfterExit, type AgePtyPromptCallbacks } from './AgePtyPinRelay';
 import { withPkcs11Lock } from '../smartcard/Pkcs11Lock';
-import type { TeamVaultAccessEntry, TeamVaultRecovery } from '../../shared/types/teamVault';
+import type { TeamVaultAccessEntry, TeamVaultFile, TeamVaultRecovery } from '../../shared/types/teamVault';
 
 export { TeamVaultWrongPinError, TeamVaultDefaultCredentialsError } from './AgePtyPinRelay';
 export type { AgePtyPromptCallbacks } from './AgePtyPinRelay';
@@ -31,21 +31,35 @@ function buildAad(vaultId: string, formatVersion: number): Buffer {
   return Buffer.from(`${vaultId}:${formatVersion}`, 'utf8');
 }
 
-const HEADER_MAC_INFO = Buffer.from('team-vault-header-mac-v1', 'utf8');
-const ROTATION_PROOF_INFO = Buffer.from('team-vault-rotation-proof-v1', 'utf8');
+/** What differs between file format versions as far as authentication goes. A new version is one more row here
+ * plus a `canonical*` function below — older rows are never touched, so files written under them keep verifying.
+ * The HKDF info strings differ per version (domain separation): a MAC computed for one version can never verify
+ * as another, so a bucket-write attacker cannot relabel a file's `formatVersion`. */
+const FORMAT_SPECS = {
+  1: { macInfo: Buffer.from('team-vault-header-mac-v1', 'utf8'), rotationInfo: Buffer.from('team-vault-rotation-proof-v1', 'utf8') },
+  2: { macInfo: Buffer.from('team-vault-header-mac-v2', 'utf8'), rotationInfo: Buffer.from('team-vault-rotation-proof-v2', 'utf8') },
+} as const;
+
+type MacFormatVersion = keyof typeof FORMAT_SPECS;
+
+function specFor(formatVersion: number): (typeof FORMAT_SPECS)[MacFormatVersion] {
+  const spec = FORMAT_SPECS[formatVersion as MacFormatVersion];
+  if (!spec) throw new Error(`Unsupported Team Vault format version ${formatVersion}`);
+  return spec;
+}
 
 /** A subkey derived from the Vault Key via HKDF, never the raw AES-GCM key itself — simple key
  * separation so the same symmetric secret isn't reused across two different primitives
  * (encryption vs. authentication). */
-function deriveHeaderMacKey(vaultKey: Buffer): Buffer {
-  return Buffer.from(crypto.hkdfSync('sha256', vaultKey, Buffer.alloc(0), HEADER_MAC_INFO, 32));
+function deriveHeaderMacKey(vaultKey: Buffer, formatVersion: number = 1): Buffer {
+  return Buffer.from(crypto.hkdfSync('sha256', vaultKey, Buffer.alloc(0), specFor(formatVersion).macInfo, 32));
 }
 
 /** A separate subkey from `deriveHeaderMacKey` (different HKDF info string), so a rotation proof
  * computed under the OLD Vault Key can never be confused with — or substituted for — a header MAC
  * computed under the NEW one, even though both are derived from the same underlying key. */
-function deriveRotationProofKey(vaultKey: Buffer): Buffer {
-  return Buffer.from(crypto.hkdfSync('sha256', vaultKey, Buffer.alloc(0), ROTATION_PROOF_INFO, 32));
+function deriveRotationProofKey(vaultKey: Buffer, formatVersion: number = 1): Buffer {
+  return Buffer.from(crypto.hkdfSync('sha256', vaultKey, Buffer.alloc(0), specFor(formatVersion).rotationInfo, 32));
 }
 
 export class TeamVaultCanonicalizationError extends Error {
@@ -125,6 +139,84 @@ function canonicalAccessHeaderString(
     ? `${vaultId}\u0002${revision}\u0002${vaultName}\u0002${vaultDescription}`
     : `${vaultId}\u0002${revision}\u0002${vaultName}`;
   return [headerLine, ...entryLines, recoveryLine].join('\u0003');
+}
+
+/**
+ * How each field of a `TeamVaultFile` is authenticated in format v2 (a `Record` over every key, so adding a field to the
+ * interface without classifying it here is a compile error): `'mac'` fields are covered by the file MAC (and the rotation
+ * proof); `'unauthenticated'` ones cannot be, because they ARE the tags. Everything that decides who may open the vault, who
+ * wrote it last, what it is called and what it contains is covered, including the payload ciphertext.
+ */
+export const TEAM_VAULT_FILE_FIELD_COVERAGE: Record<keyof TeamVaultFile, 'mac' | 'unauthenticated'> = {
+  formatVersion: 'mac',
+  vaultId: 'mac',
+  vaultName: 'mac',
+  vaultDescription: 'mac',
+  revision: 'mac',
+  updatedAt: 'mac',
+  updatedBy: 'mac',
+  accessHeader: 'mac',
+  recovery: 'mac',
+  encryptedPayload: 'mac',
+  accessHeaderMac: 'unauthenticated',
+  prevKeyProof: 'unauthenticated',
+};
+
+/** What a v2 MAC or rotation proof is computed over — the file minus the two tags. */
+export type TeamVaultMacInput = Pick<
+  TeamVaultFile,
+  | 'formatVersion'
+  | 'vaultId'
+  | 'vaultName'
+  | 'vaultDescription'
+  | 'revision'
+  | 'updatedAt'
+  | 'updatedBy'
+  | 'accessHeader'
+  | 'recovery'
+  | 'encryptedPayload'
+>;
+
+/** SHA-256 (base64) of the payload ciphertext exactly as stored: what ties a payload to the header that carries it. */
+export function payloadDigest(encryptedPayload: string): string {
+  return crypto.createHash('sha256').update(encryptedPayload, 'utf8').digest('base64');
+}
+
+/**
+ * Canonical string for format v2. Unlike v1 it has no backward-compatibility special cases: the description is always
+ * present, and the recovery note, `updatedAt`, `updatedBy`, the format version and the payload digest are all covered.
+ * Same delimiter discipline as v1 (`assertNoCanonicalizationDelimiter` on every free-text field).
+ */
+function canonicalFileStringV2(file: TeamVaultMacInput): string {
+  const vaultName = file.vaultName ?? '';
+  const vaultDescription = file.vaultDescription ?? '';
+  assertNoCanonicalizationDelimiter(file.vaultId, 'vaultId');
+  assertNoCanonicalizationDelimiter(vaultName, 'vaultName');
+  assertNoCanonicalizationDelimiter(vaultDescription, 'vaultDescription');
+  assertNoCanonicalizationDelimiter(file.updatedAt, 'updatedAt');
+  assertNoCanonicalizationDelimiter(file.updatedBy, 'updatedBy');
+  for (const e of file.accessHeader) {
+    assertNoCanonicalizationDelimiter(e.recipientId, 'recipientId');
+    assertNoCanonicalizationDelimiter(e.role, 'role');
+    assertNoCanonicalizationDelimiter(e.method, 'method');
+    assertNoCanonicalizationDelimiter(e.ageRecipient, 'ageRecipient');
+    assertNoCanonicalizationDelimiter(e.wrappedVaultKey, 'wrappedVaultKey');
+    assertNoCanonicalizationDelimiter(e.addedAt, 'addedAt');
+    assertNoCanonicalizationDelimiter(e.addedBy, 'addedBy');
+  }
+  const recovery = file.recovery;
+  assertNoCanonicalizationDelimiter(recovery.recipientId, 'recovery.recipientId');
+  assertNoCanonicalizationDelimiter(recovery.ageRecipient, 'recovery.ageRecipient');
+  assertNoCanonicalizationDelimiter(recovery.wrappedVaultKey, 'recovery.wrappedVaultKey');
+  assertNoCanonicalizationDelimiter(recovery.note ?? '', 'recovery.note');
+
+  const headerLine = [file.formatVersion, file.vaultId, file.revision, file.updatedAt, file.updatedBy, vaultName, vaultDescription].join('\u0002');
+  const entryLines = file.accessHeader
+    .map((e) => [e.recipientId, e.role, e.method, e.ageRecipient, e.wrappedVaultKey, e.addedAt, e.addedBy].join('\u0001'))
+    .sort();
+  const recoveryLine = [recovery.recipientId, recovery.ageRecipient, recovery.wrappedVaultKey, recovery.note ?? ''].join('\u0001');
+  const payloadLine = ['payload', payloadDigest(file.encryptedPayload)].join('\u0001');
+  return [headerLine, ...entryLines, recoveryLine, payloadLine].join('\u0003');
 }
 
 /**
@@ -468,6 +560,49 @@ export class TeamVaultCryptoService {
       newVaultDescription
     );
     return crypto.createHmac('sha256', proofKey).update(canonical, 'utf8').digest('base64');
+  }
+
+  /**
+   * The file MAC for whichever format the file is in, so callers never pick a canonicalization themselves. v1 is the
+   * original header-only MAC (`computeAccessHeaderMac`, unchanged); v2 also covers the payload ciphertext, `updatedAt`,
+   * `updatedBy`, the format version and the recovery note (`canonicalFileStringV2`). A payload cut from an older revision
+   * and placed under a current header therefore no longer verifies.
+   */
+  computeFileMac(vaultKey: Buffer, file: TeamVaultMacInput): string {
+    if (file.formatVersion === 1) {
+      return this.computeAccessHeaderMac(
+        vaultKey,
+        file.vaultId,
+        file.revision,
+        file.vaultName ?? '',
+        file.accessHeader,
+        file.recovery,
+        file.vaultDescription ?? ''
+      );
+    }
+    const macKey = deriveHeaderMacKey(vaultKey, file.formatVersion);
+    return crypto.createHmac('sha256', macKey).update(canonicalFileStringV2(file), 'utf8').digest('base64');
+  }
+
+  /**
+   * The rotation proof for the NEW file of a `removeMember` rotation, keyed from the OLD Vault Key, for whichever format
+   * that new file is in (see `computeRotationProof` for what it proves). v2 covers the same fields as the v2 file MAC, so it
+   * also vouches for the re-encrypted payload.
+   */
+  computeFileRotationProof(oldVaultKey: Buffer, newFile: TeamVaultMacInput): string {
+    if (newFile.formatVersion === 1) {
+      return this.computeRotationProof(
+        oldVaultKey,
+        newFile.vaultId,
+        newFile.revision,
+        newFile.vaultName ?? '',
+        newFile.accessHeader,
+        newFile.recovery,
+        newFile.vaultDescription ?? ''
+      );
+    }
+    const proofKey = deriveRotationProofKey(oldVaultKey, newFile.formatVersion);
+    return crypto.createHmac('sha256', proofKey).update(canonicalFileStringV2(newFile), 'utf8').digest('base64');
   }
 
   /** Decrypts an `encryptForRecipient`-produced blob with the identity at `identityFilePath` —

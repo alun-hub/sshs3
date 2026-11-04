@@ -34,7 +34,14 @@ vi.mock('../../src/main/services/AgePtyPinRelay', async (importOriginal) => {
   };
 });
 
-import { TeamVaultCryptoService, TeamVaultDecryptionError, normalizeAsciiArmoredAge } from '../../src/main/services/TeamVaultCryptoService';
+import {
+  TeamVaultCryptoService,
+  TeamVaultDecryptionError,
+  TEAM_VAULT_FILE_FIELD_COVERAGE,
+  normalizeAsciiArmoredAge,
+  payloadDigest,
+  type TeamVaultMacInput,
+} from '../../src/main/services/TeamVaultCryptoService';
 import type { AgePtyPromptCallbacks } from '../../src/main/services/AgePtyPinRelay';
 
 function noopCallbacks(): AgePtyPromptCallbacks {
@@ -793,6 +800,116 @@ describe('TeamVaultCryptoService', () => {
       const forgedProof = svc.computeRotationProof(attackerGeneratedKey, 'vlt_1', 2, '', accessHeader, recovery);
       expect(forgedProof).not.toBe(realProof);
     });
+  });
+});
+
+describe('format v2: computeFileMac / computeFileRotationProof', () => {
+  const svc = new TeamVaultCryptoService();
+  const key = Buffer.alloc(32, 9);
+  const oldKey = Buffer.alloc(32, 3);
+
+  const v2File = (over: Partial<TeamVaultMacInput> = {}): TeamVaultMacInput => ({
+    formatVersion: 2,
+    vaultId: 'vlt_1',
+    vaultName: 'Acme',
+    vaultDescription: 'Acme infra',
+    revision: 5,
+    updatedAt: '2026-11-04T10:00:00.000Z',
+    updatedBy: 'alice@piv:abc',
+    accessHeader: [
+      {
+        recipientId: 'alice@piv:abc',
+        role: 'admin',
+        method: 'piv-rsa-oaep',
+        ageRecipient: 'age1yubikey1alice',
+        wrappedVaultKey: 'wrapped-alice',
+        addedAt: '2026-01-01T00:00:00Z',
+        addedBy: 'alice@piv:abc',
+      },
+    ],
+    recovery: { recipientId: 'recovery-key-1', ageRecipient: 'age1recovery', wrappedVaultKey: 'wrapped-recovery', note: 'in the safe' },
+    encryptedPayload: 'cGF5bG9hZC1vbmU=',
+    ...over,
+  });
+
+  it('is deterministic, and ignores the two tags it produces', () => {
+    const base = v2File();
+    expect(svc.computeFileMac(key, base)).toBe(svc.computeFileMac(key, v2File()));
+    // The tags are not part of the input type, but a whole file passed in (as the service does) must give the same MAC.
+    expect(svc.computeFileMac(key, { ...base, accessHeaderMac: 'x', prevKeyProof: 'y' } as TeamVaultMacInput)).toBe(svc.computeFileMac(key, base));
+  });
+
+  // Cross-checked against an independent implementation (HKDF-SHA256 + HMAC-SHA256 written separately), not just this code.
+  it('pins the v2 MAC so the canonicalization cannot change by accident', () => {
+    expect(svc.computeFileMac(key, v2File())).toBe('3DAi/EdOEVbZxC0sDxV+yQwGw/BTUbegWQdopqU+VNU='); // pragma: allowlist secret
+  });
+
+  // M1 (code review 2026-11-03): the header MAC did not cover the payload, so an older payload could be placed under a
+  // current header. In v2 any change of the ciphertext changes the MAC.
+  it('changes when the payload ciphertext changes (the M1 splice)', () => {
+    expect(svc.computeFileMac(key, v2File({ encryptedPayload: 'b2xkZXItcGF5bG9hZA==' }))).not.toBe(svc.computeFileMac(key, v2File()));
+  });
+
+  // Every field classified 'mac' must really be covered: a compile error if a field is added without a mutator here.
+  const mutators: Record<Exclude<keyof typeof TEAM_VAULT_FILE_FIELD_COVERAGE, 'accessHeaderMac' | 'prevKeyProof'>, (f: TeamVaultMacInput) => TeamVaultMacInput> = {
+    formatVersion: (f) => ({ ...f, formatVersion: 1 }),
+    vaultId: (f) => ({ ...f, vaultId: 'vlt_2' }),
+    vaultName: (f) => ({ ...f, vaultName: 'Other' }),
+    vaultDescription: (f) => ({ ...f, vaultDescription: 'Other description' }),
+    revision: (f) => ({ ...f, revision: f.revision + 1 }),
+    updatedAt: (f) => ({ ...f, updatedAt: '2026-11-04T11:00:00.000Z' }),
+    updatedBy: (f) => ({ ...f, updatedBy: 'mallory' }),
+    accessHeader: (f) => ({ ...f, accessHeader: [{ ...f.accessHeader[0], role: 'member' }] }),
+    recovery: (f) => ({ ...f, recovery: { ...f.recovery, note: 'tampered note' } }),
+    encryptedPayload: (f) => ({ ...f, encryptedPayload: 'dGFtcGVyZWQ=' }),
+  };
+
+  it('covers every field the coverage table marks as authenticated', () => {
+    const base = svc.computeFileMac(key, v2File());
+    const covered = Object.entries(TEAM_VAULT_FILE_FIELD_COVERAGE).filter(([, c]) => c === 'mac').map(([field]) => field);
+    expect(covered.sort()).toEqual(Object.keys(mutators).sort());
+    for (const [field, mutate] of Object.entries(mutators)) {
+      expect(svc.computeFileMac(key, mutate(v2File())), `changing ${field} must change the MAC`).not.toBe(base);
+    }
+  });
+
+  it('keeps the two tags out of the authenticated set', () => {
+    expect(TEAM_VAULT_FILE_FIELD_COVERAGE.accessHeaderMac).toBe('unauthenticated');
+    expect(TEAM_VAULT_FILE_FIELD_COVERAGE.prevKeyProof).toBe('unauthenticated');
+  });
+
+  it('keeps v1 exactly as it was, and a v1 MAC can never verify as a v2 MAC (or the other way round)', () => {
+    const v1 = v2File({ formatVersion: 1 });
+    expect(svc.computeFileMac(key, v1)).toBe(
+      svc.computeAccessHeaderMac(key, v1.vaultId, v1.revision, v1.vaultName ?? '', v1.accessHeader, v1.recovery, v1.vaultDescription ?? '')
+    );
+    expect(svc.computeFileMac(key, v1)).not.toBe(svc.computeFileMac(key, v2File()));
+  });
+
+  it('refuses a format it does not know', () => {
+    expect(() => svc.computeFileMac(key, v2File({ formatVersion: 3 as never }))).toThrow(/Unsupported Team Vault format version 3/);
+  });
+
+  it('throws instead of computing an ambiguous MAC when a field contains a canonicalization delimiter', () => {
+    expect(() => svc.computeFileMac(key, v2File({ updatedBy: 'a\u0002b' }))).toThrow(/updatedBy/);
+    expect(() => svc.computeFileMac(key, v2File({ recovery: { ...v2File().recovery, note: 'n\u0003x' } }))).toThrow(/recovery.note/);
+  });
+
+  it('rotation proof: keyed from the old key, covers the new payload, and is never equal to the file MAC', () => {
+    const file = v2File();
+    const proof = svc.computeFileRotationProof(oldKey, file);
+    expect(proof).toBe(svc.computeFileRotationProof(oldKey, v2File()));
+    expect(svc.computeFileRotationProof(oldKey, v2File({ encryptedPayload: 'dGFtcGVyZWQ=' }))).not.toBe(proof);
+    expect(svc.computeFileRotationProof(Buffer.alloc(32, 4), file)).not.toBe(proof);
+    expect(svc.computeFileMac(oldKey, file)).not.toBe(proof);
+    const v1 = v2File({ formatVersion: 1 });
+    expect(svc.computeFileRotationProof(oldKey, v1)).toBe(
+      svc.computeRotationProof(oldKey, v1.vaultId, v1.revision, v1.vaultName ?? '', v1.accessHeader, v1.recovery, v1.vaultDescription ?? '')
+    );
+  });
+
+  it('payloadDigest is SHA-256 of the ciphertext string, base64', () => {
+    expect(payloadDigest('abc')).toBe('ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=');
   });
 });
 
