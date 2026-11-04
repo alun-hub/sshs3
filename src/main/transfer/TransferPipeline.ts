@@ -267,6 +267,8 @@ export interface TransferOptions {
   onProgress?: (progress: TransferProgress) => void;
   throttleIntervalMs?: number;
   emitCompleted?: boolean;
+  /** How long a failed transfer waits for an open that is still on the wire (default 5 s); tests shorten it. */
+  targetSettleTimeoutMs?: number;
   verifyIntegrity?: boolean;
   verifyChecksum?: boolean | 'sha256' | 'md5';
   expectedChecksum?: string;
@@ -611,13 +613,16 @@ async function executeTransferFile(options: TransferOptions): Promise<void> {
     // or replaced the target. A cancelled S3 overwrite, a read-only file that
     // could not be opened or an SFTP open that never happened leave the
     // original in place, and deleting it would destroy the user's data.
-    const settled = writeStream ? await settleTargetTouched(writeStream) : true;
+    const settled = writeStream ? await settleTargetTouched(writeStream, options.targetSettleTimeoutMs) : true;
     if (writeStream && wasTargetTouched(writeStream)) {
       await options.targetProvider.delete(resolvedTargetPath, false).catch(() => {});
     } else if (writeStream && !settled) {
       // The server has not answered the open yet and may still truncate the file: clean up if it did, without holding up the error.
       whenTargetSettledLater(writeStream, async () => {
-        if (wasTargetTouched(writeStream)) await options.targetProvider.delete(resolvedTargetPath, false).catch(() => {});
+        if (!wasTargetTouched(writeStream)) return;
+        // Only the empty file our own late open left behind: a newer transfer may have written the path since.
+        const now = await options.targetProvider.stat(resolvedTargetPath).catch(() => null);
+        if (now && now.size === 0) await options.targetProvider.delete(resolvedTargetPath, false).catch(() => {});
       });
     }
     throw err;

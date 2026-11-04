@@ -148,6 +148,23 @@ export class SftpWriteStream extends Writable {
     await this.openInFlight?.catch(() => {});
   }
 
+  /**
+   * Opens the remote file once (the open truncates it), tracking it in `openInFlight` so a failed transfer can wait for it. Returns
+   * false when the stream was destroyed while the open was on the wire: `_destroy` found no handle to close, so it is closed here.
+   */
+  private async openHandle(): Promise<boolean> {
+    const opening = this.protocol.open(this.remotePath, this.openFlags, { mode: this.options?.mode });
+    this.openInFlight = opening;
+    const opened = await opening;
+    this.opened = true;
+    if (this.isClosed) {
+      await this.protocol.close(opened).catch(() => {});
+      return false;
+    }
+    this.handle = opened;
+    return true;
+  }
+
   public override _write(
     chunk: any,
     _encoding: BufferEncoding,
@@ -166,26 +183,18 @@ export class SftpWriteStream extends Writable {
             return;
           }
           this.isOpening = true;
-          const opening = this.protocol.open(this.remotePath, this.openFlags, { mode: this.options?.mode });
-          this.openInFlight = opening;
-          let opened: Buffer;
           try {
-            opened = await opening;
+            if (!(await this.openHandle())) {
+              callback(new Error('Stream is closed'));
+              return;
+            }
           } finally {
             this.isOpening = false;
           }
-          this.opened = true;
-          if (this.isClosed) {
-            // Destroyed while the open was on the wire: _destroy found no handle to close, so close it here.
-            await this.protocol.close(opened).catch(() => {});
-            callback(new Error('Stream is closed'));
-            return;
-          }
-          this.handle = opened;
         }
 
         const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        await this.protocol.write(this.handle, this.currentOffset, buf);
+        await this.protocol.write(this.handle as Buffer, this.currentOffset, buf);
         this.currentOffset += buf.length;
         callback();
       } catch (err: any) {
@@ -216,16 +225,10 @@ export class SftpWriteStream extends Writable {
       try {
         // A zero-byte stream never reaches _write, so the file would otherwise never be created.
         if (!this.handle && !this.isOpening) {
-          const opening = this.protocol.open(this.remotePath, this.openFlags, { mode: this.options?.mode });
-          this.openInFlight = opening;
-          const opened = await opening;
-          this.opened = true;
-          if (this.isClosed) {
-            await this.protocol.close(opened).catch(() => {});
+          if (!(await this.openHandle())) {
             callback(new Error('Stream is closed'));
             return;
           }
-          this.handle = opened;
         }
         await this.closeHandle(true);
         callback();

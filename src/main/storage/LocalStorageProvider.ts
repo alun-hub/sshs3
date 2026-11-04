@@ -294,7 +294,8 @@ export class LocalStorageProvider extends BaseStorageProvider {
         opened = true;
         resolve();
       });
-      stream.once('error', () => resolve());
+      // No 'error' listener on purpose: it would count as a handler and hide an unhandled error from a caller that has none.
+      // A failed open emits 'error' and then 'close', so 'close' settles it.
       stream.once('close', () => resolve());
     });
     return defineTargetSettled(defineTargetTouched(stream, () => opened), () => settled);

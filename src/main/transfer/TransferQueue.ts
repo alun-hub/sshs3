@@ -8,7 +8,7 @@ import {
   joinPaths,
   type TransferOptions,
 } from './TransferPipeline';
-import { SAME_FILE_ERROR, isSameFileOnProvider } from './transferPaths';
+import { SAME_FILE_ERROR, isSameFileOnProvider, resolverFor } from './transferPaths';
 import type {
   IStorageProvider,
   TransferProgress,
@@ -394,7 +394,7 @@ export class TransferQueue extends EventEmitter {
       // Same provider and same file: opening the target would truncate the source before it is read.
       if (
         job.sourceProvider === job.targetProvider &&
-        (await isSameFileOnProvider(job.sourceProvider.type, job.sourcePath, resolvedTargetPath, (p: string) => (job.sourceProvider as { resolvePath?: (x: string) => string }).resolvePath?.(p) ?? p))
+        (await isSameFileOnProvider(job.sourceProvider.type, job.sourcePath, resolvedTargetPath, resolverFor(job.sourceProvider)))
       ) {
         throw new Error(SAME_FILE_ERROR);
       }

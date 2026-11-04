@@ -1700,3 +1700,56 @@ describe('TransferQueue', () => {
     });
   });
 });
+
+// Code review of the unpushed commits: the deferred clean-up for an open that answered after the wait ran out.
+describe('late open after a failed transfer', () => {
+  function slowOpenStream(touchedAfter: { value: boolean }, settle: Promise<void>) {
+    const stream = defineTargetTouched(
+      new Writable({
+        write(_c, _e, cb) {
+          cb(new Error('source failed'));
+        },
+      }),
+      () => touchedAfter.value
+    );
+    (stream as unknown as { targetSettled: () => Promise<void> }).targetSettled = () => settle;
+    return stream;
+  }
+
+  async function run(targetContent: string | undefined, resolveOpen: (t: { value: boolean }) => void) {
+    const memSource = new MemoryStorageProvider();
+    memSource.files.set('data.txt', Buffer.from('new content'));
+    const memTarget = new MemoryStorageProvider();
+    if (targetContent !== undefined) memTarget.files.set('data.txt', Buffer.from(targetContent));
+    const touched = { value: false };
+    let release!: () => void;
+    const settle = new Promise<void>((r) => { release = r; });
+    memTarget.createWriteStream = vi.fn().mockImplementation(async () => slowOpenStream(touched, settle));
+    const deleteSpy = vi.spyOn(memTarget, 'delete');
+    await expect(
+      transferFile({ sourceProvider: memSource, sourcePath: 'data.txt', targetProvider: memTarget, targetPath: 'data.txt', targetSettleTimeoutMs: 20 })
+    ).rejects.toThrow('source failed');
+    expect(deleteSpy).not.toHaveBeenCalled(); // nothing is deleted while the open is unanswered
+    resolveOpen(touched);
+    release();
+    await new Promise((r) => setTimeout(r, 30));
+    return { memTarget, deleteSpy };
+  }
+
+  it('removes the empty file the late open left behind', async () => {
+    const { memTarget, deleteSpy } = await run('', (t) => { t.value = true; });
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+    expect(memTarget.files.has('data.txt')).toBe(false);
+  });
+
+  it('leaves a file alone that a newer transfer has written since', async () => {
+    const { memTarget, deleteSpy } = await run('written by a newer transfer', (t) => { t.value = true; });
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(memTarget.files.get('data.txt')?.toString()).toBe('written by a newer transfer');
+  });
+
+  it('does nothing when the late open turns out not to have touched the target', async () => {
+    const { deleteSpy } = await run('original', () => {});
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
+});

@@ -26,6 +26,12 @@ export function isSamePathOnProvider(providerType: StorageType, sourcePath: stri
   return comparablePath(providerType, sourcePath) === comparablePath(providerType, targetPath);
 }
 
+/** The resolver `isSameFileOnProvider` needs for a provider: its own `resolvePath` when it has one (a base-path sandbox), else identity. */
+export function resolverFor(provider: unknown): (p: string) => string {
+  const resolvePath = (provider as { resolvePath?: (p: string) => string } | null | undefined)?.resolvePath;
+  return typeof resolvePath === 'function' ? (p) => resolvePath.call(provider, p) : (p) => p;
+}
+
 /**
  * Like `isSamePathOnProvider`, but for local files it also compares device and inode when the spelling differs. That
  * catches a differently-cased name on a case-insensitive filesystem (default on macOS), a symlink and a hard link to
@@ -42,9 +48,9 @@ export async function isSameFileOnProvider(
   if (providerType !== 'local') return false;
   try {
     const [a, b] = await Promise.all([fsp.stat(resolve(sourcePath), { bigint: true }), fsp.stat(resolve(targetPath), { bigint: true })]);
-    // Some filesystems (exFAT, FUSE, network mounts) report constant or truncated inodes, so equal ino and dev alone could block
-    // an ordinary copy. A real hard link or symlink also shares size and modification time, which costs nothing to require.
-    return a.ino !== 0n && a.ino === b.ino && a.dev === b.dev && a.size === b.size && a.mtimeNs === b.mtimeNs;
+    // Device and inode are authoritative: a hard link or symlink shares them whatever the file's size or mtime do meanwhile (a
+    // growing log file would differ between the two stats). On a filesystem that reports no real inodes (0) the check stays off.
+    return a.ino !== 0n && a.ino === b.ino && a.dev === b.dev;
   } catch {
     return false;
   }
