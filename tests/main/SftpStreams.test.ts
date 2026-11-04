@@ -51,6 +51,27 @@ describe('SftpWriteStream', () => {
     expect(stream.targetTouched).toBe(false);
   });
 
+  // Low finding (code review 2026-11-03): some servers only report a failed write (full disk, quota) when the
+  // handle is closed. Ignoring that error made an incomplete upload look successful.
+  it('fails the upload when the server reports an error on closing the file', async () => {
+    const protocol = makeProtocol();
+    protocol.close.mockRejectedValue(new Error('SSH_FX_FAILURE: quota exceeded'));
+
+    await expect(
+      pipeline(Readable.from([Buffer.from('abc')]), new SftpWriteStream(protocol as any, '/remote/a.txt'))
+    ).rejects.toThrow('quota exceeded');
+  });
+
+  it('still ignores a close error while tearing down a stream that already failed', async () => {
+    const protocol = makeProtocol();
+    protocol.write.mockRejectedValue(new Error('write failed'));
+    protocol.close.mockRejectedValue(new Error('close failed too'));
+
+    await expect(
+      pipeline(Readable.from([Buffer.from('abc')]), new SftpWriteStream(protocol as any, '/remote/a.txt'))
+    ).rejects.toThrow('write failed');
+  });
+
   it('propagates an open failure for a zero-byte stream', async () => {
     const protocol = makeProtocol();
     protocol.open.mockRejectedValue(new Error('permission denied'));

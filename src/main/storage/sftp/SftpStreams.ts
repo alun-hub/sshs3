@@ -177,14 +177,19 @@ export class SftpWriteStream extends Writable {
     })();
   }
 
-  private async closeHandle(): Promise<void> {
+  /**
+   * Closes the remote handle. When the stream finishes normally the error is reported: a server may only say that a
+   * write failed (full disk, quota) when the file is closed, and ignoring it would make an incomplete upload look
+   * successful. While tearing down a stream that already failed it is ignored, the original error matters.
+   */
+  private async closeHandle(reportError = false): Promise<void> {
     if (this.handle) {
       const h = this.handle;
       this.handle = null;
       try {
         await this.protocol.close(h);
-      } catch {
-        // Ignore close errors
+      } catch (err) {
+        if (reportError) throw err;
       }
     }
   }
@@ -199,7 +204,7 @@ export class SftpWriteStream extends Writable {
           });
           this.opened = true;
         }
-        await this.closeHandle();
+        await this.closeHandle(true);
         callback();
       } catch (err: any) {
         await this.closeHandle();
