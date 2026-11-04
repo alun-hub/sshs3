@@ -44,6 +44,14 @@ export const K8sLoginModal: React.FC<K8sLoginModalProps> = ({ open, onClose, onS
   const [saveProfile, setSaveProfile] = useState(true);
   const [profileName, setProfileName] = useState('');
 
+  // The bearer token (and the pasted `oc login` command, which contains it) must not stay in memory while the
+  // dialog is closed, after a sign-in or a cancel; it used to linger until the next time the dialog opened.
+  useEffect(() => {
+    if (open) return;
+    setToken('');
+    setPasteInput('');
+  }, [open]);
+
   // Each time the dialog opens it starts from the profile being signed in to, or from blank.
   useEffect(() => {
     if (!open) return;
