@@ -39,6 +39,7 @@ import {
   takeAttach,
   unregisterLiveSession,
 } from '../lib/liveSessions';
+import { isTerminalZoomShortcut } from '../lib/terminalZoomKey';
 
 export interface TerminalViewProps {
   /** Omit together with `local` to spawn a local shell instead of an SSH session. */
@@ -758,18 +759,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       ) {
         return false;
       }
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        (e.key === '+' ||
-          e.key === '=' ||
-          e.key === '-' ||
-          e.key === '0' ||
-          e.code === 'NumpadAdd' ||
-          e.code === 'NumpadSubtract' ||
-          e.code === 'Minus' ||
-          e.code === 'Equal' ||
-          e.code === 'Digit0')
-      ) {
+      if (isTerminalZoomShortcut(e)) {
         return false;
       }
       return true;
