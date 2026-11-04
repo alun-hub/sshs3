@@ -321,7 +321,7 @@ describe('IpcBridge — remote profile sync handlers', () => {
       await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_ENABLE, PW);
       await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SET_AUTO_SYNC, true);
 
-      const rotated: StorageConnectConfig = { ...TARGET, s3Config: { ...TARGET.s3Config!, accessKeyId: 'ROTATED', secretAccessKey: 'rotated' } };
+      const rotated: StorageConnectConfig = { ...TARGET, s3Config: { ...TARGET.s3Config!, accessKeyId: 'ROTATED', secretAccessKey: 'rotated' } }; // pragma: allowlist secret
       await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_SETUP, { target: rotated, remoteBasePath: 'test-bucket/' });
 
       expect(await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS)).toMatchObject({
