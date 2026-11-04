@@ -191,4 +191,53 @@ describe('SyncCryptoService', () => {
       expect(() => service.decrypt('topology', notABuffer)).toThrow(TRUNCATED);
     });
   });
+
+  // Low finding (code review 2026-11-03): scryptSync with N=2^17 blocks the main process for 1-4 s on every unlock.
+  describe('asynchronous key derivation', () => {
+    it('unlockAsync derives the same key as unlock', async () => {
+      const salt = generateSalt();
+      const sync = new SyncCryptoService(FAST_PARAMS);
+      sync.unlock('topology', 'pw', salt);
+      const encrypted = sync.encrypt('topology', 'secret payload');
+
+      await service.unlockAsync('topology', 'pw', salt);
+
+      expect(service.isUnlocked('topology')).toBe(true);
+      expect(service.getSalt('topology')?.equals(salt)).toBe(true);
+      expect(service.decrypt('topology', encrypted)).toBe('secret payload');
+    });
+
+    it('decryptAsync derives the key from the password and the blob salt, and caches it only after the tag verifies', async () => {
+      const salt = generateSalt();
+      const writer = new SyncCryptoService(FAST_PARAMS);
+      writer.unlock('credentials', 'right', salt);
+      const blob = writer.encrypt('credentials', '{"a":1}');
+
+      await expect(service.decryptAsync('credentials', blob, 'wrong')).rejects.toBeInstanceOf(SyncDecryptionError);
+      expect(service.isUnlocked('credentials')).toBe(false);
+
+      expect(await service.decryptAsync('credentials', blob, 'right')).toBe('{"a":1}');
+      expect(service.isUnlocked('credentials')).toBe(true);
+      expect(service.decrypt('credentials', blob)).toBe('{"a":1}'); // cached for the next file
+    });
+
+    it('decryptAsync without a password on a locked group throws like decrypt', async () => {
+      const writer = new SyncCryptoService(FAST_PARAMS);
+      writer.unlock('topology', 'pw', generateSalt());
+      await expect(service.decryptAsync('topology', writer.encrypt('topology', 'x'))).rejects.toBeInstanceOf(SyncLockedError);
+    });
+
+    it('does not block the event loop while it derives the key', async () => {
+      const heavy = new SyncCryptoService({ N: 1 << 16, r: 8, p: 1, maxmem: 256 * 1024 * 1024 });
+      let ticks = 0;
+      const timer = setInterval(() => ticks++, 5);
+      try {
+        await heavy.unlockAsync('topology', 'pw', generateSalt());
+      } finally {
+        clearInterval(timer);
+      }
+      // A synchronous derivation of this size would leave the timer without a single turn.
+      expect(ticks).toBeGreaterThanOrEqual(2);
+    });
+  });
 });

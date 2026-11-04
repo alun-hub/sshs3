@@ -1523,12 +1523,12 @@ export class IpcBridge {
     const provider = await this.getSyncProvider(config.target);
 
     if (config.topologySaltBase64 && config.credentialsSaltBase64) {
-      this.syncCryptoService.unlock(
+      await this.syncCryptoService.unlockAsync(
         'topology',
         passwords.topologyPassword,
         Buffer.from(config.topologySaltBase64, 'base64')
       );
-      this.syncCryptoService.unlock(
+      await this.syncCryptoService.unlockAsync(
         'credentials',
         passwords.credentialsPassword,
         Buffer.from(config.credentialsSaltBase64, 'base64')
@@ -1560,8 +1560,8 @@ export class IpcBridge {
       }
       const topologySalt = generateSalt();
       const credentialsSalt = generateSalt();
-      this.syncCryptoService.unlock('topology', passwords.topologyPassword, topologySalt);
-      this.syncCryptoService.unlock('credentials', passwords.credentialsPassword, credentialsSalt);
+      await this.syncCryptoService.unlockAsync('topology', passwords.topologyPassword, topologySalt);
+      await this.syncCryptoService.unlockAsync('credentials', passwords.credentialsPassword, credentialsSalt);
       await this.syncConfigStore.setSalts({ topologySalt, credentialsSalt });
       await this.profileSyncService.pushToRemote(provider, config.remoteBasePath ?? '');
     }
