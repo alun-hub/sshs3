@@ -206,6 +206,7 @@ Typing into the search bar instantly searches across **all** profiles in the act
 - **Sync Status Preview:** In Settings, the **Push** and **Pull** buttons display a live status preview (indicating whether there are unpushed local changes or remote updates waiting to be pulled) before initiating a sync.
 - **Conflict Resolution:** If remote changes occur while you have unpushed local modifications, sshs3 refuses to push over the newer remote revision (there is no merge and no force-push) and shows "A newer version is available — your unsynced changes here will be lost." with a **Get latest** button. **Get latest** discards your unsynced local changes and pulls the remote state; copy anything you want to keep first.
 - **Unpushed Changes Survive a Restart:** Edits you have not pushed are still remembered after you restart sshs3. A **Pull** then asks you to confirm **Pull anyway (discard local changes)** instead of silently replacing them. Push first to keep them.
+- **Format Upgrade:** The first time a member of an older team unlocks it with this version, the team file is upgraded automatically (format 2, which also protects the encrypted content against being swapped for an older copy). Nobody has to click anything and it does not count as a change. **Update sshs3 on every member's machine:** a team that has been upgraded cannot be synced by older versions, and a new member with an old version cannot join it.
 
 ---
 
