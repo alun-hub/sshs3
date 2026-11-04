@@ -468,6 +468,8 @@ export class FileEditorService {
         for (let attempt = 0; attempt < REATTACH_ATTEMPTS && !session.closed; attempt++) {
           try {
             await fsp.access(tempFilePath);
+            // The session may have been closed while we waited; attaching now would leak a watcher nobody closes.
+            if (session.closed) return;
             if (attach()) {
               uploader.trigger(); // the rename itself was a save
               return;

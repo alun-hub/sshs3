@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Readable, Writable, PassThrough } from 'node:stream';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -463,6 +464,33 @@ describe('FileEditorService', () => {
       await vi.waitFor(() => expect(state.uploads).toContain('plain save after the rename, longer'), { timeout: 4000 });
       await fast.closeExternalEditor(sessionToken);
       await fast.dispose();
+    });
+
+    // Code review of the unpushed commits: a close while the re-attach is waiting must not leave a new watcher behind.
+    it.skipIf(process.platform === 'win32')('does not attach a new file watch when the session is closed during a re-attach', async () => {
+      const fast = fastService();
+      remoteProvider();
+      const { localPath, sessionToken } = await fast.openInExternalEditor(storageRegistry, 'sftp-up', '/etc/e.ini', () => {});
+      await sleep(40);
+      const realAccess = fsp.access.bind(fsp);
+      const accessSpy = vi.spyOn(fsp, 'access').mockImplementation(async (...args: Parameters<typeof fsp.access>) => {
+        await sleep(150);
+        return realAccess(...args).catch(() => undefined); // resolves even though the temp dir is gone by now
+      });
+      const watchSpy = vi.spyOn(fs, 'watch');
+      try {
+        await fsp.writeFile(`${localPath}.new`, 'saved via rename');
+        await fsp.rename(`${localPath}.new`, localPath); // 'rename' event: the re-attach starts and waits in access()
+        await sleep(40);
+        await fast.closeExternalEditor(sessionToken);
+        watchSpy.mockClear();
+        await sleep(400);
+        expect(watchSpy).not.toHaveBeenCalled();
+      } finally {
+        accessSpy.mockRestore();
+        watchSpy.mockRestore();
+        await fast.dispose();
+      }
     });
 
     it('uploads a change that is still waiting out the debounce when the session is closed', async () => {
