@@ -22,6 +22,7 @@ import { createLogger } from '../log/Logger';
 import { normalizeK8sList, removeK8sProfile, toTeamK8sProfile, upsertK8sProfile } from './teamVaultK8s';
 import type { K8sProfile } from '../../shared/types/kubernetes';
 import { writeFileAtomic } from '../storage/atomicFile';
+import { WriteQueue } from '../storage/writeQueue';
 
 import {
   CURRENT_FORMAT_VERSION,
@@ -597,7 +598,7 @@ export class TeamVaultService {
   private readonly vaultsDir: string;
   private readonly identitiesBaseDir: string;
   private readonly states = new Map<string, VaultRuntimeState>();
-  private readonly writeQueues = new Map<string, Promise<void>>();
+  private readonly writeQueues = new Map<string, WriteQueue>();
   private readonly pinPrompter?: TeamVaultPinPrompter;
   private readonly configStore?: TeamVaultConfigReader;
   private readonly onFormatUpgraded?: (vaultId: string) => void;
@@ -2100,15 +2101,11 @@ export class TeamVaultService {
    * (never wait behind one another), while mutations against the SAME vault are still fully
    * serialized, same guarantee the single queue gave the single-vault version of this file. */
   private queueMutation<T>(vaultId: string, mutation: () => Promise<T>): Promise<T> {
-    const previous = this.writeQueues.get(vaultId) ?? Promise.resolve();
-    const resultPromise = previous.then(mutation, mutation);
-    this.writeQueues.set(
-      vaultId,
-      resultPromise.then(
-        () => {},
-        () => {}
-      )
-    );
-    return resultPromise;
+    let queue = this.writeQueues.get(vaultId);
+    if (!queue) {
+      queue = new WriteQueue();
+      this.writeQueues.set(vaultId, queue);
+    }
+    return queue.enqueue(mutation);
   }
 }

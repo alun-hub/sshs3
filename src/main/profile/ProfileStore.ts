@@ -8,6 +8,7 @@ import { withNormalizedTags } from '../../shared/tags';
 import { withNormalizedSystem } from '../../shared/system';
 import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
+import { WriteQueue } from '../storage/writeQueue';
 
 /** Fills in `name` for tunnels saved before it existed, so old profiles.json files still load. */
 function defaultTunnelName(tunnel: SSHTunnelConfig): string {
@@ -35,7 +36,7 @@ const S3_SECRET_FIELDS: Array<keyof S3Config> = ['secretAccessKey', 'sessionToke
 
 export class ProfileStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
 
   constructor(customPath?: string) {
     if (customPath) {
@@ -94,21 +95,12 @@ export class ProfileStore {
     }
   }
 
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
-  }
-
   public async saveSSH(config: SSHConnectionConfig): Promise<void> {
     if (!config || !config.id || typeof config.id !== 'string' || !config.id.trim()) {
       throw new Error('Profile ID is required');
     }
 
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
       const stamped: SSHConnectionConfig = {
         ...withNormalizedSystem(withNormalizedTags(config)),
@@ -127,7 +119,7 @@ export class ProfileStore {
 
   public async deleteSSH(id: string): Promise<void> {
     if (!id) return;
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
       const entry = profiles.ssh.find((p) => p.id === id && !p.deletedAt);
       if (entry) {
@@ -144,7 +136,7 @@ export class ProfileStore {
       throw new Error('Profile ID is required');
     }
 
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
       const stamped: S3Config = {
         ...withNormalizedTags(config),
@@ -163,7 +155,7 @@ export class ProfileStore {
 
   public async deleteS3(id: string): Promise<void> {
     if (!id) return;
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
       const entry = profiles.s3.find((p) => p.id === id && !p.deletedAt);
       if (entry) {
@@ -180,7 +172,7 @@ export class ProfileStore {
     if (!trimmed) {
       throw new Error('Folder name is required');
     }
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
       profiles.folders = profiles.folders || [];
       if (!profiles.folders.includes(trimmed)) {
@@ -192,7 +184,7 @@ export class ProfileStore {
 
   public async deleteFolder(name: string, deleteProfiles = false): Promise<void> {
     if (!name) return;
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
       profiles.folders = (profiles.folders || []).filter((f) => f !== name);
       const now = new Date().toISOString();
@@ -233,7 +225,7 @@ export class ProfileStore {
       throw new Error('New folder name is required');
     }
     if (oldName === trimmed) return;
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.getProfilesIncludingTombstones();
       profiles.folders = (profiles.folders || []).map((f) => (f === oldName ? trimmed : f));
       if (!profiles.folders.includes(trimmed)) {
@@ -263,7 +255,7 @@ export class ProfileStore {
    * merge decisions were based on.
    */
   public async replaceAll(data: ProfilesData): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       await this.persist(data);
     });
   }
@@ -275,7 +267,7 @@ export class ProfileStore {
    * stale snapshot. `compute` must be synchronous and must not call this store. Returns whether anything was written.
    */
   public async mergeAll(compute: (current: ProfilesData) => ProfilesData | null): Promise<boolean> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const next = compute(await this.getProfilesIncludingTombstones());
       if (!next) return false;
       await this.persist(next);
@@ -320,7 +312,7 @@ export class ProfileStore {
   public async countUndecryptableSecrets(): Promise<number> {
     // Inside the write queue: persist() rewrites the file in place, and a read that lands in the middle of a write sees
     // truncated JSON (readRawEntries would then copy it aside as ".corrupt").
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const entries = await this.readRawEntries();
       const lost = (value: unknown): boolean => isEncryptedSecret(value) && decryptSecretValue(value) === '';
       let count = 0;

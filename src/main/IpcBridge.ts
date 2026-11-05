@@ -365,7 +365,7 @@ export class IpcBridge {
       // eventually, but only once a pull actually succeeds — an upgrading install's already-
       // configured S3 target/credentials/lastSyncAt/selfIdentity would otherwise sit unreachable
       // under the pending sentinel in the meantime, invisible to `buildAllTeamVaultStatuses()`'s
-      // per-vaultId union). `queueMutation` inside the store serializes this against any other
+      // per-vaultId union). The store's write queue serializes this against any other
       // config write that happens to race it.
       this.teamVaultConfigStore.promotePendingConfig(migratedVaultId).catch((err) => {
         ipcLog.warn('Failed to promote the migrated Team Vault config to its real vaultId (non-fatal):', err);

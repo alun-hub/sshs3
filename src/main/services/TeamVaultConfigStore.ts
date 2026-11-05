@@ -8,6 +8,7 @@ import { TEAM_VAULT_PENDING_VAULT_ID } from '../../shared/types/teamVault';
 import { encryptSecretValue, decryptSecretValue, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 import { createLogger } from '../log/Logger';
 import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
+import { WriteQueue } from '../storage/writeQueue';
 
 const teamVaultConfigLog = createLogger('team-vault-config');
 
@@ -94,7 +95,7 @@ function isLegacyShape(data: unknown): data is TeamVaultConfigEntry {
  */
 export class TeamVaultConfigStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
 
   constructor(customPath?: string) {
     if (customPath) {
@@ -177,14 +178,14 @@ export class TeamVaultConfigStore {
   }
 
   public async setTarget(vaultId: string, target: StorageConnectConfig, remoteBasePath = ''): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig(vaultId);
       await this.persistEntry(vaultId, { ...current, target, remoteBasePath });
     });
   }
 
   public async setLastSyncAt(vaultId: string, timestamp: string): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig(vaultId);
       await this.persistEntry(vaultId, { ...current, lastSyncAt: timestamp });
     });
@@ -196,7 +197,7 @@ export class TeamVaultConfigStore {
     lastSyncedRevision?: number,
     remoteFormatVersion?: number
   ): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig(vaultId);
       await this.persistEntry(vaultId, {
         ...current,
@@ -211,7 +212,7 @@ export class TeamVaultConfigStore {
 
   /** Forgets the remembered remote state and synced revision, e.g. when the sync target changes. */
   public async clearSyncState(vaultId: string): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const {
         lastKnownRemoteEntry: _entry,
         lastSyncedRevision: _revision,
@@ -230,7 +231,7 @@ export class TeamVaultConfigStore {
     recipientId: string | undefined,
     identityFilePath: string | undefined
   ): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig(vaultId);
       await this.persistEntry(vaultId, {
         ...current,
@@ -244,7 +245,7 @@ export class TeamVaultConfigStore {
    * `setSelfIdentity(vaultId, undefined, undefined)`, which is a no-op by design (lets a caller
    * that only knows one field update just that one without clobbering the other). */
   public async clearSelfIdentity(vaultId: string): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig(vaultId);
       await this.persistEntry(vaultId, { ...current, selfRecipientId: undefined, selfIdentityFilePath: undefined });
     });
@@ -253,7 +254,7 @@ export class TeamVaultConfigStore {
   /** Clears one team's entry entirely — only local configuration, never the remote vault file
    * itself, and never any OTHER team's entry. */
   public async clear(vaultId: string): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const data = await this.readDecrypted();
       delete data.byVaultId[vaultId];
       await this.persistAll(data);
@@ -267,7 +268,7 @@ export class TeamVaultConfigStore {
    * first pull — but preferring the already-resolved entry over a stale pending one is the safer
    * default if it somehow does). */
   public async promotePendingConfig(vaultId: string): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const data = await this.readDecrypted();
       const pending = data.byVaultId[TEAM_VAULT_PENDING_VAULT_ID];
       if (!pending) return;
@@ -277,15 +278,6 @@ export class TeamVaultConfigStore {
       }
       await this.persistAll(data);
     });
-  }
-
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
   }
 
   private async persistEntry(vaultId: string, entry: TeamVaultConfigEntry): Promise<void> {

@@ -6,6 +6,7 @@ import { app } from 'electron';
 import type { DotfileImportedFile, DotfilePool } from '../../shared/types/dotfiles';
 import { defaultDotfileRemotePath } from '../../shared/dotfilePath';
 import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
+import { WriteQueue } from '../storage/writeQueue';
 
 function formatTimestamp(d = new Date()): string {
   const yyyy = d.getFullYear();
@@ -23,7 +24,7 @@ export class DotfilePoolStore {
   private filePath: string;
   private baseDir: string;
   private masterDir: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
 
   constructor(customPath?: string) {
     if (customPath) {
@@ -146,10 +147,10 @@ export class DotfilePoolStore {
       throw new Error('Pool ID is required');
     }
 
-    return this.queueMutation(() => this.savePoolUnqueued(pool, options));
+    return this.writes.enqueue(() => this.savePoolUnqueued(pool, options));
   }
 
-  /** The body of `savePool`; callers must already hold the write queue (see `queueMutation`). */
+  /** The body of `savePool`; callers must already hold the write queue (see `writes`). */
   private async savePoolUnqueued(pool: DotfilePool, options?: { preserveTimestamps?: boolean }): Promise<void> {
     const poolDir = this.getPoolDirectory(pool.id);
     if (pool.deletedAt) {
@@ -252,7 +253,7 @@ export class DotfilePoolStore {
     } catch {
       return;
     }
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const pools = await this.readRawPools();
       const pool = pools.find((p) => p.id === id && !p.deletedAt);
       if (pool) {
@@ -331,7 +332,7 @@ export class DotfilePoolStore {
     fileData: { remotePath: string; content: string; mode?: string; sourcePath?: string }
   ): Promise<DotfilePool> {
     // One queued read-modify-write; getPools() → savePool() outside the queue could interleave with another save.
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const pools = await this.getPools();
       let pool = pools.find((p) => p.id === poolId);
       if (!pool) {
@@ -362,15 +363,6 @@ export class DotfilePoolStore {
       await this.savePoolUnqueued(pool);
       return (await this.getPool(poolId))!;
     });
-  }
-
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
   }
 
   private async persist(pools: DotfilePool[]): Promise<void> {

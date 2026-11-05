@@ -9,11 +9,12 @@ import {
   SNIPPET_MAX_NAME_CHARS,
   type Snippet,
 } from '../../shared/types/snippets';
+import { WriteQueue } from '../storage/writeQueue';
 
 /** Saved terminal command snippets. Stored as plain JSON: snippets are commands, not secrets. */
 export class SnippetStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
   private cache: Snippet[] | null = null;
 
   constructor(customPath?: string) {
@@ -28,15 +29,6 @@ export class SnippetStore {
       }
       this.filePath = path.join(baseDir, 'snippets.json');
     }
-  }
-
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
   }
 
   private isSnippet(value: unknown): value is Snippet {
@@ -84,7 +76,7 @@ export class SnippetStore {
 
   /** All snippets, or with `hostKey` only the global ones plus those limited to that connection. */
   public async list(hostKey?: string): Promise<Snippet[]> {
-    await this.writeQueue;
+    await this.writes.idle();
     const snippets = await this.load();
     return snippets.filter((s) => hostKey === undefined || !s.hostKey || s.hostKey === hostKey);
   }
@@ -95,7 +87,7 @@ export class SnippetStore {
     if (!name || !input.command.trim() || input.command.length > SNIPPET_MAX_COMMAND_CHARS) {
       throw new Error('Invalid snippet');
     }
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const snippets = await this.load();
       const existing = input.id ? snippets.findIndex((s) => s.id === input.id) : -1;
       const snippet: Snippet = {
@@ -113,7 +105,7 @@ export class SnippetStore {
   }
 
   public async delete(id: string): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const next = (await this.load()).filter((s) => s.id !== id);
       await this.persist(next);
       this.cache = next;

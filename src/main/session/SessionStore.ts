@@ -12,6 +12,7 @@ import {
   type WindowKey,
 } from './windowSessions';
 import { writeFileAtomic } from '../storage/atomicFile';
+import { WriteQueue } from '../storage/writeQueue';
 
 export function sanitizeSessionData(data: SessionData): SessionData {
   if (!data || !Array.isArray(data.tabs)) {
@@ -39,7 +40,7 @@ function sanitizeTabs(tabs: SavedTab[]): SavedTab[] {
 
 export class SessionStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
   /** Keys of windows closed on purpose; a save still in flight from one must not bring it back. */
   private readonly forgottenWindows = new Set<string>();
 
@@ -78,7 +79,7 @@ export class SessionStore {
     if (!data) return;
     const cleanData = sanitizeSessionData(data);
 
-    return this.queueMutation(() => this.writeData(cleanData));
+    return this.writes.enqueue(() => this.writeData(cleanData));
   }
 
   /** The session as one window's renderer sees it (its own tabs, shared lastPaths/panes). */
@@ -91,14 +92,14 @@ export class SessionStore {
     if (!data || !Array.isArray(data.tabs)) return;
     if (key !== null && this.forgottenWindows.has(key)) return;
     const cleanData = sanitizeSessionData(data);
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       await this.writeData(mergeWindowSave(await this.getSession(), key, cleanData));
     });
   }
 
   public async saveWindowBounds(key: WindowKey, bounds: SavedWindowBounds, maximized: boolean): Promise<void> {
     if (key !== null && this.forgottenWindows.has(key)) return;
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       await this.writeData(mergeWindowBounds(await this.getSession(), key, bounds, maximized));
     });
   }
@@ -106,7 +107,7 @@ export class SessionStore {
   /** Drops a secondary window the user closed on purpose, so it is not reopened next start. */
   public async forgetWindow(key: string): Promise<void> {
     this.forgottenWindows.add(key);
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const next = removeWindow(await this.getSession(), key);
       if (next) await this.writeData(next);
     });
@@ -114,14 +115,5 @@ export class SessionStore {
 
   private async writeData(data: SessionData): Promise<void> {
     await writeFileAtomic(this.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
-  }
-
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
   }
 }

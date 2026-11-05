@@ -4,10 +4,11 @@ import os from 'node:os';
 import { app } from 'electron';
 import type { DirectorySyncProfile } from '../../shared/types/dirsync';
 import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
+import { WriteQueue } from '../storage/writeQueue';
 
 export class DirectorySyncProfileStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
 
   constructor(customPath?: string) {
     if (customPath) {
@@ -49,21 +50,12 @@ export class DirectorySyncProfileStore {
     }
   }
 
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
-  }
-
   public async save(profile: DirectorySyncProfile): Promise<DirectorySyncProfile> {
     if (!profile || !profile.id || typeof profile.id !== 'string' || !profile.id.trim()) {
       throw new Error('Profile ID is required');
     }
 
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.listIncludingTombstones();
       const now = new Date().toISOString();
       const index = profiles.findIndex((p) => p.id === profile.id);
@@ -85,7 +77,7 @@ export class DirectorySyncProfileStore {
 
   public async delete(id: string): Promise<void> {
     if (!id) return;
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.listIncludingTombstones();
       const index = profiles.findIndex((p) => p.id === id);
       if (index < 0 || profiles[index].deletedAt) return;
@@ -97,12 +89,12 @@ export class DirectorySyncProfileStore {
 
   /** Replaces the whole set (tombstones included) verbatim — used when remote sync applies a merge. */
   public async replaceAll(profiles: DirectorySyncProfile[]): Promise<void> {
-    return this.queueMutation(() => this.persist(profiles));
+    return this.writes.enqueue(() => this.persist(profiles));
   }
 
   /** Read, merge and write as one queued step (see `ProfileStore.mergeAll`); `compute` returns null to write nothing. */
   public async mergeAll(compute: (current: DirectorySyncProfile[]) => DirectorySyncProfile[] | null): Promise<boolean> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const next = compute(await this.listIncludingTombstones());
       if (!next) return false;
       await this.persist(next);
