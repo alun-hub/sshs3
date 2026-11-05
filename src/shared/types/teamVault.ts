@@ -184,7 +184,7 @@ export interface TeamVaultStatus {
   /** Non-secret target connection fields (region, endpoint, access key id, ...), for autofilling
    * the target editor form without re-typing them — the admin previously had to retype everything
    * from scratch every time, since nothing round-tripped them back. Redacted the same way a
-   * member's own shared S3 profile already is (`TeamVaultService.redactS3Secrets`):
+   * member's own shared S3 profile already is (`redactS3Secrets` in `teamVaultSecretGuards.ts`):
    * `secretAccessKey`/`sessionToken`/`proxy.password` are stripped and never sent to the renderer
    * at all — unlike `ProfileSyncStatus.targetConfig` (which does send those, for the general
    * Synchronization panel), a Team Vault's target secret is shared infrastructure for a whole

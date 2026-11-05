@@ -36,7 +36,8 @@ import { K8sLogManager } from './terminal/K8sLogManager';
 import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { syncTargetConnectionKey } from './services/syncTargetIdentity';
-import { TeamVaultService, redactS3Secrets } from './services/TeamVaultService';
+import { TeamVaultService } from './services/TeamVaultService';
+import { redactS3Secrets } from './services/teamVaultSecretGuards';
 import { TeamVaultConfigStore } from './services/TeamVaultConfigStore';
 import {
   migrateLegacyTeamVaultLayout,
