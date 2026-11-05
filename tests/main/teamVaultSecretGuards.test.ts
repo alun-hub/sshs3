@@ -27,7 +27,7 @@ const s3 = (overrides: Partial<S3Config> = {}): S3Config => ({
   name: 'backups',
   region: 'eu-north-1',
   accessKeyId: 'AKIAEXAMPLE',
-  secretAccessKey: 'real-secret',
+  secretAccessKey: 'real-secret', // pragma: allowlist secret
   ...overrides,
 });
 
@@ -206,7 +206,7 @@ describe('guardSshSecretWrite', () => {
   const stored = ssh({ password: 'stored-pw', passphrase: 'stored-pp', proxy: proxy({ password: 'stored-proxy-pw' }) });
 
   it.each<[string, Partial<SSHConnectionConfig>]>([
-    ['password', { password: 'attacker-pw' }],
+    ['password', { password: 'attacker-pw' }], // pragma: allowlist secret
     ['passphrase', { passphrase: 'attacker-pp' }],
     ['proxy password', { proxy: proxy({ password: 'attacker-proxy-pw' }) }],
   ])('rejects a changed %s', (_label, change) => {
@@ -242,7 +242,7 @@ describe('guardSshSecretWrite', () => {
   });
 
   it('rejects a member creating a profile with a secret of their own', () => {
-    expect(() => guardSshSecretWrite(ssh({ password: 'mine' }), undefined)).toThrow(ADMIN_ONLY_SSH);
+    expect(() => guardSshSecretWrite(ssh({ password: 'mine' }), undefined)).toThrow(ADMIN_ONLY_SSH); // pragma: allowlist secret
   });
 
   it('accepts a new secret-less profile and leaves the secret fields empty', () => {
@@ -256,7 +256,7 @@ describe('guardS3SecretWrite', () => {
   const stored = s3({ endpoint: 'https://s3.example.com', sessionToken: 'stored-token', proxy: proxy({ password: 'stored-proxy-pw' }) });
 
   it.each<[string, Partial<S3Config>]>([
-    ['secret key', { secretAccessKey: 'attacker-key' }],
+    ['secret key', { secretAccessKey: 'attacker-key' }], // pragma: allowlist secret
     ['session token', { sessionToken: 'attacker-token' }],
     ['proxy password', { proxy: proxy({ password: 'attacker-proxy-pw' }) }],
   ])('rejects a changed %s', (_label, change) => {
@@ -289,6 +289,6 @@ describe('guardS3SecretWrite', () => {
   });
 
   it('rejects a member creating a profile with a secret of their own', () => {
-    expect(() => guardS3SecretWrite(s3({ secretAccessKey: 'mine' }), undefined)).toThrow(ADMIN_ONLY_S3);
+    expect(() => guardS3SecretWrite(s3({ secretAccessKey: 'mine' }), undefined)).toThrow(ADMIN_ONLY_S3); // pragma: allowlist secret
   });
 });
