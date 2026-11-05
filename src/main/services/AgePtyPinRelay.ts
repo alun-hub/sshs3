@@ -303,7 +303,7 @@ export function releaseFifoReader(fifoPath: string): void {
 // After `age` has exited successfully, its output is already in the FIFO. If the reader still has nothing after this
 // long, `age` did not deliver it (seen once in a while on a heavily loaded machine: `age` exits 0 but the reader's open()
 // never completes) and waiting longer only freezes the unlock.
-export const CHANNEL_GRACE_MS = 5000;
+const CHANNEL_GRACE_MS = 5000;
 
 /**
  * `channel.read()`, but bounded: rejects with a clear error instead of waiting forever when `age` finished without

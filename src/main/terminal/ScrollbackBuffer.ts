@@ -1,5 +1,5 @@
 /** Default cap per session, in UTF-16 code units (about 1 MB of ASCII output). */
-export const DEFAULT_SCROLLBACK_LIMIT = 1_000_000;
+const DEFAULT_SCROLLBACK_LIMIT = 1_000_000;
 
 /**
  * Keeps the most recent output of each terminal session in the main process, so a terminal that is
