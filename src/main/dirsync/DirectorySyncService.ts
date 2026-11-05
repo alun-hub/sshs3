@@ -289,9 +289,3 @@ export async function apply(
 
   return result;
 }
-
-export class DirectorySyncService {
-  buildTree = buildTree;
-  computeDiff = computeDiff;
-  apply = apply;
-}

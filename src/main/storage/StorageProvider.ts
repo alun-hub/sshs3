@@ -101,7 +101,6 @@ export abstract class BaseStorageProvider implements IStorageProvider {
   abstract disconnect?(): Promise<void>;
 }
 
-export { BaseStorageProvider as StorageProvider };
 export type {
   FileEntry,
   IStorageProvider,

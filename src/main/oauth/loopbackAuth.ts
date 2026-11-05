@@ -55,7 +55,7 @@ export function generateState(): string {
   return base64Url(crypto.randomBytes(32));
 }
 
-export function statesEqual(actual: string | null, expected: string): boolean {
+function statesEqual(actual: string | null, expected: string): boolean {
   if (actual === null) return false;
   const a = Buffer.from(actual);
   const b = Buffer.from(expected);
