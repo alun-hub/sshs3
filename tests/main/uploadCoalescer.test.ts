@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createUploadCoalescer } from '../../src/main/editor/uploadCoalescer';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -17,27 +17,40 @@ describe('createUploadCoalescer', () => {
   });
 
   it('never runs two uploads at once, and folds changes made during one into a single follow-up', async () => {
+    // Driven by hand instead of by sleeps: timer granularity differs per platform (about 15 ms on Windows).
     let running = 0;
     let maxRunning = 0;
     let uploads = 0;
-    const c = createUploadCoalescer(async () => {
-      uploads++;
-      running++;
-      maxRunning = Math.max(maxRunning, running);
-      await sleep(60);
-      running--;
-    }, 10);
+    const releases: Array<() => void> = [];
+    const c = createUploadCoalescer(
+      () =>
+        new Promise<void>((resolve) => {
+          uploads++;
+          running++;
+          maxRunning = Math.max(maxRunning, running);
+          releases.push(() => {
+            running--;
+            resolve();
+          });
+        }),
+      10
+    );
 
     c.trigger();
-    await sleep(30); // the first upload is now running
-    c.trigger();
-    await sleep(30);
+    await vi.waitFor(() => expect(uploads).toBe(1)); // the first upload is now running and stays running
     c.trigger();
     c.trigger();
+    c.trigger();
+    await sleep(60); // all three have long passed the debounce; none of them may start a second upload
+    expect(uploads).toBe(1);
+
+    releases[0]();
+    await vi.waitFor(() => expect(uploads).toBe(2)); // one follow-up for everything that changed meanwhile
+    releases[1]();
     await c.flush();
 
     expect(maxRunning).toBe(1);
-    expect(uploads).toBe(2); // the first, and one follow-up for everything that changed meanwhile
+    expect(uploads).toBe(2);
     c.dispose();
   });
 
