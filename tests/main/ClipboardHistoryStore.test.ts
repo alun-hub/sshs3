@@ -39,6 +39,13 @@ describe('ClipboardHistoryStore', () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
+  it('list() waits for an add that is still in flight', async () => {
+    const pending = store.add('late', 'h1', 'Host 1');
+    const listed = await store.list();
+    expect(listed.map((e) => e.text)).toEqual(['late']);
+    await pending;
+  });
+
   it('lists newest first and moves duplicates to the top', async () => {
     await store.add('one', 'h1', 'Host 1');
     await store.add('two', 'h1', 'Host 1');

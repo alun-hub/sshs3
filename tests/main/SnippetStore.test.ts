@@ -31,6 +31,13 @@ describe('SnippetStore', () => {
     expect(await new SnippetStore(file).list()).toEqual([saved]);
   });
 
+  it('list() waits for a save that is still in flight', async () => {
+    const pending = store.save({ name: 'late', command: 'uptime' });
+    const listed = await store.list();
+    expect(listed.map((s) => s.name)).toEqual(['late']);
+    await pending;
+  });
+
   it('updates in place when the id exists', async () => {
     const a = await store.save({ name: 'a', command: 'one' });
     await store.save({ id: a.id, name: 'a2', command: 'two' });

@@ -6,6 +6,7 @@ import type { StorageConnectConfig } from '../../shared/types/ipc';
 import type { SFTPConfig, S3Config } from '../../shared/types/storage';
 import { encryptSecretValue, decryptSecretValue, isEncryptedSecret, transformEntrySecrets } from '../crypto/SecretFieldCrypto';
 import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
+import { WriteQueue } from '../storage/writeQueue';
 
 const SFTP_SECRET_FIELDS: Array<keyof SFTPConfig> = ['password', 'passphrase'];
 const S3_SECRET_FIELDS: Array<keyof S3Config> = ['secretAccessKey', 'sessionToken'];
@@ -116,7 +117,7 @@ function keepUndecryptableTargetSecrets(
  */
 export class SyncConfigStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
 
   constructor(customPath?: string) {
     if (customPath) {
@@ -151,7 +152,7 @@ export class SyncConfigStore {
   }
 
   public async setTarget(target: StorageConnectConfig, remoteBasePath = ''): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig();
       await this.persist({ ...current, target, remoteBasePath });
     });
@@ -163,7 +164,7 @@ export class SyncConfigStore {
    * unlock then has to go through a pull (or start a brand-new set), never reuse the old key.
    */
   public async replaceTarget(target: StorageConnectConfig, remoteBasePath = ''): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig();
       await this.persist({
         ...current,
@@ -184,7 +185,7 @@ export class SyncConfigStore {
    * learned, key group.
    */
   public async setSalts(salts: { topologySalt?: Buffer; credentialsSalt?: Buffer }): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig();
       await this.persist({
         ...current,
@@ -197,14 +198,14 @@ export class SyncConfigStore {
   }
 
   public async setLastSyncAt(timestamp: string): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig();
       await this.persist({ ...current, lastSyncAt: timestamp });
     });
   }
 
   public async setAutoSync(enabled: boolean): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig();
       await this.persist({ ...current, autoSync: enabled });
     });
@@ -213,7 +214,7 @@ export class SyncConfigStore {
   public async setSmartcardSync(
     smartcardSync?: SyncConfigData['smartcardSync']
   ): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.getConfig();
       await this.persist({ ...current, smartcardSync });
     });
@@ -226,18 +227,9 @@ export class SyncConfigStore {
    * themselves (see ProfileSyncService.wipeRemote for that).
    */
   public async clear(): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       await this.persist({});
     });
-  }
-
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
   }
 
   /** The stored file exactly as written (secrets still encrypted); an unparsable file is copied aside first. */

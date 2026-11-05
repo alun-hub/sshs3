@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS, type AppSettings } from '../../shared/types/settings'
 import { EMPTY_POLICY, type PolicyDocument } from '../../shared/types/policy';
 import { applyPolicy, stripLockedKeys } from '../policy/policyApply';
 import { backupCorruptFile, writeFileAtomic } from '../storage/atomicFile';
+import { WriteQueue } from '../storage/writeQueue';
 
 /**
  * The settings UI saves the whole shortcut map, defaults included, so a binding that was still the
@@ -32,7 +33,7 @@ export function migrateShortcuts<T extends { shortcuts?: Record<string, string> 
 
 export class SettingsStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
 
   /**
    * @param policy Machine policy (see src/main/policy). Its values override the user's and are locked:
@@ -128,7 +129,7 @@ export class SettingsStore {
     partial: Partial<AppSettings>,
     options?: { preserveTimestamp?: boolean }
   ): Promise<AppSettings> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.readStored();
       const changes = options?.preserveTimestamp ? partial : stripLockedKeys(partial, this.policy);
       const updated: AppSettings = {
@@ -143,15 +144,14 @@ export class SettingsStore {
   /**
    * Atomically flips one team's entry in `connectionManagerVisibleTeamVaults` — unlike a
    * renderer doing its own `settingsGet()` -> mutate the map -> `settingsSave()` round trip, the
-   * read-modify-write here happens entirely inside this store's own `queueMutation` lock, so two
+   * read-modify-write here happens entirely inside this store's own write queue, so two
    * calls for two different vaultIds (e.g. two Team Vault detail panels toggled in quick
    * succession) can never race on a stale snapshot and have one overwrite the other's change —
    * `saveSettings`'s top-level merge replaces this nested map wholesale from whatever the caller
-   * last read, which is exactly the gap this closes. Per CLAUDE.md: "Alla stores använder
-   * `queueMutation` för sekventiella skrivningar."
+   * last read, which is exactly the gap this closes.
    */
   public async setTeamVaultTabVisible(vaultId: string, visible: boolean): Promise<AppSettings> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const current = await this.readStored();
       const updated: AppSettings = {
         ...current,
@@ -166,18 +166,9 @@ export class SettingsStore {
   }
 
   /** Shared disk-write tail for `saveSettings`/`setTeamVaultTabVisible` — both already compute
-   * `updated` under this store's `queueMutation` lock; this only persists it. */
+   * `updated` under this store's write queue; this only persists it. */
   private async persist(updated: AppSettings): Promise<AppSettings> {
     await writeFileAtomic(this.filePath, JSON.stringify(updated, null, 2), { mode: 0o600 });
     return updated;
-  }
-
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
   }
 }

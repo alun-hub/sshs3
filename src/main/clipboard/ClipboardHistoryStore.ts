@@ -9,6 +9,7 @@ import {
   type ClipboardHistoryEntry,
 } from '../../shared/types/clipboard';
 import { decryptSecretValue, encryptSecretValue, isEncryptionAvailable } from '../crypto/SecretFieldCrypto';
+import { WriteQueue } from '../storage/writeQueue';
 
 const ENCRYPTED_PREFIX = 'enc:v1:';
 
@@ -20,7 +21,7 @@ const ENCRYPTED_PREFIX = 'enc:v1:';
  */
 export class ClipboardHistoryStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
   private cache: ClipboardHistoryEntry[] | null = null;
   private loading: Promise<ClipboardHistoryEntry[]> | null = null;
 
@@ -36,15 +37,6 @@ export class ClipboardHistoryStore {
       }
       this.filePath = path.join(baseDir, 'clipboard-history.json');
     }
-  }
-
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
   }
 
   private isEntry(value: unknown): value is ClipboardHistoryEntry {
@@ -106,14 +98,14 @@ export class ClipboardHistoryStore {
 
   /** Newest first. With `hostKey`, only entries copied on that host. */
   public async list(hostKey?: string): Promise<ClipboardHistoryEntry[]> {
-    await this.writeQueue;
+    await this.writes.idle();
     const entries = await this.load();
     return hostKey !== undefined ? entries.filter((e) => e.hostKey === hostKey) : [...entries];
   }
 
   public async add(text: string, hostKey: string, hostLabel: string): Promise<void> {
     if (!text || text.length > CLIPBOARD_HISTORY_MAX_ENTRY_CHARS) return;
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const entries = (await this.load()).filter((e) => !(e.text === text && e.hostKey === hostKey));
       entries.unshift({
         id: crypto.randomUUID(),
@@ -128,14 +120,14 @@ export class ClipboardHistoryStore {
   }
 
   public async delete(id: string): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       this.cache = (await this.load()).filter((e) => e.id !== id);
       await this.persist(this.cache);
     });
   }
 
   public async clear(): Promise<void> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       this.cache = [];
       await this.persist(this.cache);
     });

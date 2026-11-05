@@ -5,6 +5,7 @@ import os from 'node:os';
 import { app } from 'electron';
 import { parseK8sProfile, parseStoredK8sProfile } from '../ipc/ipcHelpers';
 import type { K8sProfile } from '../../shared/types/kubernetes';
+import { WriteQueue } from '../storage/writeQueue';
 
 /**
  * Saved clusters, kept apart from profiles.json (whose store only knows SSH and S3). A profile carries
@@ -13,7 +14,7 @@ import type { K8sProfile } from '../../shared/types/kubernetes';
  */
 export class K8sProfileStore {
   private filePath: string;
-  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly writes = new WriteQueue();
 
   constructor(customPath?: string) {
     if (customPath) {
@@ -60,19 +61,10 @@ export class K8sProfileStore {
     }
   }
 
-  private queueMutation<T>(mutation: () => Promise<T>): Promise<T> {
-    const resultPromise = this.writeQueue.then(mutation, mutation);
-    this.writeQueue = resultPromise.then(
-      () => {},
-      () => {}
-    );
-    return resultPromise;
-  }
-
   public async save(profile: K8sProfile): Promise<K8sProfile> {
     // parseK8sProfile drops deletedAt, so saving also revives a deleted profile.
     const validated = parseK8sProfile(profile);
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.listIncludingTombstones();
       const stamped: K8sProfile = { ...validated, updatedAt: new Date().toISOString() };
       const index = profiles.findIndex((p) => p.id === stamped.id);
@@ -85,7 +77,7 @@ export class K8sProfileStore {
 
   public async delete(id: string): Promise<void> {
     if (typeof id !== 'string' || !id) return;
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const profiles = await this.listIncludingTombstones();
       const index = profiles.findIndex((p) => p.id === id);
       if (index < 0 || profiles[index].deletedAt) return;
@@ -97,12 +89,12 @@ export class K8sProfileStore {
 
   /** Replaces the whole set (tombstones included) verbatim — used when remote sync applies a merge. */
   public async replaceAll(profiles: K8sProfile[]): Promise<void> {
-    return this.queueMutation(() => this.persist(profiles));
+    return this.writes.enqueue(() => this.persist(profiles));
   }
 
   /** Read, merge and write as one queued step (see `ProfileStore.mergeAll`); `compute` returns null to write nothing. */
   public async mergeAll(compute: (current: K8sProfile[]) => K8sProfile[] | null): Promise<boolean> {
-    return this.queueMutation(async () => {
+    return this.writes.enqueue(async () => {
       const next = compute(await this.listIncludingTombstones());
       if (!next) return false;
       await this.persist(next);
