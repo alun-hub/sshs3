@@ -65,6 +65,7 @@ vi.mock('../../src/main/ssh/KeyInstallService', () => ({
 
 import { installPublicKeys, probeHost, testLogin } from '../../src/main/ssh/KeyInstallService';
 import { IpcBridge } from '../../src/main/IpcBridge';
+import { XServerManager } from '../../src/main/x11/XServerManager';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';
 import { api as preloadApi, exposePreloadApi } from '../../src/preload/index';
 import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
@@ -2587,24 +2588,43 @@ describe('IpcBridge', () => {
       expect(bridge.fileEditorService.closeExternalEditor).toHaveBeenCalledWith('tok-1');
     });
 
-    // These two do real filesystem probing (`where pwsh.exe`/`where vcxsrv.exe`
-    // style execFile lookups) and a real TCP connect attempt to 127.0.0.1,
-    // rather than anything mocked — slow/loaded CI runners (observed on
-    // Windows) can occasionally exceed vitest's default 5000ms test timeout,
-    // so give them more headroom than a pure-mock test needs.
-    it('checks X11 server reachability via APP_CHECK_X11_SERVER', async () => {
-      const res = await mockIpc.invoke(IPC_CHANNELS.APP_CHECK_X11_SERVER, '127.0.0.1:0.0');
-      expect(res).toHaveProperty('running');
-      expect(res).toHaveProperty('display', '127.0.0.1:0.0');
-    }, 15000);
+    // XServerManager is mocked here: its real methods look for an X server binary on disk
+    // (`where vcxsrv.exe` style lookups) and open a TCP connection to 127.0.0.1, which made these
+    // tests depend on the machine they ran on and time out on loaded Windows CI runners. What the
+    // IPC layer owns is the delegation (channel -> XServerManager call, arguments passed through,
+    // result returned); XServerManager's own behaviour is covered by XServerManager.test.ts.
+    describe('X11 channels', () => {
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
 
-    it('handles X11 server lifecycle channels (status, start, stop)', async () => {
-      const statusRes = await mockIpc.invoke(IPC_CHANNELS.X11_GET_STATUS, undefined, '127.0.0.1:0.0');
-      expect(statusRes).toHaveProperty('available');
-      expect(statusRes).toHaveProperty('running');
+      it('checks X11 server reachability via APP_CHECK_X11_SERVER', async () => {
+        const listening = vi
+          .spyOn(XServerManager, 'isListening')
+          .mockResolvedValue({ running: true, display: '127.0.0.1:0.0' });
 
-      const stopRes = await mockIpc.invoke(IPC_CHANNELS.X11_STOP_SERVER);
-      expect(stopRes).toEqual({ success: true });
-    }, 15000);
+        const res = await mockIpc.invoke(IPC_CHANNELS.APP_CHECK_X11_SERVER, '127.0.0.1:0.0');
+
+        expect(listening).toHaveBeenCalledWith('127.0.0.1:0.0');
+        expect(res).toEqual({ running: true, display: '127.0.0.1:0.0' });
+      });
+
+      it('handles X11 server lifecycle channels (status, start, stop)', async () => {
+        const status = { available: true, running: false, managedByApp: false, display: '127.0.0.1:0.0', platform: 'win32' };
+        const getStatus = vi.spyOn(XServerManager, 'getStatus').mockResolvedValue(status as never);
+        const startServer = vi.spyOn(XServerManager, 'startServer').mockResolvedValue({ success: true });
+        const stopServer = vi.spyOn(XServerManager, 'stopServer').mockResolvedValue({ success: true });
+
+        expect(await mockIpc.invoke(IPC_CHANNELS.X11_GET_STATUS, undefined, '127.0.0.1:0.0')).toEqual(status);
+        expect(getStatus).toHaveBeenCalledWith(undefined, '127.0.0.1:0.0');
+
+        const options = { customPath: 'C:\\x\\vcxsrv.exe', customArgs: '-multiwindow', display: '127.0.0.1:0.0' };
+        expect(await mockIpc.invoke(IPC_CHANNELS.X11_START_SERVER, options)).toEqual({ success: true });
+        expect(startServer).toHaveBeenCalledWith(options);
+
+        expect(await mockIpc.invoke(IPC_CHANNELS.X11_STOP_SERVER)).toEqual({ success: true });
+        expect(stopServer).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 });
