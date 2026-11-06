@@ -83,7 +83,7 @@ describe('SettingsStore', () => {
       // Two "concurrent" toggles for two different teams, fired without awaiting either first —
       // a plain settingsGet() -> mutate -> settingsSave() renderer round trip would have both
       // read the same pre-toggle snapshot and the second save to land would silently drop the
-      // first toggle's change. This method's own internal queueMutation must serialize the two
+      // first toggle's change. This method's own write queue must serialize the two
       // read-modify-writes instead.
       await Promise.all([store.setTeamVaultTabVisible('vlt_a', false), store.setTeamVaultTabVisible('vlt_b', true)]);
 
