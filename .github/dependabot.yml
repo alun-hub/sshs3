@@ -22,6 +22,12 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # Electron 46 removes the synchronous safeStorage methods (isEncryptionAvailable, encryptString,
+      # decryptString) that src/main/crypto/SecretFieldCrypto.ts uses. Until that code is migrated to the
+      # async API, a green 46 bump would silently store new secrets as plaintext and read old ones as empty.
+      # Remove this entry once SecretFieldCrypto uses safeStorage.encryptStringAsync/decryptStringAsync.
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
