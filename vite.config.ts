@@ -122,6 +122,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./tests/helpers/jsdomCanvas.ts'],
     passWithNoTests: true,
     coverage: {
       provider: 'v8',
