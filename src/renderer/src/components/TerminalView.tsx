@@ -8,6 +8,12 @@ import type { SSHConnectionConfig, SSHPtyExitEvent, LocalShellType } from '@shar
 import type { SessionExitAction, AppSettings } from '@shared/types/settings';
 import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 import { registerTerminalLinks } from '../lib/terminalLinks';
+import {
+  SCROLLBAR_THEME_BREEZE,
+  SCROLLBAR_THEME_DARK,
+  SCROLLBAR_THEME_LIGHT,
+  TERMINAL_SCROLLBAR_OPTIONS,
+} from '../lib/terminalScrollbar';
 import { useTerminalPathHover } from '../lib/useTerminalPathHover';
 import { CommandOutputTracker, isAtEmptyPrompt } from '../lib/terminalOutput';
 import { useSudoRetry } from '../lib/useSudoRetry';
@@ -96,7 +102,9 @@ export interface TerminalViewProps {
 // and as a fill behind black text (htop bars, vim/tmux status lines, diff highlights). They are light
 // greys here: black text on them is 12-14:1, and when they are used as text xterm simply darkens them.
 const XTERM_LIGHT_THEME = {
+  ...SCROLLBAR_THEME_LIGHT,
   background: '#f8fafc', // Soft slate-50 instead of harsh #ffffff
+  overviewRulerBorder: '#f8fafc', // = background: hides xterm's 1px line left of the scrollbar
   foreground: '#0f172a', // slate-900
   cursor: '#075985', // Sky-800
   cursorAccent: '#f8fafc',
@@ -120,7 +128,9 @@ const XTERM_LIGHT_THEME = {
 };
 
 const XTERM_DARK_THEME = {
+  ...SCROLLBAR_THEME_DARK,
   background: '#0f172a', // slate-900
+  overviewRulerBorder: '#0f172a', // = background: hides xterm's 1px line left of the scrollbar
   foreground: '#f8fafc', // slate-50
   cursor: '#38bdf8', // sky-400
   cursorAccent: '#0f172a',
@@ -144,7 +154,9 @@ const XTERM_DARK_THEME = {
 };
 
 const XTERM_BREEZE_THEME = {
+  ...SCROLLBAR_THEME_BREEZE,
   background: '#232627',
+  overviewRulerBorder: '#232627', // = background: hides xterm's 1px line left of the scrollbar
   foreground: '#fcfcfc',
   cursor: '#3daee9',
   cursorAccent: '#232627',
@@ -523,6 +535,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       minimumContrastRatio: minContrastFor(currentTheme),
       scrollback: scrollbackRef.current ?? 5000,
       allowProposedApi: true,
+      overviewRuler: TERMINAL_SCROLLBAR_OPTIONS,
       linkHandler: {
         activate: (_event, text) => {
           void window.multissh?.openExternal(text);
