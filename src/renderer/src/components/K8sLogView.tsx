@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { registerTerminalLinks } from '../lib/terminalLinks';
+import { SCROLLBAR_THEME_DARK, TERMINAL_SCROLLBAR_OPTIONS } from '../lib/terminalScrollbar';
 import { formatDateTime } from '../lib/dateFormat';
 import { K8sPodMetrics } from './K8s/K8sPodMetrics';
 import { K8sLogHeader } from './K8s/K8sLogHeader';
@@ -441,7 +442,8 @@ export const K8sLogView: React.FC<K8sLogViewProps> = ({
       scrollback: 10000,
       fontSize,
       fontFamily,
-      theme: { background: '#0f172a', foreground: '#f8fafc' },
+      theme: { ...SCROLLBAR_THEME_DARK, background: '#0f172a', foreground: '#f8fafc', overviewRulerBorder: '#0f172a' },
+      overviewRuler: TERMINAL_SCROLLBAR_OPTIONS,
       linkHandler: {
         activate: (_event, text) => {
           void window.multissh?.openExternal(text);

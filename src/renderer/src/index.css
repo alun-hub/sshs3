@@ -532,6 +532,12 @@ html:not(.light) .disabled\:opacity-40:disabled {
   background: var(--text-muted);
 }
 
+/* xterm 6 draws its own scrollbar; width and colours come from lib/terminalScrollbar.ts, which
+   cannot set the corner radius, so match the rounded thumb above here. */
+.xterm .xterm-scrollable-element > .scrollbar > .slider {
+  border-radius: 3px;
+}
+
 /* Hide scrollbars on horizontally scrolling chrome (tabs, breadcrumbs) */
 .no-scrollbar {
   scrollbar-width: none;
