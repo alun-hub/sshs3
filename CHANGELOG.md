@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.6] - 2026-11-06
+
+The terminal engine (xterm) is updated to version 6, together with Electron 45.2 and the usual library updates.
+
+### Changed
+- **Terminal:** xterm 5.5 → 6.0. Colours, wide and accented characters, scrolling, selection, split panes and search work as before, and the terminal scrollbar keeps the same slim (6 px), rounded look and theme colours in the dark, light and Breeze themes. The Kubernetes log view gets the same scrollbar.
+- **Electron** 45.0 → 45.2.1.
+- **Libraries:** AWS SDK (S3 and SSO) 3.1159 → 3.1161, the Kubernetes client 2.0.1 → 2.0.2, and the UI libraries lucide-react and TanStack Virtual.
+- Under the hood, with no change in behaviour: the ten settings and profile stores share one write queue instead of ten copies, the Team Vault rules for what a non-admin may see or change moved into their own module with direct tests, and a few unused exports were removed.
+
 ## [0.97.5] - 2026-11-05
 
 Team Vault payloads are now protected against being swapped for an older copy, and a large set of fixes from a code review: transfers, file sync, jump hosts and smartcards.
