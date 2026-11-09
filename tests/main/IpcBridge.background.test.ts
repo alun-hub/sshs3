@@ -346,7 +346,7 @@ describe('IpcBridge status builders', () => {
       const { bridge, teamVaultService, teamVaultConfigStore } = makeBridge();
       teamVaultService.getStatus.mockResolvedValue({ exists: false });
       teamVaultConfigStore.getConfig.mockResolvedValue({
-        target: { id: 't', name: 'n', type: 's3', s3Config: { id: 't', name: 'n', region: 'eu', accessKeyId: 'AKIA', secretAccessKey: 'top-secret' } },
+        target: { id: 't', name: 'n', type: 's3', s3Config: { id: 't', name: 'n', region: 'eu', accessKeyId: 'AKIA', secretAccessKey: 'top-secret' } }, // pragma: allowlist secret
         remoteBasePath: 'tv/base',
         lastSyncAt: '2026-11-09T10:00:00.000Z',
       });
@@ -367,7 +367,7 @@ describe('IpcBridge status builders', () => {
           id: 't',
           name: 'n',
           type: 's3',
-          s3Config: { id: 't', name: 'n', region: 'eu', accessKeyId: 'AKIA', secretAccessKey: 'top-secret', sessionToken: 'tok' },
+          s3Config: { id: 't', name: 'n', region: 'eu', accessKeyId: 'AKIA', secretAccessKey: 'top-secret', sessionToken: 'tok' }, // pragma: allowlist secret
         },
       });
 
