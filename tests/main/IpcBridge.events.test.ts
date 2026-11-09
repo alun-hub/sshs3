@@ -15,8 +15,13 @@ vi.mock('electron', () => {
   return { ...mockObj, default: mockObj };
 });
 
+// handleHostKeyChanged probes the host over the network; what matters here is what the bridge hands it.
+const hostKeyChanged = vi.hoisted(() => ({ handleHostKeyChanged: vi.fn() }));
+vi.mock('../../src/main/ssh/hostKeyChanged', () => hostKeyChanged);
+
 import { IpcBridge } from '../../src/main/IpcBridge';
 import { IPC_CHANNELS } from '../../src/shared/types/ipc';
+import { captureLogs } from './helpers/captureLogs';
 
 // Characterization: how IpcBridge forwards manager events to the renderer, which window gets what, and
 // how it exposes the update service and the multi-window helpers. Public methods and injected fakes only.
@@ -40,10 +45,11 @@ function makeBridge(extra: Record<string, unknown> = {}) {
   const k8sPortForward = Object.assign(new EventEmitter(), { stopAll: vi.fn().mockResolvedValue(undefined), setDiscoveryService: vi.fn() });
   const sshTunnel = Object.assign(new EventEmitter(), { stopAll: vi.fn().mockResolvedValue(undefined), listActive: () => [] });
   let configChanged: (() => void) | undefined;
+  const unsubscribeConfig = vi.fn();
   const k8sDiscovery = {
     onConfigChanged: (cb: () => void) => {
       configChanged = cb;
-      return () => {};
+      return unsubscribeConfig;
     },
     consumePendingExecAuthWarning: vi.fn().mockReturnValue(undefined),
   };
@@ -63,7 +69,7 @@ function makeBridge(extra: Record<string, unknown> = {}) {
     ...extra,
   });
   bridge.register();
-  return { bridge, sent, webContents, pty, transfer, k8sTerminal, k8sLog, k8sPortForward, sshTunnel, k8sDiscovery, fireConfigChanged: () => configChanged?.() };
+  return { bridge, sent, webContents, pty, transfer, k8sTerminal, k8sLog, k8sPortForward, sshTunnel, k8sDiscovery, unsubscribeConfig, fireConfigChanged: () => configChanged?.() };
 }
 
 describe('IpcBridge event forwarding', () => {
@@ -167,6 +173,65 @@ describe('IpcBridge event forwarding', () => {
       expect(broadcastExcept).toHaveBeenCalledWith(1, IPC_CHANNELS.K8S_CONFIG_CHANGED);
       expect(sent).toEqual([{ channel: IPC_CHANNELS.K8S_CONFIG_CHANGED, args: [{ user: 'eks-user' }] }]);
     });
+  });
+
+  describe('SSH host key changed', () => {
+    beforeEach(() => {
+      hostKeyChanged.handleHostKeyChanged.mockReset().mockResolvedValue(true);
+    });
+
+    it('hands the host and port (not the session) to the handler', () => {
+      const { pty } = track(makeBridge());
+
+      pty.emit('hostkey-changed', { sessionId: 's1', host: 'example.org', port: 2222 });
+
+      expect(hostKeyChanged.handleHostKeyChanged).toHaveBeenCalledWith({ host: 'example.org', port: 2222 }, expect.anything());
+    });
+
+    it("shows the handler's notices in the terminal of the session that hit the changed key", () => {
+      const { pty, sent, bridge } = track(makeBridge());
+      pty.emit('hostkey-changed', { sessionId: 's1', host: 'h', port: 22 });
+      const deps = hostKeyChanged.handleHostKeyChanged.mock.calls[0][1];
+
+      deps.notify('KEY CHANGED NOTICE');
+
+      expect(sent).toContainEqual({ channel: IPC_CHANNELS.TERMINAL_DATA, args: ['s1', 'KEY CHANGED NOTICE'] });
+      expect(bridge.scrollback.get('s1')).toBe('KEY CHANGED NOTICE');
+    });
+
+    it('asks the user through the in-app host key dialog', () => {
+      const { pty, sent } = track(makeBridge());
+      pty.emit('hostkey-changed', { sessionId: 's1', host: 'h', port: 22 });
+      const deps = hostKeyChanged.handleHostKeyChanged.mock.calls[0][1];
+
+      void deps.promptHostKeyTrust({ host: 'h', port: 22, keyType: 'ssh-ed25519', fingerprint: 'SHA256:x', status: 'mismatch' });
+
+      expect(sent.find((e) => e.channel === IPC_CHANNELS.HOSTKEY_PROMPT)?.args[0]).toMatchObject({ host: 'h', port: 22, status: 'mismatch' });
+    });
+
+    it('logs a failing handler instead of throwing', async () => {
+      const logs = captureLogs();
+      try {
+        hostKeyChanged.handleHostKeyChanged.mockRejectedValue(new Error('probe failed'));
+        const { pty } = track(makeBridge());
+
+        expect(() => pty.emit('hostkey-changed', { sessionId: 's1', host: 'h', port: 22 })).not.toThrow();
+        await new Promise((r) => setImmediate(r));
+
+        expect(logs.text()).toContain('Changed host key handling failed');
+      } finally {
+        logs.restore();
+      }
+    });
+  });
+
+  it('ends its Kubernetes config subscription on dispose(), and not before', async () => {
+    const { bridge, unsubscribeConfig } = makeBridge();
+    expect(unsubscribeConfig).not.toHaveBeenCalled();
+
+    await bridge.dispose();
+
+    expect(unsubscribeConfig).toHaveBeenCalledTimes(1);
   });
 
   it('stops forwarding manager events after dispose(): those listeners are gone', async () => {
