@@ -37,7 +37,8 @@ import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { syncTargetConnectionKey } from './services/syncTargetIdentity';
 import { TeamVaultService } from './services/TeamVaultService';
-import { redactS3Secrets } from './services/teamVaultSecretGuards';
+import { toProfileSyncStatus } from './services/profileSyncStatus';
+import { allKnownVaultIds, healIdentityPath, mergeTeamVaultStatus } from './services/teamVaultStatus';
 import { TeamVaultConfigStore } from './services/TeamVaultConfigStore';
 import {
   migrateLegacyTeamVaultLayout,
@@ -1250,99 +1251,45 @@ export class IpcBridge {
 
   public async buildSyncStatus(): Promise<ProfileSyncStatus> {
     const config = await this.syncConfigStore.getConfig();
-    return {
-      configured: !!config.target,
-      target:
-        config.target && (config.target.type === 'sftp' || config.target.type === 's3')
-          ? { id: config.target.id, name: config.target.name, type: config.target.type }
-          : undefined,
-      targetConfig:
-        config.target && (config.target.type === 'sftp' || config.target.type === 's3')
-          ? {
-              type: config.target.type,
-              sftpConfig: config.target.sftpConfig,
-              s3Config: config.target.s3Config,
-            }
-          : undefined,
-      remoteBasePath: config.remoteBasePath,
-      hasLocalSalts: !!(config.topologySaltBase64 && config.credentialsSaltBase64),
+    return toProfileSyncStatus(config, {
       topologyUnlocked: this.syncCryptoService.isUnlocked('topology'),
       credentialsUnlocked: this.syncCryptoService.isUnlocked('credentials'),
-      lastSyncAt: config.lastSyncAt,
       comparison: this.profileSyncService.getLastComparison() ?? undefined,
-      autoSync: Boolean(config.autoSync),
-      smartcardLinked: Boolean(config.smartcardSync),
-      smartcardLibPath: config.smartcardSync?.pkcs11LibPath,
       smartcardAvailable: (await SmartcardDetector.detectAvailableLibraries(undefined, { onlyExisting: true }).catch(() => [])).length > 0,
-    };
+    });
   }
 
-  /** Merges `TeamVaultService`'s local-file-derived status with `TeamVaultConfigStore`'s S3
-   * target config — same separation `buildSyncStatus()` keeps between `ProfileSyncService` and
-   * `SyncConfigStore` above, so `TeamVaultService` stays unaware of where (or whether) its file
-   * is pushed/pulled from. */
+  /** The status of one Team Vault: `TeamVaultService`'s local-file-derived status merged with
+   * `TeamVaultConfigStore`'s S3 target config (see `mergeTeamVaultStatus`), same separation
+   * `buildSyncStatus()` keeps between `ProfileSyncService` and `SyncConfigStore`. */
   public async buildTeamVaultStatus(vaultId: string): Promise<TeamVaultStatus> {
     const [status, config] = await Promise.all([
       this.teamVaultService.getStatus(vaultId),
       this.teamVaultConfigStore.getConfig(vaultId),
     ]);
-    // A remembered identity path from before the single-team -> multi-team migration still
-    // points at the old flat identities directory, which migrateLegacyIdentitiesDir has since
-    // moved out from under it — self-heal it here (checked, not assumed, every time the status is
-    // read) rather than only once at startup, so this also covers installs that migrated before
-    // this fix existed. Without it, a returning member's one-click unlock silently regresses to
-    // the manual path-entry form (see relocateMigratedIdentityPath's doc comment).
-    let selfIdentityFilePath = config.selfIdentityFilePath;
-    if (selfIdentityFilePath && !fs.existsSync(selfIdentityFilePath)) {
-      const relocated = relocateMigratedIdentityPath(selfIdentityFilePath, vaultId);
-      if (relocated) {
-        selfIdentityFilePath = relocated;
-        this.teamVaultConfigStore.setSelfIdentity(vaultId, undefined, relocated).catch((err) => {
-          ipcLog.warn('Failed to persist the relocated Team Vault identity path (non-fatal):', err);
-        });
-      }
+    const { path: selfIdentityFilePath, relocatedTo } = healIdentityPath(
+      config.selfIdentityFilePath,
+      vaultId,
+      fs.existsSync,
+      relocateMigratedIdentityPath
+    );
+    if (relocatedTo) {
+      this.teamVaultConfigStore.setSelfIdentity(vaultId, undefined, relocatedTo).catch((err) => {
+        ipcLog.warn('Failed to persist the relocated Team Vault identity path (non-fatal):', err);
+      });
     }
-    return {
-      ...status,
-      // `TeamVaultService.getStatus` only knows `vaultId` once a local file exists — a
-      // configured-but-never-pulled (or orphaned-pending) entry has none, and without this the
-      // renderer gets back `vaultId: undefined` and can't act on the row (e.g. "forget" sends
-      // `undefined` to an IPC handler that requires a real id). The vaultId we were asked about
-      // is always the right one to report back, file or no file.
-      vaultId: status.vaultId ?? vaultId,
-      remoteConfigured: !!config.target,
-      // Decrypted, for autofilling the target editor form — same precedent buildSyncStatus()
-      // already set for the general Synchronization panel's own target (§ edit-target prefill).
-      targetConfig:
-        config.target?.type === 's3' && config.target.s3Config
-          ? { type: 's3', s3Config: redactS3Secrets(config.target.s3Config) }
-          : undefined,
-      remoteBasePath: config.remoteBasePath,
-      lastSyncAt: config.lastSyncAt,
-      selfRecipientId: config.selfRecipientId,
-      selfIdentityFilePath,
-      selfRole: config.selfRecipientId
-        ? status.members?.find((m) => m.recipientId === config.selfRecipientId)?.role
-        : undefined,
-    };
+    return mergeTeamVaultStatus(status, config, vaultId, selfIdentityFilePath);
   }
 
-  /** Every vault this device knows about, merging `TeamVaultService`'s local-file-derived
-   * statuses with `TeamVaultConfigStore`'s per-team S3 target configs in one round trip — the
-   * only call a multi-team list/switcher UI needs at mount (`TEAM_VAULT_LIST`). Includes a vault
-   * that has a configured S3 target but no local file yet (join-in-progress, parked under the
-   * pending sentinel — see `TEAM_VAULT_PENDING_VAULT_ID`'s doc comment), which `listStatuses()`
-   * alone (local-file-derived only) would otherwise miss entirely. */
+  /** Every vault this device knows about, in one round trip — the only call a multi-team list/switcher UI
+   * needs at mount (`TEAM_VAULT_LIST`). Includes a vault that has a configured S3 target but no local file
+   * yet (see `allKnownVaultIds`). */
   public async buildAllTeamVaultStatuses(): Promise<TeamVaultStatus[]> {
     const [localVaultIds, allConfigs] = await Promise.all([
       this.teamVaultService.listVaultIds(),
       this.teamVaultConfigStore.getAllConfigs(),
     ]);
-    const vaultIds = new Set<string>(localVaultIds);
-    for (const vaultId of Object.keys(allConfigs)) {
-      vaultIds.add(vaultId);
-    }
-    return Promise.all(Array.from(vaultIds).map((vaultId) => this.buildTeamVaultStatus(vaultId)));
+    return Promise.all(allKnownVaultIds(localVaultIds, allConfigs).map((vaultId) => this.buildTeamVaultStatus(vaultId)));
   }
 
   /**
