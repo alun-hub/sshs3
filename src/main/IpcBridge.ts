@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { ipcMain as electronIpcMain, shell } from 'electron';
 import type { IpcMain } from 'electron';
-import { SSHPtyManager, type InternalSSHPtySession } from './ssh/SSHPtyManager';
+import { SSHPtyManager, type InternalSSHPtySession, type SSHPtyManagerEvents } from './ssh/SSHPtyManager';
 import { withResolvedProxyJump } from './ssh/resolveProxyJump';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { SmartcardDetector } from './smartcard/SmartcardDetector';
@@ -30,9 +30,9 @@ import { K8sDiscoveryService } from './services/K8sDiscoveryService';
 import { K8sDebugService } from './services/K8sDebugService';
 import { K8sPortForwardManager } from './services/K8sPortForwardManager';
 import { SSHTunnelManager } from './services/SSHTunnelManager';
-import { K8sTerminalManager } from './terminal/K8sTerminalManager';
+import { K8sTerminalManager, type K8sTerminalManagerEvents } from './terminal/K8sTerminalManager';
 import { PerfMetricsService } from './services/PerfMetricsService';
-import { K8sLogManager } from './terminal/K8sLogManager';
+import { K8sLogManager, type K8sLogManagerEvents } from './terminal/K8sLogManager';
 import { AwsSsoAuthService } from './aws/AwsSsoAuthService';
 import { SyncConfigStore, type SyncConfigData } from './services/SyncConfigStore';
 import { syncTargetConnectionKey } from './services/syncTargetIdentity';
@@ -59,6 +59,7 @@ import type { ProfileSyncStatus } from '../shared/types/sync';
 import type { TeamVaultStatus } from '../shared/types/teamVault';
 import { registerSessionHandlers, registerClipboardHistoryHandlers, registerSnippetHandlers, registerSettingsHandlers } from './ipc/appDataHandlers';
 import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
+import { ListenerSet } from './ipc/listenerSet';
 import { registerSearchHandlers } from './ipc/searchHandlers';
 import { addGuardedPrompt } from './ipc/promptWindowGuard';
 import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
@@ -242,29 +243,8 @@ export class IpcBridge {
   private static readonly TEAM_VAULT_AUTO_POLL_INTERVAL_MS = 3 * 60 * 1000;
   private activePresenceSessions = new Set<string>();
 
-  // Event listener references for clean teardown
-  private onPtyData?: (event: { sessionId: string; data: string }) => void;
-  private onPtyExit?: (event: { sessionId: string; exitCode: number; signal?: number }) => void;
-  private onPtyAskpass?: (event: {
-    sessionId: string;
-    prompt: string;
-    kind?: AskpassPromptKind;
-    context?: string;
-    retry?: AskpassPromptRetryContext;
-    callback: (pin: string) => void;
-  }) => void;
-  private onPtyPresence?: (event: { sessionId: string; prompt: string }) => void;
-  private onPtyReconnecting?: (event: { sessionId: string; attempt: number; maxAttempts: number }) => void;
-  private onPtyHostKeyChanged?: (event: { sessionId: string; host: string; port: number }) => void;
-  private onTransferProgress?: (progress: TransferProgress) => void;
-  private onK8sTerminalData?: (event: { sessionId: string; data: string }) => void;
-  private onK8sTerminalExit?: (event: { sessionId: string; status: string }) => void;
-  private onK8sLogData?: (event: { sessionId: string; data: string }) => void;
-  private onK8sLogEnd?: (event: { sessionId: string }) => void;
-  private onK8sPortForwardChange?: (list: K8sActivePortForward[]) => void;
-  private onSshTunnelChange?: (list: SSHActiveTunnel[]) => void;
-  private onK8sConfigChanged?: () => void;
-  private unsubscribeK8sConfig?: () => void;
+  /** Every listener attached to a manager's events, so dispose() cannot forget to detach one. */
+  private readonly listeners = new ListenerSet();
 
   constructor(options: IpcBridgeOptions = {}) {
     // Must run before TeamVaultService/TeamVaultConfigStore are constructed just below — it's
@@ -1517,7 +1497,7 @@ export class IpcBridge {
 
 
   private setupEventListeners(): void {
-    this.onPtyData = ({ sessionId, data }) => {
+    const onPtyData: SSHPtyManagerEvents['data'] = ({ sessionId, data }) => {
       if (sessionId && this.activePresenceSessions.has(sessionId)) {
         this.activePresenceSessions.delete(sessionId);
         const event: PresenceClearEvent = { sessionId };
@@ -1526,9 +1506,9 @@ export class IpcBridge {
       this.scrollback.append(sessionId, data);
       this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_DATA, sessionId, data);
     };
-    this.sshPtyManager.on('data', this.onPtyData);
+    this.listeners.on(this.sshPtyManager, 'data', onPtyData);
 
-    this.onPtyExit = ({ sessionId, exitCode, signal }) => {
+    const onPtyExit: SSHPtyManagerEvents['exit'] = ({ sessionId, exitCode, signal }) => {
       if (sessionId && this.activePresenceSessions.has(sessionId)) {
         this.activePresenceSessions.delete(sessionId);
         const event: PresenceClearEvent = { sessionId };
@@ -1554,9 +1534,9 @@ export class IpcBridge {
       const event: SSHPtyExitEvent = { exitCode, signal };
       this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_EXIT, sessionId, event);
     };
-    this.sshPtyManager.on('exit', this.onPtyExit);
+    this.listeners.on(this.sshPtyManager, 'exit', onPtyExit);
 
-    this.onPtyAskpass = ({ sessionId, prompt, kind, context, retry, callback }) => {
+    const onPtyAskpass: SSHPtyManagerEvents['askpass'] = ({ sessionId, prompt, kind, context, retry, callback }) => {
       const id = crypto.randomUUID();
       this.pendingAskpass.set(id, { sessionId, callback });
       if (sessionId) {
@@ -1574,9 +1554,9 @@ export class IpcBridge {
         maxAttempts: retry?.maxAttempts,
       });
     };
-    this.sshPtyManager.on('askpass', this.onPtyAskpass);
+    this.listeners.on(this.sshPtyManager, 'askpass', onPtyAskpass);
 
-    this.onPtyPresence = ({ sessionId, prompt }) => {
+    const onPtyPresence: SSHPtyManagerEvents['presence'] = ({ sessionId, prompt }) => {
       const id = crypto.randomUUID();
       if (sessionId) {
         this.activePresenceSessions.add(sessionId);
@@ -1585,59 +1565,59 @@ export class IpcBridge {
       const event: PresencePromptEvent = { id, sessionId, message };
       this.sendToSession(sessionId, IPC_CHANNELS.PRESENCE_PROMPT, event);
     };
-    this.sshPtyManager.on('presence', this.onPtyPresence);
+    this.listeners.on(this.sshPtyManager, 'presence', onPtyPresence);
 
-    this.onPtyReconnecting = ({ sessionId, attempt, maxAttempts }) => {
+    const onPtyReconnecting: SSHPtyManagerEvents['reconnecting'] = ({ sessionId, attempt, maxAttempts }) => {
       this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_RECONNECTING, sessionId, { attempt, maxAttempts });
     };
-    this.sshPtyManager.on('reconnecting', this.onPtyReconnecting);
+    this.listeners.on(this.sshPtyManager, 'reconnecting', onPtyReconnecting);
 
-    this.onPtyHostKeyChanged = ({ sessionId, ...target }) => {
+    const onPtyHostKeyChanged: SSHPtyManagerEvents['hostkey-changed'] = ({ sessionId, ...target }) => {
       handleHostKeyChanged(target, {
         promptHostKeyTrust: (info) => this.promptHostKeyTrust(info),
-        notify: (data) => this.onPtyData?.({ sessionId, data }),
+        notify: (data) => onPtyData({ sessionId, data }),
       }).catch((err) => ipcLog.warn('Changed host key handling failed:', err));
     };
-    this.sshPtyManager.on('hostkey-changed', this.onPtyHostKeyChanged);
+    this.listeners.on(this.sshPtyManager, 'hostkey-changed', onPtyHostKeyChanged);
 
-    this.onTransferProgress = (progress) => {
+    const onTransferProgress = (progress: TransferProgress): void => {
       this.broadcast(IPC_CHANNELS.TRANSFER_PROGRESS, progress);
     };
-    this.transferQueue.on('progress', this.onTransferProgress);
+    this.listeners.on(this.transferQueue, 'progress', onTransferProgress);
 
-    this.onK8sTerminalData = ({ sessionId, data }) => {
+    const onK8sTerminalData: K8sTerminalManagerEvents['data'] = ({ sessionId, data }) => {
       this.scrollback.append(sessionId, data);
       this.sendToSession(sessionId, IPC_CHANNELS.K8S_TERMINAL_DATA, sessionId, data);
     };
-    this.k8sTerminalManager.on('data', this.onK8sTerminalData);
+    this.listeners.on(this.k8sTerminalManager, 'data', onK8sTerminalData);
 
-    this.onK8sTerminalExit = ({ sessionId, status }) => {
+    const onK8sTerminalExit: K8sTerminalManagerEvents['exit'] = ({ sessionId, status }) => {
       this.scrollback.delete(sessionId);
       this.sendToSession(sessionId, IPC_CHANNELS.K8S_TERMINAL_EXIT, sessionId, { status });
     };
-    this.k8sTerminalManager.on('exit', this.onK8sTerminalExit);
+    this.listeners.on(this.k8sTerminalManager, 'exit', onK8sTerminalExit);
 
-    this.onK8sLogData = ({ sessionId, data }) => {
+    const onK8sLogData: K8sLogManagerEvents['data'] = ({ sessionId, data }) => {
       this.sendToSession(sessionId, IPC_CHANNELS.K8S_LOG_DATA, sessionId, data);
     };
-    this.k8sLogManager.on('data', this.onK8sLogData);
+    this.listeners.on(this.k8sLogManager, 'data', onK8sLogData);
 
-    this.onK8sLogEnd = ({ sessionId }) => {
+    const onK8sLogEnd: K8sLogManagerEvents['end'] = ({ sessionId }) => {
       this.sendToSession(sessionId, IPC_CHANNELS.K8S_LOG_END, sessionId);
     };
-    this.k8sLogManager.on('end', this.onK8sLogEnd);
+    this.listeners.on(this.k8sLogManager, 'end', onK8sLogEnd);
 
-    this.onK8sPortForwardChange = (activeForwards) => {
+    const onK8sPortForwardChange = (activeForwards: K8sActivePortForward[]): void => {
       this.broadcast(IPC_CHANNELS.K8S_PORT_FORWARD_EVENT, activeForwards);
     };
-    this.k8sPortForwardManager.on('change', this.onK8sPortForwardChange);
+    this.listeners.on(this.k8sPortForwardManager, 'change', onK8sPortForwardChange);
 
-    this.onSshTunnelChange = (active) => {
+    const onSshTunnelChange = (active: SSHActiveTunnel[]): void => {
       this.broadcast(IPC_CHANNELS.SSH_TUNNEL_EVENT, active);
     };
-    this.sshTunnelManager.on('change', this.onSshTunnelChange);
+    this.listeners.on(this.sshTunnelManager, 'change', onSshTunnelChange);
 
-    this.onK8sConfigChanged = () => {
+    const onK8sConfigChanged = (): void => {
       // Carries an optional warning (H8 code-review finding) when this
       // reload just introduced a new exec-auth user — see
       // K8sDiscoveryService.checkExecAuthChange. The warning is consumed once, so it goes to the
@@ -1646,7 +1626,7 @@ export class IpcBridge {
       this.windows?.broadcastExcept(this.getWebContents()?.id, IPC_CHANNELS.K8S_CONFIG_CHANGED);
       this.sendToFocused(IPC_CHANNELS.K8S_CONFIG_CHANGED, warning);
     };
-    this.unsubscribeK8sConfig = this.k8sDiscoveryService.onConfigChanged(this.onK8sConfigChanged);
+    this.listeners.subscribe(this.k8sDiscoveryService, this.k8sDiscoveryService.onConfigChanged(onK8sConfigChanged));
   }
 
   /**
@@ -1690,62 +1670,26 @@ export class IpcBridge {
     // After the handlers are gone no late selection can be added behind this clear.
     await this.disposeStep('clear clipboard history', () => this.clearClipboardHistoryIfConfigured());
 
-    if (this.onPtyData) {
-      this.sshPtyManager.off('data', this.onPtyData);
-    }
-    if (this.onPtyExit) {
-      this.sshPtyManager.off('exit', this.onPtyExit);
-    }
-    if (this.onPtyAskpass) {
-      this.sshPtyManager.off('askpass', this.onPtyAskpass);
-    }
-    if (this.onPtyPresence) {
-      this.sshPtyManager.off('presence', this.onPtyPresence);
-    }
-    if (this.onPtyReconnecting) {
-      this.sshPtyManager.off('reconnecting', this.onPtyReconnecting);
-    }
-    if (this.onPtyHostKeyChanged) {
-      this.sshPtyManager.off('hostkey-changed', this.onPtyHostKeyChanged);
-    }
-    if (this.onTransferProgress) {
-      this.transferQueue.off('progress', this.onTransferProgress);
-    }
+    this.listeners.detach(this.sshPtyManager);
+    this.listeners.detach(this.transferQueue);
     this.transferQueue?.cancelAll?.();
 
-    if (this.onK8sTerminalData) {
-      this.k8sTerminalManager.off('data', this.onK8sTerminalData);
-    }
-    if (this.onK8sTerminalExit) {
-      this.k8sTerminalManager.off('exit', this.onK8sTerminalExit);
-    }
+    this.listeners.detach(this.k8sTerminalManager);
     await this.disposeStep('k8sTerminalManager.killAll', () => this.k8sTerminalManager.killAll());
 
-    if (this.onK8sLogData) {
-      this.k8sLogManager.off('data', this.onK8sLogData);
-    }
-    if (this.onK8sLogEnd) {
-      this.k8sLogManager.off('end', this.onK8sLogEnd);
-    }
+    this.listeners.detach(this.k8sLogManager);
     await this.disposeStep('k8sLogManager.stopAll', () => this.k8sLogManager.stopAll());
 
-    if (this.onK8sPortForwardChange) {
-      this.k8sPortForwardManager.off('change', this.onK8sPortForwardChange);
-    }
+    this.listeners.detach(this.k8sPortForwardManager);
     await this.disposeStep('k8sPortForwardManager.stopAll', () => this.k8sPortForwardManager.stopAll());
 
-    if (this.onSshTunnelChange) {
-      this.sshTunnelManager.off('change', this.onSshTunnelChange);
-    }
+    this.listeners.detach(this.sshTunnelManager);
     // Awaited (unlike the other managers' stopAll() calls above): dispose() is itself awaited by
     // app 'before-quit' before app.quit() runs, so this is what actually guarantees every standalone
     // tunnel process is signalled before the app exits on a normal quit.
     await this.disposeStep('sshTunnelManager.stopAll', () => this.sshTunnelManager.stopAll());
 
-    if (this.unsubscribeK8sConfig) {
-      this.unsubscribeK8sConfig();
-      this.unsubscribeK8sConfig = undefined;
-    }
+    this.listeners.detach(this.k8sDiscoveryService);
 
     for (const prompt of this.pendingAskpass.values()) {
       try {
