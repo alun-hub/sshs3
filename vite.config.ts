@@ -143,7 +143,7 @@ export default defineConfig({
         'src/main/services/**': { lines: 81 },
         'src/main/dotfiles/**': { lines: 88 },
         'src/main/ssh/**': { lines: 85 },
-        'src/main/IpcBridge.ts': { lines: 58 },
+        'src/main/IpcBridge.ts': { lines: 83 },
       },
     },
   },
