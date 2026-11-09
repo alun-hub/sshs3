@@ -194,12 +194,9 @@ describe('IpcBridge event forwarding', () => {
     }
   });
 
-  // KNOWN BUG, found while writing these tests: 'reconnecting' and 'hostkey-changed' are registered as
-  // anonymous arrow functions (IpcBridge.setupEventListeners), never stored and never off()'d in dispose(),
-  // so the PTY manager keeps calling into a disposed bridge. Expected to be fixed by the ListenerSet step
-  // of the IpcBridge refactor plan; when it is, this test starts passing and `it.fails` turns it red:
-  // change it to a plain `it` then.
-  it.fails('detaches ALL PTY listeners on dispose() (currently leaks "reconnecting" and "hostkey-changed")', async () => {
+  // Regression: 'reconnecting' and 'hostkey-changed' used to be anonymous listeners that dispose() never detached,
+  // so the PTY manager kept calling into a disposed bridge.
+  it('detaches ALL PTY listeners on dispose(), including "reconnecting" and "hostkey-changed"', async () => {
     const { bridge, pty } = makeBridge();
     await bridge.dispose();
     expect(pty.eventNames()).toEqual([]);

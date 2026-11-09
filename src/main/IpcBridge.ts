@@ -253,6 +253,8 @@ export class IpcBridge {
     callback: (pin: string) => void;
   }) => void;
   private onPtyPresence?: (event: { sessionId: string; prompt: string }) => void;
+  private onPtyReconnecting?: (event: { sessionId: string; attempt: number; maxAttempts: number }) => void;
+  private onPtyHostKeyChanged?: (event: { sessionId: string; host: string; port: number }) => void;
   private onTransferProgress?: (progress: TransferProgress) => void;
   private onK8sTerminalData?: (event: { sessionId: string; data: string }) => void;
   private onK8sTerminalExit?: (event: { sessionId: string; status: string }) => void;
@@ -1673,16 +1675,18 @@ export class IpcBridge {
     };
     this.sshPtyManager.on('presence', this.onPtyPresence);
 
-    this.sshPtyManager.on('reconnecting', ({ sessionId, attempt, maxAttempts }) => {
+    this.onPtyReconnecting = ({ sessionId, attempt, maxAttempts }) => {
       this.sendToSession(sessionId, IPC_CHANNELS.TERMINAL_RECONNECTING, sessionId, { attempt, maxAttempts });
-    });
+    };
+    this.sshPtyManager.on('reconnecting', this.onPtyReconnecting);
 
-    this.sshPtyManager.on('hostkey-changed', ({ sessionId, ...target }) => {
+    this.onPtyHostKeyChanged = ({ sessionId, ...target }) => {
       handleHostKeyChanged(target, {
         promptHostKeyTrust: (info) => this.promptHostKeyTrust(info),
         notify: (data) => this.onPtyData?.({ sessionId, data }),
       }).catch((err) => ipcLog.warn('Changed host key handling failed:', err));
-    });
+    };
+    this.sshPtyManager.on('hostkey-changed', this.onPtyHostKeyChanged);
 
     this.onTransferProgress = (progress) => {
       this.broadcast(IPC_CHANNELS.TRANSFER_PROGRESS, progress);
@@ -1785,6 +1789,12 @@ export class IpcBridge {
     }
     if (this.onPtyPresence) {
       this.sshPtyManager.off('presence', this.onPtyPresence);
+    }
+    if (this.onPtyReconnecting) {
+      this.sshPtyManager.off('reconnecting', this.onPtyReconnecting);
+    }
+    if (this.onPtyHostKeyChanged) {
+      this.sshPtyManager.off('hostkey-changed', this.onPtyHostKeyChanged);
     }
     if (this.onTransferProgress) {
       this.transferQueue.off('progress', this.onTransferProgress);

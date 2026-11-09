@@ -127,7 +127,7 @@ describe('IpcBridge.dispose() ordering invariants', () => {
     const { bridge } = makeBridge();
     await bridge.dispose();
 
-    for (const event of ['data', 'exit', 'askpass', 'presence']) {
+    for (const event of ['data', 'exit', 'askpass', 'presence', 'reconnecting', 'hostkey-changed']) {
       before(`off:pty:${event}`, 'pty.killAll');
     }
   });
