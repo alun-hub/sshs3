@@ -40,6 +40,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Team Vault's real-binary round-trip tests (TeamVaultCryptoService.test.ts) skip themselves
+      # when age/age-keygen are missing, which would leave them silently unrun in CI. They look in
+      # build-resources/age/<platform>. Same version + checksums as release.yml; keep them in sync.
+      - name: Install age + age-keygen for Team Vault tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          mkdir -p build-resources/age/linux
+          curl -sL -o age.tar.gz "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz"
+          echo "cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  age.tar.gz" | sha256sum -c -
+          tar xzf age.tar.gz
+          cp age/age age/age-keygen build-resources/age/linux/
+          chmod +x build-resources/age/linux/age build-resources/age/linux/age-keygen
+          rm -rf age age.tar.gz
+
+      - name: Install age + age-keygen for Team Vault tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'build-resources/age/win'
+          Invoke-WebRequest -Uri "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-windows-amd64.zip" -OutFile "age.zip"
+          $expected = "f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7"
+          $actual = (Get-FileHash -Algorithm SHA256 "age.zip").Hash.ToLower()
+          if ($actual -ne $expected) { throw "age.zip checksum mismatch: $actual" }
+          Expand-Archive -Path "age.zip" -DestinationPath "age-extract" -Force
+          Copy-Item "age-extract/age/age.exe", "age-extract/age/age-keygen.exe" "build-resources/age/win/"
+          Remove-Item -Recurse -Force "age-extract", "age.zip"
+
       - name: Typecheck
         run: npm run typecheck
 
