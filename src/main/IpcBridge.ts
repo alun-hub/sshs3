@@ -806,41 +806,6 @@ export class IpcBridge {
   }
 
   /**
-   * Resolves the effective smartcard PIN-caching mode (profile override, else
-   * the global default) and stamps it onto the config so downstream code
-   * (SSHPtyManager, the dotfiles-sync scheduling above) can act on it without
-   * each needing their own settings lookup. A no-op for non-smartcard auth.
-   */
-  /**
-   * For smartcard profiles in 'agent-per-session' mode, loads the card into
-   * a private ssh-agent *before* the PTY is spawned (prompting for the PIN
-   * once via the normal askpass UI), and returns a config pointing the PTY
-   * at that agent via IdentityAgent instead of a direct -I login.
-   *
-   * This sequencing matters: PIV/PKCS#11 readers generally only support one
-   * active transaction at a time, so if the PTY's own -I login and a
-   * separately-loaded agent both talk to the card around the same moment,
-   * they can collide and both fail. Loading the agent first and having the
-   * PTY authenticate purely through it means only one process ever opens a
-   * PKCS#11 session for a given connection.
-   *
-   * If loading the agent fails, this is a no-op — the PTY falls back to its
-   * own direct -I login, and dotfiles sync (if any) prompts for its own PIN
-   * independently.
-   *
-   * 'always-prompt' also goes through the per-session agent (see
-   * resolveSmartcardAgentPath), on every platform: OpenSSH's
-   * ssh-pkcs11-helper subprocess doesn't reliably route its PIN prompt
-   * through our askpass server the way the plain account-password prompt
-   * does, so a direct -I login can silently fall through to password auth
-   * instead of ever asking for the card's PIN (observed on both Win32-OpenSSH
-   * and Linux OpenSSH — ssh-pkcs11-helper doesn't trust our askpass chain
-   * either way). Loading through ssh-add (which runs headless, with no
-   * console, so askpass is used unconditionally) sidesteps that, while still
-   * discarding the card the moment the session ends — a reconnect still
-   * needs a fresh PIN, keeping 'always-prompt's "ask every time" contract.
-   */
-  /**
    * Restored tabs have their password/passphrase stripped from the persisted session state
    * (see sanitizePaneNode in the renderer) and get a fresh id per terminal, so a saved
    * credential is looked up again here by connection identity. Secrets never leave main.

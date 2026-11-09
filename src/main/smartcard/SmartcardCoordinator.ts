@@ -546,11 +546,11 @@ export class SmartcardCoordinator {
       }
     }
 
-    // 'always-prompt' is routed through the same per-session agent as 'agent-per-session' on
-    // every platform — see the doc comment on prepareSmartcardConfig for why a direct -I login
-    // can't reliably prompt for the card's PIN via ssh-pkcs11-helper. It's still discarded at
-    // session end (never cached across connections), so 'always-prompt's "ask every time"
-    // contract is unchanged — only *how* the PIN is collected differs from a direct -I login.
+    // 'always-prompt' goes through the same per-session agent as 'agent-per-session', on every platform: a direct -I
+    // login can silently fall through to password auth, because ssh-pkcs11-helper does not route its PIN prompt
+    // through our askpass chain (seen on Win32-OpenSSH and Linux), while ssh-add runs headless and always uses
+    // askpass. The agent is discarded at session end, so 'always-prompt' still asks for the PIN on every
+    // connection. Loading it before the PTY also keeps one process on the card's single PKCS#11 session.
     if (mode !== 'agent-per-session' && mode !== 'always-prompt') {
       return undefined;
     }

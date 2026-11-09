@@ -11,7 +11,7 @@ import security from 'eslint-plugin-security';
 const MAX_LINES_DEFAULT = 800;
 const LARGE_FILE_CEILINGS = {
   'src/main/services/TeamVaultService.ts': 1975,
-  'src/main/IpcBridge.ts': 1950,
+  'src/main/IpcBridge.ts': 1900,
   'src/main/services/ProfileSyncService.ts': 1650,
   'src/renderer/src/components/ConnectionModal/ConnectionManagerModal.tsx': 1550,
   'src/main/smartcard/SmartcardCoordinator.ts': 1375,
