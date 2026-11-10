@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import MarkdownPreview from '../../src/renderer/src/components/FileManager/MarkdownPreview';
 import { highlightCode } from '../../src/renderer/src/lib/markdownCodeHighlight';
+import { setCopyOnSelectEnabled } from '../../src/renderer/src/lib/copyOnSelectSetting';
 
 vi.mock('../../src/renderer/src/lib/markdownCodeHighlight', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/renderer/src/lib/markdownCodeHighlight')>();
@@ -27,6 +28,8 @@ const DOC = [
 afterEach(() => {
   vi.restoreAllMocks();
   delete (window as unknown as { multissh?: unknown }).multissh;
+  setCopyOnSelectEnabled(false);
+  window.getSelection()?.removeAllRanges();
 });
 
 describe('MarkdownPreview', () => {
@@ -89,6 +92,163 @@ describe('MarkdownPreview', () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());
     expect(screen.getByRole('button', { name: 'Copy code' })).toBeInTheDocument();
+  });
+
+  describe('copying the selection', () => {
+    const clipboard = () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      return writeText;
+    };
+    /** Select the text of the first paragraph the way a drag does: the selection changes, then the button comes up. */
+    const dragSelect = (root: HTMLElement) => {
+      window.getSelection()!.selectAllChildren(root.querySelector('p')!);
+      fireEvent.mouseUp(document.body);
+    };
+
+    it('copies the selection on Ctrl+Shift+C and says how much was copied', async () => {
+      const writeText = clipboard();
+      const { container } = render(<MarkdownPreview content={DOC} />);
+      window.getSelection()!.selectAllChildren(container.querySelector('p')!);
+
+      const notPrevented = fireEvent.keyDown(document, { key: 'C', ctrlKey: true, shiftKey: true });
+
+      expect(writeText).toHaveBeenCalledWith('Some inline text.');
+      expect(notPrevented).toBe(false); // preventDefault was called
+      await waitFor(() => expect(screen.getByTestId('copy-notice')).toHaveTextContent('Copied 17 characters'));
+    });
+
+    it('does nothing on Ctrl+Shift+C without a selection in the preview', () => {
+      const writeText = clipboard();
+      render(<MarkdownPreview content={DOC} />);
+
+      const notPrevented = fireEvent.keyDown(document, { key: 'C', ctrlKey: true, shiftKey: true });
+
+      expect(writeText).not.toHaveBeenCalled();
+      expect(notPrevented).toBe(true);
+    });
+
+    describe('copy on select', () => {
+      it('copies when a drag-select ends, if the setting is on', async () => {
+        const writeText = clipboard();
+        setCopyOnSelectEnabled(true);
+        const { container } = render(<MarkdownPreview content={DOC} />);
+
+        dragSelect(container);
+
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith('Some inline text.'));
+      });
+
+      it('does not copy when the setting is off', () => {
+        const writeText = clipboard();
+        const { container } = render(<MarkdownPreview content={DOC} />);
+
+        dragSelect(container);
+
+        expect(writeText).not.toHaveBeenCalled();
+      });
+
+      it('follows the setting while the preview is open', async () => {
+        const writeText = clipboard();
+        const { container } = render(<MarkdownPreview content={DOC} />);
+
+        dragSelect(container);
+        expect(writeText).not.toHaveBeenCalled();
+
+        setCopyOnSelectEnabled(true);
+        dragSelect(container);
+        await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      });
+
+      it('does not copy again on a click that leaves the selection as it was (it would overwrite what was copied since)', async () => {
+        const writeText = clipboard();
+        setCopyOnSelectEnabled(true);
+        const { container } = render(<MarkdownPreview content={DOC} />);
+        dragSelect(container);
+        await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+
+        fireEvent.mouseUp(document.body); // a click on a button: the old selection is still there, nothing was selected
+        fireEvent.mouseUp(document.body);
+
+        expect(writeText).toHaveBeenCalledTimes(1);
+      });
+
+      it('copies a new selection of the same text elsewhere, and the same span again once the selection was cleared', async () => {
+        const writeText = clipboard();
+        setCopyOnSelectEnabled(true);
+        const { container } = render(<MarkdownPreview content={'same\n\nsame'} />);
+        const [first, second] = Array.from(container.querySelectorAll('p'));
+
+        window.getSelection()!.selectAllChildren(first);
+        fireEvent.mouseUp(document.body);
+        window.getSelection()!.selectAllChildren(second); // the same text, another place
+        fireEvent.mouseUp(document.body);
+        await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+
+        window.getSelection()!.removeAllRanges(); // clicked elsewhere
+        fireEvent.mouseUp(document.body);
+        window.getSelection()!.selectAllChildren(second);
+        fireEvent.mouseUp(document.body);
+        await waitFor(() => expect(writeText).toHaveBeenCalledTimes(3));
+      });
+
+      it('copies again after the next selection', async () => {
+        const writeText = clipboard();
+        setCopyOnSelectEnabled(true);
+        const { container } = render(<MarkdownPreview content={DOC} />);
+        dragSelect(container);
+        await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+
+        window.getSelection()!.selectAllChildren(container.querySelector('h1')!);
+        fireEvent.mouseUp(document.body);
+
+        await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('Title'));
+      });
+
+      it('copies the part inside the preview when the drag ends outside it', async () => {
+        const writeText = clipboard();
+        setCopyOnSelectEnabled(true);
+        const { container } = render(<MarkdownPreview content={DOC} />);
+        const outside = document.createElement('div'); // after the preview in the document, like the pane next to it
+        outside.textContent = 'another pane';
+        document.body.append(outside);
+        const range = document.createRange();
+        range.setStart(container.querySelector('p')!.firstChild!, 5); // "inline text." from "Some "
+        range.setEnd(outside.firstChild!, 7);
+        window.getSelection()!.removeAllRanges();
+        window.getSelection()!.addRange(range);
+
+        fireEvent.mouseUp(document.body);
+
+        await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+        expect(writeText.mock.calls[0][0]).toContain('inline');
+        expect(writeText.mock.calls[0][0]).not.toContain('another');
+        outside.remove();
+      });
+    });
+
+    it('shows the "Copied" notice outside the preview, so a search cannot highlight it or count it as a match', async () => {
+      clipboard();
+      const onCount = vi.fn();
+      const { container, rerender } = render(<MarkdownPreview content={DOC} searchQuery="copied" onMatchesCountChange={onCount} currentMatchIdx={0} />);
+      expect(onCount).toHaveBeenLastCalledWith(0);
+      window.getSelection()!.selectAllChildren(container.querySelector('p')!);
+      fireEvent.keyDown(document, { key: 'C', ctrlKey: true, shiftKey: true });
+      const notice = await screen.findByTestId('copy-notice');
+
+      rerender(<MarkdownPreview content={DOC} searchQuery="copied" onMatchesCountChange={onCount} currentMatchIdx={1} />);
+
+      expect(container.querySelector('.markdown-preview-root')!.contains(notice)).toBe(false);
+      expect(notice.querySelector('mark')).toBeNull();
+      expect(onCount).toHaveBeenLastCalledWith(0);
+    });
+
+    it('does not ask the main process for the setting (it is published by App, not read per preview)', () => {
+      const settingsGet = vi.fn().mockResolvedValue({ copyOnSelect: true });
+      (window as unknown as { multissh: unknown }).multissh = { settingsGet };
+      render(<MarkdownPreview content={DOC} />);
+      expect(settingsGet).not.toHaveBeenCalled();
+    });
   });
 
   describe('search', () => {

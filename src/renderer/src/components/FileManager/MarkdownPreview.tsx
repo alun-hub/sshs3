@@ -1,8 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { HighlightedCodeBlock, PlainCodeBlock } from './MarkdownCodeBlock';
 import { MarkdownLink } from './MarkdownLink';
+import { isCopyOnSelectEnabled } from '../../lib/copyOnSelectSetting';
+import { isCopyShortcut, sameRange, selectedTextWithin } from '../../lib/selectionCopy';
 
 const HIGHLIGHTED_COMPONENTS: Components = { pre: HighlightedCodeBlock, a: MarkdownLink };
 const PLAIN_COMPONENTS: Components = { pre: PlainCodeBlock, a: MarkdownLink };
@@ -22,6 +24,57 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const marksRef = useRef<HTMLElement[]>([]);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
+
+  const copySelection = (): boolean => {
+    const text = selectedTextWithin(containerRef.current, window.getSelection());
+    if (!text) return false;
+    void navigator.clipboard?.writeText(text).then(
+      () => {
+        setCopyNotice(`Copied ${text.length} character${text.length === 1 ? '' : 's'}`);
+        clearTimeout(noticeTimerRef.current);
+        noticeTimerRef.current = setTimeout(() => setCopyNotice(null), 2000);
+      },
+      () => {
+        // Clipboard access refused (no focus, permissions): nothing to confirm.
+      }
+    );
+    return true;
+  };
+
+  useEffect(() => () => clearTimeout(noticeTimerRef.current), []);
+
+  // The app has no menu, so Ctrl+Shift+C (the terminal's copy key) is wired here, and the terminal's
+  // "copy on select" setting (published by App) applies to the preview too. Plain Ctrl+C is handled by Chromium.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isCopyShortcut(e) && copySelection()) e.preventDefault();
+    };
+    // Only a mouseup that ends a selection not handled before copies. Any other click (a button, the toolbar) leaves
+    // an old selection in place, and copying it again would overwrite whatever was copied since. The range itself is
+    // compared, not a "selection changed" event: that arrives asynchronously and may come after the mouseup.
+    let handled: Range | null = null;
+    // On document, not on the preview: a drag often ends below the text, outside the preview's box.
+    const onMouseUp = () => {
+      if (!isCopyOnSelectEnabled()) return;
+      const selection = window.getSelection();
+      const range = selection && !selection.isCollapsed && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      if (!range) {
+        handled = null;
+        return;
+      }
+      if (handled && sameRange(range, handled)) return;
+      handled = range.cloneRange();
+      copySelection();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   // Highlight matches when content or searchQuery changes
   useEffect(() => {
@@ -148,15 +201,30 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   }, [currentMatchIdx]);
 
   return (
-    // The app's <body> is select-none; the preview is read like a document, so its text must be selectable.
-    <div ref={containerRef} className="markdown-preview-root select-text">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={searchQuery.trim() ? PLAIN_COMPONENTS : HIGHLIGHTED_COMPONENTS}
+    <>
+      {/* The app's <body> is select-none; the preview is read like a document, so its text must be selectable. */}
+      <div
+        ref={containerRef}
+        className="markdown-preview-root select-text"
       >
-        {content || '*Empty file*'}
-      </ReactMarkdown>
-    </div>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={searchQuery.trim() ? PLAIN_COMPONENTS : HIGHLIGHTED_COMPONENTS}
+        >
+          {content || '*Empty file*'}
+        </ReactMarkdown>
+      </div>
+      {/* Outside the preview root: the search highlight walks every text node in it, and must not find this. */}
+      {copyNotice && (
+        <div
+          data-testid="copy-notice"
+          role="status"
+          className="dark-surface pointer-events-none select-none fixed bottom-6 right-6 z-[60] rounded-lg bg-slate-900/90 px-3 py-1.5 text-xs text-slate-200 shadow-lg animate-fade-in"
+        >
+          {copyNotice}
+        </div>
+      )}
+    </>
   );
 };
 

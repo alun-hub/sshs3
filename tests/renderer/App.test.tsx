@@ -660,6 +660,18 @@ describe('App Component', () => {
     });
   });
 
+  it('publishes the "copy on select" setting for components that act on it outside React (the Markdown preview)', async () => {
+    const { DEFAULT_SETTINGS } = await import('../../src/shared/types/settings');
+    const { isCopyOnSelectEnabled, setCopyOnSelectEnabled } = await import('../../src/renderer/src/lib/copyOnSelectSetting');
+    setCopyOnSelectEnabled(false);
+    window.multissh.settingsGet = vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS, copyOnSelect: true });
+
+    render(<App />);
+
+    await waitFor(() => expect(isCopyOnSelectEnabled()).toBe(true));
+    setCopyOnSelectEnabled(false);
+  });
+
   it('reuses closed tab numbers instead of incrementing endlessly', async () => {
     render(<App />);
     await screen.findByTestId('tab-term-1');

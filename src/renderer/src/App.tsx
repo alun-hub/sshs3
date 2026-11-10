@@ -24,6 +24,7 @@ import type { SettingsCategory } from './components/SettingsModal/settingsConsta
 import { SyncBootstrapModal } from './components/SettingsModal/SyncBootstrapModal';
 import { SSHGlobalTunnelsModal } from './components/SSH/SSHGlobalTunnelsModal';
 import { DEFAULT_SETTINGS, type AppSettings } from '@shared/types/settings';
+import { setCopyOnSelectEnabled } from './lib/copyOnSelectSetting';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { DirectorySyncProfile } from '@shared/types/dirsync';
 import { countLeaves, createLeaf, findLeaf, getFirstLeafId, shouldHoistLocalPerf } from './lib/paneTree';
@@ -119,6 +120,11 @@ const AppContent: React.FC = () => {
       if (saved) setSettings(saved);
     });
   }, []);
+
+  // Components that copy on a document-level event (the Markdown preview) read the setting from here.
+  useEffect(() => {
+    setCopyOnSelectEnabled(settings.copyOnSelect === true);
+  }, [settings.copyOnSelect]);
 
   const openShortcutsHelp = useCallback(
     () =>
