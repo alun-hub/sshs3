@@ -30,7 +30,7 @@ The Settings modal features a real-time search filter at the top of the sidebar.
 - **Typography:** Configurable font family and font size with live preview render.
 - **Cursor Style:** **Block**, **Underline**, or **Vertical Bar**.
 - **Scrollback Buffer:** Retained history per terminal pane (default 5,000 lines). Searchable with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>.
-- **Copy on Selection:** Automatically stores highlighted text in the encrypted clipboard history. Scope can be **Global** or **Per Host**.
+- **Copy text automatically on selection:** Copies highlighted terminal text to the clipboard and stores it in the encrypted clipboard history. Scope can be **Global** or **Per Host**. The setting also applies to the Markdown preview in the file editor, which copies to the clipboard only (nothing goes into the history).
 - **Session End Behavior:** **Reconnect (Default)**, **Close Tab Immediately**, or **Keep Open**.
 - **Local Terminal SSH Agent:** Selects `$SSH_AUTH_SOCK` injection for local workstation shell tabs: **Auto** (`AppAgent` under Global PIN caching), **System Only**, or **Disabled**.
 - **Keep `~/.ssh/config` in Sync:** On by default. Maintains a marked block in your local `~/.ssh/config` at startup and whenever an SSH profile is saved, deleted or imported, so `ssh <profile>` works in any external terminal. Only the sshs3 block is touched.
