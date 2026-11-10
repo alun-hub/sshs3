@@ -8,6 +8,7 @@ import { SmartcardDetector } from '../../smartcard/SmartcardDetector';
 import { AskpassServer } from '../../smartcard/AskpassServer';
 import { SftpPacketProtocol } from './SftpPacketProtocol';
 import type { HostKeyPromptInfo } from '../../ssh/HostKeyVerifier';
+import { savedAskpassAnswer } from '../../ssh/askpassPrompt';
 import type { SFTPConfig } from '../../../shared/types/storage';
 import type { SSHConnectionConfig } from '../../../shared/types/ssh';
 import { createLogger } from '../../log';
@@ -131,16 +132,14 @@ export class OpenSshSftpProcess {
             const info = parseHostKeyPrompt(rawPrompt, config);
             return (await hostKeyPromptHandler(info)) ? 'yes' : 'no';
           }
-          if (config.authType === 'password' && config.password) {
-            return config.password;
-          }
-          if (config.passphrase) {
-            return config.passphrase;
-          }
+          // Saved secrets only answer the prompt kind they belong to (see savedAskpassAnswer): a server's
+          // keyboard-interactive question or a jump host's password prompt must not receive them.
+          const saved = savedAskpassAnswer(rawPrompt, config);
+          if (saved) return saved;
           if (pinPromptHandler) {
             return await pinPromptHandler(rawPrompt);
           }
-          return config.passphrase || config.password || '';
+          return '';
         },
       });
 

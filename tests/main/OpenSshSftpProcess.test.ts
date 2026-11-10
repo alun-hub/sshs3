@@ -4,9 +4,10 @@ import { execFile } from 'node:child_process';
 import { PassThrough } from 'node:stream';
 import { FXP } from '../../src/main/storage/sftp/SftpConstants';
 
-const { mockSpawn, resetMockChild } = vi.hoisted(() => {
+const { mockSpawn, resetMockChild, askpassCapture } = vi.hoisted(() => {
   let child: any = null;
   return {
+    askpassCapture: { options: undefined as { promptHandler: (prompt: string) => Promise<string> | string } | undefined },
     mockSpawn: vi.fn((_bin: string, _args: string[], _opts: any) => child),
     getMockChild: () => child,
     setMockChild: (c: any) => {
@@ -33,6 +34,9 @@ vi.mock('node:child_process', () => {
 
 vi.mock('../../src/main/smartcard/AskpassServer', () => {
   class MockAskpassServer {
+    constructor(options: { promptHandler: (prompt: string) => Promise<string> | string }) {
+      askpassCapture.options = options;
+    }
     public start = vi.fn().mockResolvedValue(undefined);
     public stop = vi.fn().mockResolvedValue(undefined);
     public getEnv = vi.fn().mockReturnValue({ SSH_ASKPASS: '/tmp/askpass', SSH_ASKPASS_REQUIRE: 'force' });
@@ -216,6 +220,68 @@ describe('OpenSshSftpProcess', () => {
     await startPromise;
     expect(onPresence).toHaveBeenCalledWith(expect.stringContaining('Confirm user presence'));
     await proc.close();
+  });
+
+  describe('askpass answers', () => {
+    async function startWith(config: Record<string, unknown>, pinPromptHandler?: (prompt: string) => string) {
+      const proc = new OpenSshSftpProcess();
+      const startPromise = proc.start({
+        config: { id: 'a', host: 'target.example', port: 22, username: 'alice', ...config } as any,
+        pinPromptHandler,
+      });
+      setTimeout(() => {
+        const resp = Buffer.alloc(9);
+        resp.writeUInt32BE(5, 0);
+        resp.writeUInt8(FXP.VERSION, 4);
+        resp.writeUInt32BE(3, 5);
+        mockChild.stdout.write(resp);
+      }, 10);
+      await startPromise;
+      return { proc, ask: askpassCapture.options!.promptHandler };
+    }
+
+    it('answers ssh\'s own key passphrase prompt with the saved passphrase', async () => {
+      const { proc, ask } = await startWith({ authType: 'key', passphrase: 'pp-secret' }); // pragma: allowlist secret
+      expect(await ask("Enter passphrase for key '/home/alice/.ssh/id_ed25519': ")).toBe('pp-secret');
+      await proc.close();
+    });
+
+    it('does not give the saved passphrase to a server keyboard-interactive question', async () => {
+      const { proc, ask } = await startWith({ authType: 'key', passphrase: 'pp-secret' }); // pragma: allowlist secret
+      expect(await ask('(alice@target.example) Password: ')).toBe('');
+      await proc.close();
+    });
+
+    it('asks the user instead of answering a server question with a saved secret', async () => {
+      const pin = vi.fn().mockReturnValue('typed-by-user');
+      const { proc, ask } = await startWith({ authType: 'key', passphrase: 'pp-secret' }, pin); // pragma: allowlist secret
+      expect(await ask('(alice@target.example) Verification code: ')).toBe('typed-by-user');
+      expect(pin).toHaveBeenCalled();
+      await proc.close();
+    });
+
+    it('answers a password prompt addressed to the target with the saved password', async () => {
+      const { proc, ask } = await startWith({ authType: 'password', password: 'pw-secret' }); // pragma: allowlist secret
+      expect(await ask("alice@target.example's password: ")).toBe('pw-secret');
+      await proc.close();
+    });
+
+    it('does not give the target password to a jump host that asks for its own password', async () => {
+      const { proc, ask } = await startWith({
+        authType: 'password',
+        password: 'pw-secret', // pragma: allowlist secret
+        proxyJump: 'j@jump.example',
+      });
+      expect(await ask("j@jump.example's password: ")).toBe('');
+      expect(await ask("alice@target.example's password: ")).toBe('pw-secret');
+      await proc.close();
+    });
+
+    it('still refuses to trust an unknown host key without a handler', async () => {
+      const { proc, ask } = await startWith({ authType: 'password', password: 'pw-secret' }); // pragma: allowlist secret
+      expect(await ask("Are you sure you want to continue connecting (yes/no/[fingerprint])? ")).toBe('no');
+      await proc.close();
+    });
   });
 
   it('parses key type and fingerprint from the OpenSSH host key confirmation prompt', () => {
