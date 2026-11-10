@@ -193,6 +193,19 @@ async function makeHarness(sharedProvider: FakeStorageProvider): Promise<Harness
   return { bridge, ipc, dir, settingsStore, syncConfigStore, syncCryptoService, appAgent };
 }
 
+/**
+ * Polls until `condition` holds. Auto-sync pushes after a debounce, and how long debounce + push take depends on
+ * the machine; a fixed sleep either wastes time or, on a slow CI runner, ends before the outcome (that is how
+ * a 300 ms margin made the Windows release build fail once). The assertion after the wait reports the state.
+ */
+async function waitFor(condition: () => Promise<boolean>, timeoutMs = 10000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
 const TARGET: StorageConnectConfig = {
   id: 'sync-target',
   name: 'My Sync Bucket',
@@ -451,14 +464,14 @@ describe('IpcBridge — remote profile sync handlers', () => {
       authType: 'password',
     });
 
-    // Wait for the auto-sync debounced push (delay is shortened or wait 2.5s)
-    await new Promise((r) => setTimeout(r, 2200));
+    // Wait for the auto-sync debounced push (2 s debounce, then the push itself)
+    await waitFor(async () => Boolean((await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS)).lastSyncAt));
 
     const status2 = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_STATUS);
     expect(status2.lastSyncAt).toBeTruthy();
 
     await bridge.dispose();
-  });
+  }, 20000);
 
   it('unlinks smartcard via PROFILE_SYNC_UNLINK_SMARTCARD', async () => {
     const { ipc, syncConfigStore, bridge } = await harness();
@@ -555,14 +568,14 @@ describe('IpcBridge — remote profile sync handlers', () => {
         credentialsPassword: 'single-master-password',
       });
 
-      // The catch-up push is scheduled 500ms after unlock.
-      await new Promise((r) => setTimeout(r, 800));
+      // The catch-up push is scheduled 500ms after unlock; wait for it to land.
+      await waitFor(async () => (await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE)).state === 'in_sync');
 
       const compare = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE);
       expect(compare.state).toBe('in_sync');
 
       await bridge.dispose();
-    });
+    }, 20000);
 
     it('automatically unlocks via a linked smartcard for a background auto-sync push when locked', async () => {
       const { ipc, bridge, syncCryptoService } = await harness();
@@ -586,14 +599,14 @@ describe('IpcBridge — remote profile sync handlers', () => {
       });
 
       // scheduleAutoSync's default 2s debounce should auto-unlock via the mocked smartcard and push.
-      await new Promise((r) => setTimeout(r, 2500));
+      await waitFor(async () => syncCryptoService.isUnlocked('topology') && (await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE)).state === 'in_sync');
 
       expect(syncCryptoService.isUnlocked('topology')).toBe(true);
       const compare = await ipc.invoke(IPC_CHANNELS.PROFILE_SYNC_COMPARE);
       expect(compare.state).toBe('in_sync');
 
       await bridge.dispose();
-    }, 10000);
+    }, 20000);
 
     it('does not retry a failed smartcard auto-unlock on every debounce tick (cooldown)', async () => {
       const { ipc, bridge, syncCryptoService } = await harness();
