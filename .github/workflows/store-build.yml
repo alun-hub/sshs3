@@ -1,0 +1,118 @@
+name: Microsoft Store build
+
+# Builds the MSIX/APPX package for upload to Partner Center (Microsoft Store). Manual only: the Store
+# package is a separate channel from the GitHub release and is submitted by hand. The Store signs the
+# package itself, so no code-signing certificate is used here.
+# The bundled-tool steps (age, age-plugin-yubikey, VcXsrv) mirror release.yml (same pinned versions and
+# checksums); update both files together.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  store:
+    name: Build Store package (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Start Windows OpenSSH Agent
+        run: |
+          Set-Service ssh-agent -StartupType Manual
+          Start-Service ssh-agent
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests & typecheck
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run test
+
+      - name: Prepare bundled age + age-plugin-yubikey for Team Vault
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'build-resources/age/win'
+
+          Write-Host "Downloading age v1.3.2 (windows-amd64)..."
+          Invoke-WebRequest -Uri "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-windows-amd64.zip" -OutFile "age.zip"
+          $expectedAge = "f48d8f8f9ebe903ab5027ed067652f2cc1db94bc206976430133b905dcd8e8c7"
+          $actualAge = (Get-FileHash -Algorithm SHA256 "age.zip").Hash.ToLower()
+          if ($actualAge -ne $expectedAge) { throw "age.zip checksum mismatch: $actualAge" }
+          Expand-Archive -Path "age.zip" -DestinationPath "age-extract" -Force
+          Copy-Item "age-extract/age/age.exe" "build-resources/age/win/age.exe"
+          Remove-Item -Recurse -Force "age-extract", "age.zip"
+
+          Write-Host "Downloading age-plugin-yubikey v0.5.0 (x86_64-windows)..."
+          Invoke-WebRequest -Uri "https://github.com/str4d/age-plugin-yubikey/releases/download/v0.5.0/age-plugin-yubikey-v0.5.0-x86_64-windows.zip" -OutFile "apy.zip"
+          $expectedApy = "a2f1478bc691328861e9e511dfc498ddedb1d0b4b2e93c002f14ce1db0cb5abf"
+          $actualApy = (Get-FileHash -Algorithm SHA256 "apy.zip").Hash.ToLower()
+          if ($actualApy -ne $expectedApy) { throw "apy.zip checksum mismatch: $actualApy" }
+          Expand-Archive -Path "apy.zip" -DestinationPath "apy-extract" -Force
+          Copy-Item "apy-extract/age-plugin-yubikey/age-plugin-yubikey.exe" "build-resources/age/win/age-plugin-yubikey.exe"
+          Remove-Item -Recurse -Force "apy-extract", "apy.zip"
+
+      - name: Prepare bundled VcXsrv
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'build-resources/vcxsrv'
+          Write-Host "Downloading VcXsrv 21.1.16.1 installer..."
+          Invoke-WebRequest -Uri "https://github.com/marchaesen/vcxsrv/releases/download/21.1.16.1/vcxsrv-64.21.1.16.1.installer.exe" -OutFile "vcxsrv-installer.exe"
+          # Pin the bundled third-party installer: fail the build if it changes upstream.
+          $expected = "df7fed8f49665d0592528ab6be9d07111ea73c6848283d128b77690e05b8f90b"
+          $actual = (Get-FileHash -Algorithm SHA256 "vcxsrv-installer.exe").Hash.ToLower()
+          if ($actual -ne $expected) { throw "VcXsrv installer checksum mismatch: $actual" }
+          7z x vcxsrv-installer.exe -o"build-resources/vcxsrv" -y
+          if (Test-Path 'build-resources/vcxsrv/$PLUGINSDIR') {
+            Remove-Item -Recurse -Force 'build-resources/vcxsrv/$PLUGINSDIR'
+          }
+          Remove-Item -Force "vcxsrv-installer.exe" -ErrorAction SilentlyContinue
+
+      - name: Build Store package
+        run: npm run package:store
+
+      - name: Verify package manifest
+        shell: pwsh
+        run: |
+          $appx = Get-ChildItem -Path release -Filter *.appx | Select-Object -First 1
+          if (-not $appx) { throw "No .appx file found in release/" }
+          Write-Host "Package: $($appx.Name)"
+          Copy-Item $appx.FullName "store-package.zip"
+          Expand-Archive -Path "store-package.zip" -DestinationPath "store-package" -Force
+          $manifest = Get-Content -Raw "store-package/AppxManifest.xml"
+          Write-Host $manifest
+
+          $version = (node -p "require('./package.json').version").Trim()
+          $checks = @(
+            @{ Name = "Identity Name";   Pattern = 'Identity[^>]*\bName="alun\.sshs3"' },
+            @{ Name = "Identity Publisher"; Pattern = 'Identity[^>]*Publisher="CN=DD4654AA-1C62-4E5D-AE38-CB3BE9A1F062"' },
+            @{ Name = "Version $version.0"; Pattern = ('Identity[^>]*Version="' + [regex]::Escape($version) + '\.0"') },
+            @{ Name = "runFullTrust capability"; Pattern = 'Capability\s+Name="runFullTrust"' },
+            @{ Name = "PublisherDisplayName"; Pattern = '<PublisherDisplayName>alun</PublisherDisplayName>' }
+          )
+          $failed = $false
+          foreach ($c in $checks) {
+            if ($manifest -match $c.Pattern) { Write-Host "OK   $($c.Name)" }
+            else { Write-Host "FAIL $($c.Name)"; $failed = $true }
+          }
+          if ($failed) { throw "AppxManifest.xml does not match the Partner Center identity" }
+
+      - name: Upload Store package
+        uses: actions/upload-artifact@v7
+        with:
+          name: store-package
+          path: release/*.appx
+          if-no-files-found: error
+          retention-days: 14

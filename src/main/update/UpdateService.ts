@@ -49,6 +49,8 @@ export interface UpdateServiceOptions {
   disabled?: boolean;
   /** Whether this copy was installed by the NSIS installer (Windows only matters). Defaults to checking the install folder. */
   isNsisInstall?: boolean;
+  /** Whether this copy runs as an MSIX package from the Microsoft Store (Electron sets `process.windowsStore`). The Store updates it. */
+  isStoreInstall?: boolean;
   /** Whether periodic background checks are enabled (user setting). */
   getAutoCheck: () => Promise<boolean> | boolean;
   /**
@@ -102,9 +104,11 @@ export class UpdateService {
       : !isPackaged
         ? 'dev'
         : (options.platform ?? process.platform) === 'win32'
-          ? (options.isNsisInstall ?? isNsisInstall()) === false
-            ? 'not-installer'
-            : 'windows-unsigned'
+          ? (options.isStoreInstall ?? Boolean((process as NodeJS.Process & { windowsStore?: boolean }).windowsStore))
+            ? 'microsoft-store'
+            : (options.isNsisInstall ?? isNsisInstall()) === false
+              ? 'not-installer'
+              : 'windows-unsigned'
           : null;
     this.state = {
       status: this.unsupportedReason ? 'unsupported' : 'idle',

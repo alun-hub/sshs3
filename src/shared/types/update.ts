@@ -12,10 +12,10 @@ export type UpdateStatus =
 /**
  * dev: unpackaged build. not-installer: a Windows copy that the NSIS installer did not install (MSI, ZIP or
  * portable), which the in-app updater cannot update; new versions come the way the copy did. windows-unsigned: Windows builds are not code-signed yet, so
- * updates are installed manually. disabled: switched off by the administrator
+ * updates are installed manually. microsoft-store: an MSIX copy from the Microsoft Store, which the Store updates. disabled: switched off by the administrator
  * (SSHS3_DISABLE_UPDATES=1 or the autoCheckUpdates policy), e.g. on air-gapped machines.
  */
-export type UpdateUnsupportedReason = 'dev' | 'not-installer' | 'windows-unsigned' | 'disabled';
+export type UpdateUnsupportedReason = 'dev' | 'not-installer' | 'windows-unsigned' | 'microsoft-store' | 'disabled';
 
 export interface UpdateState {
   status: UpdateStatus;

@@ -28,6 +28,7 @@
     "package:linux": "npm run build && electron-builder --linux",
     "package:appimage": "npm run build && electron-builder --linux AppImage",
     "package:win": "npm run build && electron-builder --win",
+    "package:store": "npm run build && electron-builder --win appx --publish never",
     "docs:sync": "node scripts/sync-docs.mjs",
     "docs:lint": "node scripts/docs-lint.mjs",
     "deploy": "./scripts/deploy.sh",

@@ -208,11 +208,13 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
             {updateState?.status === 'unsupported' &&
               (updateState.unsupportedReason === 'windows-unsigned'
                 ? ' · download new versions manually (Windows builds are not code-signed yet)'
-                : updateState.unsupportedReason === 'not-installer'
-                  ? ' · this copy was not installed with the sshs3 installer (MSI, ZIP or portable), so new versions come the same way it did'
-                  : updateState.unsupportedReason === 'disabled'
-                    ? ' · updates are disabled by the administrator'
-                    : ' · updates are disabled in development')}
+                : updateState.unsupportedReason === 'microsoft-store'
+                  ? ' · updates are delivered by the Microsoft Store'
+                  : updateState.unsupportedReason === 'not-installer'
+                    ? ' · this copy was not installed with the sshs3 installer (MSI, ZIP or portable), so new versions come the same way it did'
+                    : updateState.unsupportedReason === 'disabled'
+                      ? ' · updates are disabled by the administrator'
+                      : ' · updates are disabled in development')}
           </span>
           {updateState?.status === 'unsupported' && updateState.unsupportedReason === 'windows-unsigned' && (
             <button

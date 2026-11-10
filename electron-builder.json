@@ -90,6 +90,18 @@
       "build/linux/rpm-posttrans.sh"
     ]
   },
+  "appx": {
+    "identityName": "alun.sshs3",
+    "publisher": "CN=DD4654AA-1C62-4E5D-AE38-CB3BE9A1F062",
+    "publisherDisplayName": "alun",
+    "applicationId": "sshs3",
+    "displayName": "sshs3",
+    "backgroundColor": "transparent",
+    "languages": [
+      "en-US"
+    ],
+    "showNameOnTiles": false
+  },
   "msi": {
     "oneClick": true,
     "perMachine": true,

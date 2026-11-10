@@ -65,6 +65,12 @@ describe('UpdateService', () => {
     await vi.advanceTimersByTimeAsync(10 * 60 * 60 * 1000);
     expect(msi.updater.checkForUpdates).not.toHaveBeenCalled();
 
+    const store = create({ isPackaged: true, platform: 'win32', isStoreInstall: true, isNsisInstall: false });
+    expect(store.service.getState()).toMatchObject({ status: 'unsupported', unsupportedReason: 'microsoft-store' });
+    store.service.start();
+    await vi.advanceTimersByTimeAsync(10 * 60 * 60 * 1000);
+    expect(store.updater.checkForUpdates).not.toHaveBeenCalled();
+
     const off = create({ isPackaged: true, platform: 'linux', disabled: true });
     expect(off.service.getState()).toMatchObject({ status: 'unsupported', unsupportedReason: 'disabled' });
     off.service.start();
