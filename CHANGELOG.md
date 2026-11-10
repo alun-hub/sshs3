@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.7] - 2026-11-10
+
+The Markdown preview can copy with the keyboard, the file manager stops handing saved secrets to prompts they do not belong to, and a few login prompts and the shutdown sequence no longer get stuck.
+
+### Added
+- **Markdown preview:** `Ctrl+Shift+C` copies the selected text, and *Copy text automatically on selection* (Settings → Terminal) now applies to the preview too. A short "Copied N characters" notice confirms it. A drag that ends outside the preview copies the part inside it, and a click that leaves the selection as it was does not copy it again over something you copied since. The preview does not add its copies to the clipboard history; only terminal selections go there.
+
+### Security
+- **File manager (SFTP):** a saved password or key passphrase now only answers the prompt it belongs to, as in the terminal. The password answers a password prompt (and, with a jump host, only one addressed to the target's own `user@host`), and the passphrase only ssh's own *Enter passphrase for* prompt. Anything else a server asks, such as a verification code, is put to you instead. Before, a jump host's password prompt or a server's question could receive the saved secret.
+
+### Fixed
+- A password or passphrase prompt from an SSH session is cancelled, instead of waiting forever, when the window that shows it disappears (for example when its renderer crashes) or when there is no window.
+- Quitting: every cleanup step now runs on its own, so a step that fails no longer skips the ones after it (stopping the managed ssh-agent and the X server), and a step that hangs no longer blocks the app from quitting (each gets 5 seconds). Two SSH session listeners, for reconnecting and for a changed host key, are now released on quit.
+
+### Changed
+- Under the hood, with no change in behaviour: the sync and Team Vault status mapping, the bookkeeping of listeners and the shutdown sequence were restructured and now have about 200 new tests, CI installs `age` so that the Team Vault encryption tests run against the real binary, and a lint rule stops source files from growing past their current size.
+
 ## [0.97.6] - 2026-11-06
 
 The terminal engine (xterm) is updated to version 6, together with Electron 45.2 and the usual library updates.
