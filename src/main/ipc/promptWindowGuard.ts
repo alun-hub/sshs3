@@ -1,6 +1,6 @@
 import type { WebContents } from 'electron';
 
-type WatchableWebContents = Partial<Pick<WebContents, 'once' | 'removeListener' | 'isDestroyed' | 'isCrashed'>>;
+export type WatchableWebContents = Partial<Pick<WebContents, 'once' | 'removeListener' | 'isDestroyed' | 'isCrashed'>>;
 
 /**
  * Calls `onLost` (once) if the window that is showing a prompt goes away before the user has answered:
@@ -34,13 +34,16 @@ export function watchPromptWindow(webContents: WatchableWebContents, onLost: () 
  * user's answer (and stops the watching), `answerWhenLost` if the window is lost first. Exactly one of
  * the two happens, and the entry leaves `pending` either way. Returns false when the window was already
  * gone and the prompt has been answered on the spot: the caller must then not send the prompt to it.
+ * `extra` is stored next to the callback, for prompts whose pending entry carries more than the callback
+ * (an askpass prompt remembers which session asked, so that session ending can cancel it).
  */
-export function addGuardedPrompt<A extends unknown[]>(
-  pending: Map<string, { callback: (...args: A) => void }>,
+export function addGuardedPrompt<A extends unknown[], E extends object = object>(
+  pending: Map<string, { callback: (...args: A) => void } & E>,
   id: string,
   webContents: WatchableWebContents,
   answerWhenLost: () => void,
-  answer: (...args: A) => void
+  answer: (...args: A) => void,
+  extra?: E
 ): boolean {
   // Its events have already been and gone: nobody is left to answer.
   if (webContents.isDestroyed?.() || webContents.isCrashed?.()) {
@@ -51,7 +54,8 @@ export function addGuardedPrompt<A extends unknown[]>(
     if (pending.delete(id)) answerWhenLost();
   });
   pending.set(id, {
-    callback: (...args) => {
+    ...(extra as E),
+    callback: (...args: A) => {
       stopWatching();
       answer(...args);
     },

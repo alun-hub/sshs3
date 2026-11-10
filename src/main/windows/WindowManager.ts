@@ -27,6 +27,8 @@ export interface WindowActions {
 /** What IpcBridge needs from the window layer to route events (WindowManager implements it). */
 export interface WindowRouter {
   sendToSession(sessionId: string, channel: string, ...args: unknown[]): boolean;
+  /** The window a session event is shown in (what sendToSession sends to), or undefined when there is none. */
+  webContentsOfSession(sessionId: string): ManagedWebContents | undefined;
   broadcast(channel: string, ...args: unknown[]): void;
   /** Like broadcast, but skips one window (undefined skips none). */
   broadcastExcept(windowId: number | undefined, channel: string, ...args: unknown[]): void;
@@ -200,12 +202,22 @@ export class WindowManager<W extends ManagedWindow = ManagedWindow> implements W
    * to the focused window, so output is never silently dropped while ownership is being set up.
    */
   sendToSession(sessionId: string, channel: string, ...args: unknown[]): boolean {
+    const target = this.webContentsOfSession(sessionId);
+    if (!target) return false;
+    target.send(channel, ...args);
+    return true;
+  }
+
+  /**
+   * The window a session's events are shown in: its owner, else the focused window; undefined when there is
+   * no live one. The single place that decides it, so whoever must watch that window (a prompt waiting for an
+   * answer) watches the one the prompt was sent to.
+   */
+  webContentsOfSession(sessionId: string): ManagedWebContents | undefined {
     const ownerId = this.sessionOwner.get(sessionId);
     const owner = ownerId !== undefined ? this.windows.get(ownerId) : undefined;
     const target = owner && !owner.isDestroyed() ? owner.webContents : this.focusedWebContents();
-    if (!target || target.isDestroyed()) return false;
-    target.send(channel, ...args);
-    return true;
+    return target && !target.isDestroyed() ? target : undefined;
   }
 
   broadcast(channel: string, ...args: unknown[]): void {

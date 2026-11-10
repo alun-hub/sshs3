@@ -61,7 +61,7 @@ import { registerSessionHandlers, registerClipboardHistoryHandlers, registerSnip
 import { registerFileEditorHandlers } from './ipc/fileEditorHandlers';
 import { ListenerSet } from './ipc/listenerSet';
 import { registerSearchHandlers } from './ipc/searchHandlers';
-import { addGuardedPrompt } from './ipc/promptWindowGuard';
+import { addGuardedPrompt, type WatchableWebContents } from './ipc/promptWindowGuard';
 import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
 import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
 import { registerDragOutHandlers, createDragOutService } from './ipc/dragOutHandlers';
@@ -429,6 +429,12 @@ export class IpcBridge {
   public sendToSession(sessionId: string | undefined, channel: string, ...args: unknown[]): boolean {
     if (sessionId && this.windows) return this.windows.sendToSession(sessionId, channel, ...args);
     return this.sendToFocused(channel, ...args);
+  }
+
+  /** The window a session's events, and so its prompts, are shown in (see sendToSession); undefined when there is none. */
+  private webContentsForSession(sessionId: string | undefined): (WatchableWebContents & { send(channel: string, ...args: unknown[]): void }) | undefined {
+    if (sessionId && this.windows) return this.windows.webContentsOfSession(sessionId);
+    return this.getWebContents() ?? undefined; // a destroyed window is handled by addGuardedPrompt
   }
 
   /** Replies to the window that issued an IPC request (search, dir-sync, AWS SSO ...). */
@@ -1537,13 +1543,17 @@ export class IpcBridge {
     this.listeners.on(this.sshPtyManager, 'exit', onPtyExit);
 
     const onPtyAskpass: SSHPtyManagerEvents['askpass'] = ({ sessionId, prompt, kind, context, retry, callback }) => {
+      // The window that has to answer is the one to watch. No window, or it goes away before the user answers
+      // (renderer crash): cancel the login rather than leave ssh waiting for good. Session exit and dispose() do too.
+      const webContents = this.webContentsForSession(sessionId);
+      if (!webContents) return callback('');
       const id = crypto.randomUUID();
-      this.pendingAskpass.set(id, { sessionId, callback });
+      if (!addGuardedPrompt<[pin: string], { sessionId?: string }>(this.pendingAskpass, id, webContents, () => callback(''), callback, { sessionId })) return;
       if (sessionId) {
         this.activePresenceSessions.add(sessionId);
       }
 
-      this.sendToSession(sessionId, IPC_CHANNELS.ASKPASS_PROMPT, {
+      webContents.send(IPC_CHANNELS.ASKPASS_PROMPT, {
         id,
         prompt,
         sessionId,
@@ -1701,11 +1711,7 @@ export class IpcBridge {
     this.pendingAskpass.clear();
 
     for (const cancel of [...this.pendingInsertTokens.values()]) {
-      try {
-        cancel();
-      } catch {
-        // Ignore
-      }
+      try { cancel(); } catch { /* ignore */ }
     }
 
     for (const prompt of this.pendingHostKeyPrompts.values()) {
@@ -1753,9 +1759,8 @@ export class IpcBridge {
     }
     this.pendingAwsSsoLogins.clear();
 
-    // Every step below that can fail or hang runs in disposeStep: dispose() is awaited by 'before-quit'
-    // (which ignores a rejection) before the app quits, so one failing step must not skip the cleanup after
-    // it (private agents, the managed agent, the X server) and one hanging step must not block quit.
+    // Each step below that can fail or hang runs in disposeStep: 'before-quit' ignores a rejection and waits for
+    // dispose(), so a failing step must not skip the cleanup after it and a hanging one must not block quit.
     await this.disposeStep('sshPtyManager.killAll', () => this.sshPtyManager.killAll());
     await this.disposeStep('storageRegistry.disconnectAll', () => this.storageRegistry.disconnectAll?.());
     await this.disposeStep('fileEditorService.dispose', () => this.fileEditorService.dispose());

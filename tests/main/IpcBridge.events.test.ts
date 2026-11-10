@@ -164,6 +164,7 @@ describe('IpcBridge event forwarding', () => {
         assign: vi.fn(),
         windowIdOfSender: vi.fn(),
         keyOfSender: vi.fn(),
+        webContentsOfSession: vi.fn(),
       };
       const { sent, k8sDiscovery, fireConfigChanged } = track(makeBridge({ windows }));
       k8sDiscovery.consumePendingExecAuthWarning.mockReturnValue({ user: 'eks-user' });
@@ -297,7 +298,7 @@ describe('IpcBridge window helpers', () => {
 
   it("lists the windows as seen from the calling window, and an empty list without window actions", () => {
     const list = vi.fn().mockReturnValue([{ id: 1, title: 'Main' }]);
-    const windows = { sendToSession: vi.fn(), broadcast: vi.fn(), broadcastExcept: vi.fn(), assign: vi.fn(), windowIdOfSender: vi.fn().mockReturnValue(7), keyOfSender: vi.fn() };
+    const windows = { sendToSession: vi.fn(), broadcast: vi.fn(), broadcastExcept: vi.fn(), assign: vi.fn(), windowIdOfSender: vi.fn().mockReturnValue(7), keyOfSender: vi.fn(), webContentsOfSession: vi.fn() };
     const bridge = new IpcBridge({ windows, windowActions: { open: vi.fn(), adopt: vi.fn(), takeHandoff: vi.fn(), list } });
     const sender = { id: 7 } as any;
 

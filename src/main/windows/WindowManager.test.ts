@@ -46,6 +46,70 @@ describe('WindowManager', () => {
     expect(new WindowManager().sendToSession('s', 'ch')).toBe(false);
   });
 
+  describe('webContentsOfSession (the window a session event would be shown in)', () => {
+    it("is the owning window's web contents", () => {
+      const wm = new WindowManager();
+      const a = fakeWindow(1);
+      const b = fakeWindow(2);
+      wm.register(a);
+      wm.register(b);
+      wm.assign('s1', 1);
+
+      expect(wm.webContentsOfSession('s1')).toBe(a.webContents);
+    });
+
+    it('is the focused window for a session without an owner, or whose owner is gone', () => {
+      const wm = new WindowManager();
+      const a = fakeWindow(1);
+      const b = fakeWindow(2);
+      wm.register(a);
+      wm.register(b);
+      wm.setFocused(2);
+      wm.assign('s1', 1);
+
+      expect(wm.webContentsOfSession('unknown')).toBe(b.webContents);
+      a.destroyed = true;
+      expect(wm.webContentsOfSession('s1')).toBe(b.webContents);
+    });
+
+    it('is undefined when there is no live window at all', () => {
+      expect(new WindowManager().webContentsOfSession('s1')).toBeUndefined();
+
+      const wm = new WindowManager();
+      const a = fakeWindow(1);
+      wm.register(a);
+      a.destroyed = true;
+      expect(wm.webContentsOfSession('s1')).toBeUndefined();
+    });
+
+    it('is undefined when the window is still there but its web contents has been destroyed', () => {
+      const wm = new WindowManager();
+      const a = fakeWindow(1);
+      wm.register(a);
+      wm.assign('s1', 1);
+      a.webContents.isDestroyed = () => true;
+
+      expect(wm.webContentsOfSession('s1')).toBeUndefined();
+      expect(wm.sendToSession('s1', 'ch')).toBe(false);
+    });
+
+    it('is exactly where sendToSession delivers', () => {
+      const wm = new WindowManager();
+      const a = fakeWindow(1);
+      const b = fakeWindow(2);
+      wm.register(a);
+      wm.register(b);
+      wm.assign('s1', 2);
+
+      const target = wm.webContentsOfSession('s1');
+      wm.sendToSession('s1', 'ch');
+
+      expect(target).toBe(b.webContents);
+      expect(b.send).toHaveBeenCalledTimes(1);
+      expect(a.send).not.toHaveBeenCalled();
+    });
+  });
+
   it('moves ownership when a tab is transferred', () => {
     const wm = new WindowManager();
     const a = fakeWindow(1);
