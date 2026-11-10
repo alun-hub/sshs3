@@ -104,7 +104,10 @@ function makeBridge(overrides: { k8sTerminalKillAll?: () => Promise<void> } = {}
     k8sPortForwardManager: k8sPortForward as any,
     sshTunnelManager: sshTunnel as any,
     k8sDiscoveryService: {
-      onConfigChanged: () => () => log('k8sConfig.unsubscribe'),
+      onConfigChanged: () => () => {
+        log('k8sConfig.unsubscribe');
+        failSync('k8sConfig.unsubscribe');
+      },
       consumePendingExecAuthWarning: () => undefined,
     } as any,
     settingsStore: { getSettings: vi.fn().mockResolvedValue({ clipboardHistoryClearOnExit: true }) } as any,
@@ -168,6 +171,18 @@ describe('IpcBridge.dispose() ordering invariants', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('detaches whatever is still attached after the named steps, so a source dispose() forgets to name cannot leak a listener', async () => {
+    const { bridge } = makeBridge();
+    const forgotten = new EventEmitter();
+    // The one private access in this file: there is no public way to attach to a source dispose() does not know.
+    (bridge as unknown as { listeners: { on: (e: EventEmitter, ev: string, l: () => void) => void } }).listeners.on(forgotten, 'x', () => {});
+    expect(forgotten.listenerCount('x')).toBe(1);
+
+    await bridge.dispose();
+
+    expect(forgotten.listenerCount('x')).toBe(0);
   });
 
   it('removes every IPC handler before it empties the clipboard history, so no late selection can be added behind the clear', async () => {
@@ -254,6 +269,7 @@ describe('IpcBridge.dispose() ordering invariants', () => {
 /** Every step dispose() runs after the pending prompts are settled, in order. `canHang`: async in dispose(). */
 const SHUTDOWN_STEPS: Array<{ step: string; canHang: boolean }> = [
   { step: 'transfer.cancelAll', canHang: false },
+  { step: 'k8sConfig.unsubscribe', canHang: false },
   { step: 'pty.killAll', canHang: true },
   { step: 'storage.disconnectAll', canHang: true },
   { step: 'fileEditor.dispose', canHang: true },

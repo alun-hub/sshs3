@@ -17,9 +17,15 @@ interface Attachment {
  * Detaching is per owner and in attachment order, because the caller often has to stop one source before the
  * next (listeners off, then the manager is shut down) and must not detach a source it has not got to yet.
  * Everything is idempotent: detaching an owner twice, or one that never had a listener, does nothing.
+ *
+ * A removal that throws never stops the others (they have already been forgotten, so they would never be
+ * removed otherwise): each failure goes to `onError`, or, without one, the first is rethrown once every removal
+ * has run.
  */
 export class ListenerSet {
   private attached: Attachment[] = [];
+
+  constructor(private readonly onError?: (error: unknown) => void) {}
 
   /** Subscribes `listener` to `event` on `emitter` and remembers it. */
   on<A extends unknown[]>(emitter: EmitterLike, event: string, listener: (...args: A) => void): void {
@@ -36,18 +42,32 @@ export class ListenerSet {
   detach(owner: object): void {
     const mine = this.attached.filter((a) => a.owner === owner);
     this.attached = this.attached.filter((a) => a.owner !== owner);
-    for (const a of mine) a.remove();
+    this.removeAll(mine);
   }
 
   /** Removes everything still attached, whatever the owner. */
   detachAll(): void {
     const all = this.attached;
     this.attached = [];
-    for (const a of all) a.remove();
+    this.removeAll(all);
   }
 
   /** How many listeners are attached right now. */
   get size(): number {
     return this.attached.length;
+  }
+
+  private removeAll(list: Attachment[]): void {
+    const errors: unknown[] = [];
+    for (const a of list) {
+      try {
+        a.remove();
+      } catch (err) {
+        errors.push(err);
+      }
+    }
+    if (errors.length === 0) return;
+    if (this.onError) errors.forEach(this.onError);
+    else throw errors[0];
   }
 }

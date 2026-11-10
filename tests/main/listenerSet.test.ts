@@ -165,6 +165,66 @@ describe('ListenerSet', () => {
     });
   });
 
+  describe('a removal that throws', () => {
+    const throwing = (message: string) => () => {
+      throw new Error(message);
+    };
+
+    it('does not stop the other removals of that owner, and reports the error to onError', () => {
+      const onError = vi.fn();
+      const owner = {};
+      const after = vi.fn();
+      const set = new ListenerSet(onError);
+      set.subscribe(owner, throwing('first'));
+      set.subscribe(owner, after);
+
+      expect(() => set.detach(owner)).not.toThrow();
+
+      expect(after).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect((onError.mock.calls[0][0] as Error).message).toBe('first');
+    });
+
+    it('is reported once per failure and never retried', () => {
+      const onError = vi.fn();
+      const owner = {};
+      const remove = vi.fn(throwing('boom'));
+      const set = new ListenerSet(onError);
+      set.subscribe(owner, remove);
+
+      set.detach(owner);
+      set.detach(owner);
+
+      expect(remove).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it('also applies to detachAll(): every owner is still cleaned up', () => {
+      const onError = vi.fn();
+      const emitter = new EventEmitter();
+      const set = new ListenerSet(onError);
+      set.subscribe({}, throwing('bad'));
+      set.on(emitter, 'x', vi.fn());
+
+      expect(() => set.detachAll()).not.toThrow();
+
+      expect(emitter.listenerCount('x')).toBe(0);
+      expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it('without an onError handler, finishes every removal and then rethrows the first error', () => {
+      const owner = {};
+      const after = vi.fn();
+      const set = new ListenerSet();
+      set.subscribe(owner, throwing('first'));
+      set.subscribe(owner, throwing('second'));
+      set.subscribe(owner, after);
+
+      expect(() => set.detach(owner)).toThrow('first');
+      expect(after).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('subscribe(owner, unsubscribe)', () => {
     it('runs the unsubscribe once, when its owner is detached', () => {
       const owner = {};

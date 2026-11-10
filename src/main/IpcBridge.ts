@@ -244,7 +244,7 @@ export class IpcBridge {
   private activePresenceSessions = new Set<string>();
 
   /** Every listener attached to a manager's events, so dispose() cannot forget to detach one. */
-  private readonly listeners = new ListenerSet();
+  private readonly listeners = new ListenerSet((err) => ipcLog.warn('IpcBridge.dispose: a listener could not be detached:', err instanceof Error ? err.message : err));
 
   constructor(options: IpcBridgeOptions = {}) {
     // Must run before TeamVaultService/TeamVaultConfigStore are constructed just below — it's
@@ -1700,6 +1700,7 @@ export class IpcBridge {
     await this.disposeStep('sshTunnelManager.stopAll', () => this.sshTunnelManager.stopAll());
 
     this.listeners.detach(this.k8sDiscoveryService);
+    this.listeners.detachAll(); // backstop: a source dispose() does not name above must not keep a listener
 
     for (const prompt of this.pendingAskpass.values()) {
       try {
