@@ -1672,7 +1672,7 @@ export class IpcBridge {
 
     this.listeners.detach(this.sshPtyManager);
     this.listeners.detach(this.transferQueue);
-    this.transferQueue?.cancelAll?.();
+    await this.disposeStep('transferQueue.cancelAll', () => this.transferQueue?.cancelAll?.());
 
     this.listeners.detach(this.k8sTerminalManager);
     await this.disposeStep('k8sTerminalManager.killAll', () => this.k8sTerminalManager.killAll());
@@ -1700,7 +1700,13 @@ export class IpcBridge {
     }
     this.pendingAskpass.clear();
 
-    for (const cancel of [...this.pendingInsertTokens.values()]) cancel();
+    for (const cancel of [...this.pendingInsertTokens.values()]) {
+      try {
+        cancel();
+      } catch {
+        // Ignore
+      }
+    }
 
     for (const prompt of this.pendingHostKeyPrompts.values()) {
       try {
@@ -1747,12 +1753,15 @@ export class IpcBridge {
     }
     this.pendingAwsSsoLogins.clear();
 
-    await this.sshPtyManager.killAll();
-    await this.storageRegistry.disconnectAll?.();
-    await this.fileEditorService.dispose();
-    await this.dragOutService.dispose();
-    this.fileTailService.dispose();
-    this.searchOrchestrator.dispose();
+    // Every step below that can fail or hang runs in disposeStep: dispose() is awaited by 'before-quit'
+    // (which ignores a rejection) before the app quits, so one failing step must not skip the cleanup after
+    // it (private agents, the managed agent, the X server) and one hanging step must not block quit.
+    await this.disposeStep('sshPtyManager.killAll', () => this.sshPtyManager.killAll());
+    await this.disposeStep('storageRegistry.disconnectAll', () => this.storageRegistry.disconnectAll?.());
+    await this.disposeStep('fileEditorService.dispose', () => this.fileEditorService.dispose());
+    await this.disposeStep('dragOutService.dispose', () => this.dragOutService.dispose());
+    await this.disposeStep('fileTailService.dispose', () => this.fileTailService.dispose());
+    await this.disposeStep('searchOrchestrator.dispose', () => this.searchOrchestrator.dispose());
     if (this.autoSyncTimer) {
       clearTimeout(this.autoSyncTimer);
       this.autoSyncTimer = null;
@@ -1774,9 +1783,9 @@ export class IpcBridge {
     // certified key from the app agent and deletes the PIV certificate file, which the app agent
     // shutdown below does not know about.
     await this.disposeStep('sshCaService.logout', () => this.sshCaService.logout());
-    await this.smartcard.dispose();
-    AgentLifecycleManager.killAllPrivateAgents();
-    await AgentLifecycleManager.stopManagedAgent();
-    await XServerManager.stopServer();
+    await this.disposeStep('smartcard.dispose', () => this.smartcard.dispose());
+    await this.disposeStep('AgentLifecycleManager.killAllPrivateAgents', () => AgentLifecycleManager.killAllPrivateAgents());
+    await this.disposeStep('AgentLifecycleManager.stopManagedAgent', () => AgentLifecycleManager.stopManagedAgent());
+    await this.disposeStep('XServerManager.stopServer', () => XServerManager.stopServer().then(() => undefined));
   }
 }

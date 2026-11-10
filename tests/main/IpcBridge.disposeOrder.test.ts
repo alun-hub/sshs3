@@ -29,6 +29,18 @@ let calls: string[];
 const log = (entry: string): void => {
   calls.push(entry);
 };
+
+/** One shutdown step made to fail ('reject') or never finish ('hang') for the failure-isolation tests. */
+let fault: { step: string; mode: 'reject' | 'hang' } | undefined;
+async function maybeFail(step: string): Promise<void> {
+  if (fault?.step !== step) return;
+  if (fault.mode === 'reject') throw new Error(`injected failure in ${step}`);
+  await new Promise<void>(() => {});
+}
+/** For steps that are synchronous in dispose(): they can throw, but not hang. */
+function failSync(step: string): void {
+  if (fault?.step === step) throw new Error(`injected failure in ${step}`);
+}
 const at = (entry: string): number => {
   const i = calls.indexOf(entry);
   if (i === -1) throw new Error(`"${entry}" never happened. Recorded: ${calls.join(', ')}`);
@@ -58,9 +70,17 @@ function makeBridge(overrides: { k8sTerminalKillAll?: () => Promise<void> } = {}
     handle: vi.fn(),
     removeHandler: vi.fn((channel: string) => log(`removeHandler:${channel}`)),
   };
-  const pty = Object.assign(new RecordingEmitter('pty'), { killAll: () => pty.stop('killAll') });
+  const pty = Object.assign(new RecordingEmitter('pty'), {
+    killAll: async () => {
+      await pty.stop('killAll');
+      await maybeFail('pty.killAll');
+    },
+  });
   const transfer = Object.assign(new RecordingEmitter('transfer'), {
-    cancelAll: () => log('transfer.cancelAll'),
+    cancelAll: () => {
+      log('transfer.cancelAll');
+      failSync('transfer.cancelAll');
+    },
     hasActiveTransfers: () => false,
     getActiveTransferCount: () => 0,
   });
@@ -89,12 +109,41 @@ function makeBridge(overrides: { k8sTerminalKillAll?: () => Promise<void> } = {}
     } as any,
     settingsStore: { getSettings: vi.fn().mockResolvedValue({ clipboardHistoryClearOnExit: true }) } as any,
     clipboardHistoryStore: { clear: vi.fn(async () => log('clipboard.clear')) } as any,
-    storageRegistry: { disconnectAll: vi.fn(async () => log('storage.disconnectAll')), disconnect: vi.fn() } as any,
-    fileEditorService: { dispose: vi.fn(async () => log('fileEditor.dispose')) } as any,
+    storageRegistry: {
+      disconnectAll: vi.fn(async () => {
+        log('storage.disconnectAll');
+        await maybeFail('storage.disconnectAll');
+      }),
+      disconnect: vi.fn(),
+    } as any,
+    fileEditorService: {
+      dispose: vi.fn(async () => {
+        log('fileEditor.dispose');
+        await maybeFail('fileEditor.dispose');
+      }),
+    } as any,
     profileSyncService: { syncAgentBlockToLocalSshConfig: vi.fn().mockResolvedValue(undefined), autoSyncLocalSshConfig: vi.fn() } as any,
   });
-  vi.spyOn(bridge.smartcard, 'dispose').mockImplementation(async () => log('smartcard.dispose'));
-  vi.spyOn(bridge.sshCaService, 'logout').mockImplementation(async () => log('sshCa.logout'));
+  vi.spyOn(bridge.smartcard, 'dispose').mockImplementation(async () => {
+    log('smartcard.dispose');
+    await maybeFail('smartcard.dispose');
+  });
+  vi.spyOn(bridge.sshCaService, 'logout').mockImplementation(async () => {
+    log('sshCa.logout');
+    await maybeFail('sshCa.logout');
+  });
+  vi.spyOn(bridge.dragOutService, 'dispose').mockImplementation(async () => {
+    log('dragOut.dispose');
+    await maybeFail('dragOut.dispose');
+  });
+  vi.spyOn(bridge.fileTailService, 'dispose').mockImplementation(() => {
+    log('fileTail.dispose');
+    failSync('fileTail.dispose');
+  });
+  vi.spyOn(bridge.searchOrchestrator, 'dispose').mockImplementation(() => {
+    log('searchOrchestrator.dispose');
+    failSync('searchOrchestrator.dispose');
+  });
   bridge.register();
   return { bridge };
 }
@@ -102,10 +151,18 @@ function makeBridge(overrides: { k8sTerminalKillAll?: () => Promise<void> } = {}
 describe('IpcBridge.dispose() ordering invariants', () => {
   beforeEach(() => {
     calls = [];
-    vi.spyOn(AgentLifecycleManager, 'killAllPrivateAgents').mockImplementation(() => log('agents.killAllPrivate'));
-    vi.spyOn(AgentLifecycleManager, 'stopManagedAgent').mockImplementation(async () => log('agents.stopManaged'));
+    fault = undefined;
+    vi.spyOn(AgentLifecycleManager, 'killAllPrivateAgents').mockImplementation(() => {
+      log('agents.killAllPrivate');
+      failSync('agents.killAllPrivate');
+    });
+    vi.spyOn(AgentLifecycleManager, 'stopManagedAgent').mockImplementation(async () => {
+      log('agents.stopManaged');
+      await maybeFail('agents.stopManaged');
+    });
     vi.spyOn(XServerManager, 'stopServer').mockImplementation(async () => {
       log('xserver.stop');
+      await maybeFail('xserver.stop');
       return { success: true };
     });
   });
@@ -190,6 +247,93 @@ describe('IpcBridge.dispose() ordering invariants', () => {
     } finally {
       warn.restore();
       vi.useRealTimers();
+    }
+  });
+});
+
+/** Every step dispose() runs after the pending prompts are settled, in order. `canHang`: async in dispose(). */
+const SHUTDOWN_STEPS: Array<{ step: string; canHang: boolean }> = [
+  { step: 'transfer.cancelAll', canHang: false },
+  { step: 'pty.killAll', canHang: true },
+  { step: 'storage.disconnectAll', canHang: true },
+  { step: 'fileEditor.dispose', canHang: true },
+  { step: 'dragOut.dispose', canHang: true },
+  { step: 'fileTail.dispose', canHang: false },
+  { step: 'searchOrchestrator.dispose', canHang: false },
+  { step: 'sshCa.logout', canHang: true },
+  { step: 'smartcard.dispose', canHang: true },
+  { step: 'agents.killAllPrivate', canHang: false },
+  { step: 'agents.stopManaged', canHang: true },
+  { step: 'xserver.stop', canHang: true },
+];
+
+describe('IpcBridge.dispose() failure isolation', () => {
+  beforeEach(() => {
+    calls = [];
+    fault = undefined;
+    vi.spyOn(AgentLifecycleManager, 'killAllPrivateAgents').mockImplementation(() => {
+      log('agents.killAllPrivate');
+      failSync('agents.killAllPrivate');
+    });
+    vi.spyOn(AgentLifecycleManager, 'stopManagedAgent').mockImplementation(async () => {
+      log('agents.stopManaged');
+      await maybeFail('agents.stopManaged');
+    });
+    vi.spyOn(XServerManager, 'stopServer').mockImplementation(async () => {
+      log('xserver.stop');
+      await maybeFail('xserver.stop');
+      return { success: true };
+    });
+  });
+  afterEach(() => {
+    fault = undefined;
+    vi.restoreAllMocks();
+  });
+
+  const laterThan = (step: string) => SHUTDOWN_STEPS.slice(SHUTDOWN_STEPS.findIndex((s) => s.step === step) + 1).map((s) => s.step);
+
+  it('runs every step in the sequence when nothing fails (the baseline for the tests below)', async () => {
+    const { bridge } = makeBridge();
+    await bridge.dispose();
+    for (const { step } of SHUTDOWN_STEPS) expect(calls, step).toContain(step);
+  });
+
+  describe.each(SHUTDOWN_STEPS)('when $step fails', ({ step, canHang }) => {
+    it('is logged, dispose() still resolves, and every later step still runs', async () => {
+      const logs = captureLogs();
+      try {
+        fault = { step, mode: 'reject' };
+        const { bridge } = makeBridge();
+
+        await expect(bridge.dispose()).resolves.toBeUndefined();
+
+        expect(logs.text()).toContain(`injected failure in ${step}`);
+        for (const later of laterThan(step)) expect(calls, `${later} must still run after ${step} failed`).toContain(later);
+      } finally {
+        logs.restore();
+      }
+    });
+
+    if (canHang) {
+      it('cannot hold the shutdown hostage by never finishing: after 5 s dispose() moves on', async () => {
+        vi.useFakeTimers();
+        const logs = captureLogs();
+        try {
+          fault = { step, mode: 'hang' };
+          const { bridge } = makeBridge();
+          const disposed = bridge.dispose();
+
+          await vi.advanceTimersByTimeAsync(5000);
+          await vi.advanceTimersByTimeAsync(5000);
+          await disposed;
+
+          expect(logs.text()).toContain('did not finish within 5000 ms');
+          for (const later of laterThan(step)) expect(calls, `${later} must still run after ${step} hung`).toContain(later);
+        } finally {
+          logs.restore();
+          vi.useRealTimers();
+        }
+      });
     }
   });
 });
