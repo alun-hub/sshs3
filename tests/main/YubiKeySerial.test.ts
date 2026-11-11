@@ -10,7 +10,7 @@ import {
   readKeyYubiKeySerial,
 } from '../../src/main/smartcard/YubiKeySerial';
 
-const BLOB = 'AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29t';
+const BLOB = 'AAAA';
 
 describe('parseYubiKeySerialTag', () => {
   it('reads the serial from the comment of a public key line', () => {
