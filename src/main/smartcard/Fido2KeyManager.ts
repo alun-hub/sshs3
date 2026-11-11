@@ -9,6 +9,7 @@ import {
   loadFido2ResidentKeysIntoPrivateAgent,
 } from './SmartcardAgentLoader';
 import { withPkcs11Lock } from './Pkcs11Lock';
+import { expandHome } from './expandHome';
 import { buildKeyComment, listConnectedYubiKeySerials } from './YubiKeySerial';
 import { isYkmanAvailable, listYkmanFidoCredentials, deleteYkmanFidoCredential } from './YkmanFido';
 import { FIDO2_KEY_FILE_EXISTS_PREFIX, type Fido2KeyType, type Fido2ResidentKey, type GeneratedFido2Key } from '../../shared/types/ssh';
@@ -35,20 +36,6 @@ export interface GenerateFido2KeyOptions {
   promptHandler?: AskpassPromptHandler;
   onPresenceRequested?: () => void;
   onPresenceCleared?: () => void;
-}
-
-/**
- * Expands a leading `~` to the user's home directory. Neither Node's `fs`
- * module nor a directly-spawned `ssh-keygen` (no shell involved, so no
- * shell-side tilde expansion either) understand `~` on their own — passing
- * it through unexpanded silently created a literal `~/.ssh/...` directory
- * under the app's current working directory instead of the user's real home
- * directory. Every path this module touches must go through this first.
- */
-export function expandHome(p: string): string {
-  if (p === '~') return os.homedir();
-  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
-  return p;
 }
 
 /**
@@ -107,7 +94,8 @@ export async function generateFido2Key(options: GenerateFido2KeyOptions): Promis
 
   // Record which YubiKey this key belongs to in its comment, so sshs3 can tell you when the wrong one is plugged in. Only when
   // exactly one is connected: with several, the one ssh-keygen picks is not known. Under the lock, like the keygen itself.
-  const connectedSerials = await withPkcs11Lock(() => listConnectedYubiKeySerials());
+  // Not for resident keys: they live on the YubiKey itself and are not checked against a serial.
+  const connectedSerials = options.resident ? undefined : await withPkcs11Lock(() => listConnectedYubiKeySerials());
   if (connectedSerials?.length === 1) args.push('-C', buildKeyComment(connectedSerials[0]));
 
   const askpassServer = new AskpassServer({ promptHandler: options.promptHandler ?? (() => '') });

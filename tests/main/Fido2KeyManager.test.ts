@@ -94,6 +94,26 @@ describe('Fido2KeyManager', () => {
       }
     });
 
+    it('does not tag (or even look for the serial of) a resident key', async () => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fido2-serial-test-'));
+      const outPath = path.join(dir, 'id_ed25519_sk');
+      const list = vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials').mockResolvedValue(['20185052']);
+      let keygenArgs: string[] = [];
+      vi.spyOn(SmartcardAgentLoader, 'execWithPresenceDetection').mockImplementation(async (_bin, args) => {
+        keygenArgs = args;
+        await fs.writeFile(`${outPath}.pub`, 'sk-ssh-ed25519@openssh.com AAAA comment\n');
+        return undefined as never;
+      });
+
+      try {
+        await generateFido2Key({ outPath, keyType: 'ed25519-sk', resident: true, verifyRequired: false });
+        expect(keygenArgs).not.toContain('-C');
+        expect(list).not.toHaveBeenCalled();
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    });
+
     it('expands a leading ~ against the real home directory instead of creating a literal "~" folder', async () => {
       const relSubdir = `.sshs3-fido2-test-${Date.now()}`;
       const expandedDir = path.join(os.homedir(), relSubdir);

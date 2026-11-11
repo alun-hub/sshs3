@@ -5,7 +5,7 @@ import path from 'node:path';
 import {
   buildKeyComment,
   listConnectedYubiKeySerials,
-  parseSerialList,
+  parseYkmanList,
   parseYubiKeySerialTag,
   readKeyYubiKeySerial,
 } from '../../src/main/smartcard/YubiKeySerial';
@@ -60,11 +60,22 @@ describe('readKeyYubiKeySerial', () => {
   });
 });
 
-describe('parseSerialList', () => {
-  it('keeps the serial lines of `ykman list --serials`, tolerating CRLF and noise', () => {
-    expect(parseSerialList('20185052\r\n7015986\r\n')).toEqual(['20185052', '7015986']);
-    expect(parseSerialList('')).toEqual([]);
-    expect(parseSerialList('WARNING: something\n20185052\n')).toEqual(['20185052']);
+describe('parseYkmanList', () => {
+  it('reads the serial of every device line of `ykman list`, tolerating CRLF and blank lines', () => {
+    expect(parseYkmanList('YubiKey 5 NFC (5.4.3) [OTP+FIDO+CCID] Serial: 20185052\r\nYubiKey 5C (5.2.4) [OTP+FIDO+CCID] Serial: 7015986\r\n\r\n')).toEqual([
+      '20185052',
+      '7015986',
+    ]);
+  });
+
+  it('is an empty list when no device is listed', () => {
+    expect(parseYkmanList('')).toEqual([]);
+    expect(parseYkmanList('\r\n')).toEqual([]);
+  });
+
+  it('is unknown (undefined) when any listed device has no readable serial', () => {
+    expect(parseYkmanList('Security Key NFC (5.4.3) [FIDO]\n')).toBeUndefined();
+    expect(parseYkmanList('YubiKey 5 NFC (5.4.3) [OTP+FIDO+CCID] Serial: 20185052\nSecurity Key NFC (5.4.3) [FIDO]\n')).toBeUndefined();
   });
 });
 

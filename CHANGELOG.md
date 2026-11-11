@@ -5,10 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.97.8] - 2026-11-11
 
 ### Added
-- **Windows, security-key key files:** a new `ed25519-sk` / `ecdsa-sk` key made in sshs3 with one YubiKey plugged in now records that YubiKey's serial number in its comment (`yubikey:<serial>`). Connecting with the key while that YubiKey is not plugged in shows the *Insert your security key* dialog naming the serial number, instead of failing with `signing failed ... invalid format`. Needs ykman (YubiKey Manager CLI); keys without the tag are not checked, and other platforms behave as before. To tag an existing key, append `yubikey:<serial>` to its `.pub` line.
+- **Windows, security-key key files:** a new `ed25519-sk` / `ecdsa-sk` key made in sshs3 with one YubiKey plugged in now records that YubiKey's serial number in its comment (`yubikey:<serial>`). Connecting with the key while that YubiKey is not plugged in shows the *Insert your security key* dialog naming the serial number, instead of failing with `signing failed ... invalid format`. The serial number is part of the public key line, so it is also copied into `authorized_keys` wherever you install the key. Needs ykman (YubiKey Manager CLI); keys without the tag (and resident keys) are not checked, nothing is checked while a connected device without a readable serial is present, and other platforms behave as before. To tag an existing key, append `yubikey:<serial>` to its `.pub` line.
 
 ## [0.97.7] - 2026-11-10
 

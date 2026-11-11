@@ -11,7 +11,9 @@ import type { SmartcardCertificateDetails } from '../../src/main/smartcard/Certi
 import * as YubiKeySerial from '../../src/main/smartcard/YubiKeySerial';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import { AppAgent, KeysLockedWhileLoadingError } from '../../src/main/ssh/AppAgent';
-import { SmartcardCoordinator, TokenNotInsertedError, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
+import { SmartcardCoordinator, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
+import { TokenNotInsertedError } from '../../src/main/smartcard/TokenNotInsertedError';
+import { resetYubiKeyPresenceCache } from '../../src/main/smartcard/KeyFileYubiKeyGuard';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { SFTPConfig } from '../../src/shared/types/storage';
 
@@ -361,6 +363,18 @@ describe('SmartcardCoordinator', () => {
   describe('security key file: the YubiKey it was made on', () => {
     const KEY = '/home/u/.ssh/id_ed25519_sk';
     const config = { id: 's1', name: 'gnarg', host: 'gnarg', port: 22, username: 'u', authType: 'fido2', privateKeyPath: KEY } as SSHConnectionConfig;
+
+    beforeEach(() => resetYubiKeyPresenceCache());
+
+    it('lists the devices only once for connections made right after each other, and again once the key was missing', async () => {
+      const { coordinator } = build();
+      vi.spyOn(YubiKeySerial, 'readKeyYubiKeySerial').mockResolvedValue('20185052');
+      const list = vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials').mockResolvedValue(['20185052']);
+
+      await coordinator.prepareFido2Config(config);
+      await coordinator.prepareFido2Config(config);
+      expect(list).toHaveBeenCalledTimes(1);
+    });
 
     it('asks for the tagged YubiKey, naming its serial, when only another one is plugged in', async () => {
       const { coordinator, deps } = build();

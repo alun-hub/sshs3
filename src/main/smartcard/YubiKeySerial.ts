@@ -39,17 +39,28 @@ export async function readKeyYubiKeySerial(privateKeyPath: string): Promise<stri
   }
 }
 
-/** Parses `ykman list --serials` (one serial per line). */
-export function parseSerialList(stdout: string): string[] {
-  return stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => /^\d{4,12}$/.test(line));
+/**
+ * Parses `ykman list` (one device per line, e.g. `YubiKey 5 NFC (5.4.3) [OTP+FIDO+CCID] Serial: 20185052`). `undefined` when
+ * any listed device has no readable serial (a Security Key model, or serial visibility turned off): the set of plugged-in
+ * YubiKeys is then not known by serial, so callers must not conclude that a particular one is missing, or that only one is there.
+ */
+export function parseYkmanList(stdout: string): string[] | undefined {
+  const serials: string[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const serial = /\bSerial:\s*(\d{4,12})\b/i.exec(line)?.[1];
+    if (!serial) return undefined;
+    serials.push(serial);
+  }
+  return serials;
 }
 
 /**
- * The serial numbers of the YubiKeys that are plugged in now, via `ykman list --serials`. `undefined` whenever that cannot be
- * told (ykman not installed, it failed or timed out, or not Windows): callers then behave as before, never block.
+ * The serial numbers of the YubiKeys that are plugged in now, via `ykman list`. `undefined` whenever that cannot be told
+ * (ykman not installed, it failed or timed out, a device without a readable serial is connected, or not Windows): callers then
+ * behave as before, never block. An empty list means ykman sees no YubiKey at all. Caveat: without admin rights ykman on
+ * Windows cannot see a YubiKey that only has its FIDO interface enabled; remove the `yubikey:` tag from the key's `.pub` to
+ * stop such a key from being checked.
  *
  * Windows only for now: the key files are the only way to use a security key there (no resident keys), and the other
  * platforms have not been checked against listing devices while a FIDO session is open.
@@ -57,8 +68,17 @@ export function parseSerialList(stdout: string): string[] {
 export function listConnectedYubiKeySerials(): Promise<string[] | undefined> {
   if (process.platform !== 'win32') return Promise.resolve(undefined);
   return new Promise((resolve) => {
-    execFile('ykman', ['list', '--serials'], { timeout: LIST_TIMEOUT_MS, windowsHide: true }, (err, stdout) => {
-      resolve(err ? undefined : parseSerialList(String(stdout)));
+    let timedOut = false;
+    const child = execFile('ykman', ['list'], { windowsHide: true }, (err, stdout) => {
+      clearTimeout(timer);
+      resolve(err || timedOut ? undefined : parseYkmanList(String(stdout)));
     });
+    // ykman.exe is a launcher that starts the real process: killing only the launcher (execFile's own `timeout`) would leave
+    // that child running, so the whole tree is ended.
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (child.pid !== undefined) execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, () => {});
+      child.kill();
+    }, LIST_TIMEOUT_MS);
   });
 }

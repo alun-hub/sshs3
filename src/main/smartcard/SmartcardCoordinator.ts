@@ -8,7 +8,8 @@ import { loadSmartcardIntoPrivateAgent, loadFido2ResidentKeysIntoPrivateAgent, p
 import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } from './AskpassServer';
 import { isSmartcardTokenPresent, readSmartcardCertificates } from './SmartcardCertificateReader';
 import { isFido2DeviceConnected } from './Fido2DeviceDetector';
-import { TokenNotInsertedError, ensureKeyFileYubiKeyPresent } from './KeyFileYubiKeyGuard';
+import { TokenNotInsertedError } from './TokenNotInsertedError';
+import { ensureKeyFileYubiKeyPresent } from './KeyFileYubiKeyGuard';
 import type { SmartcardCertificateDetails } from './CertificateParser';
 import { getAgentIdentities, getKeyAlgorithm } from './SmartcardSyncService';
 import { parseSshWirePublicKey, type SshWireKeyInfo } from '../ca/sshPublicKeyFormat';
@@ -73,8 +74,6 @@ interface SshCaConnection {
 const FIDO2_KEY = '__fido2__';
 /** After a failed load of a card, wait this long before prompting for its PIN again. */
 const LOAD_COOLDOWN_MS = 30_000;
-
-export { TokenNotInsertedError };
 
 export class SmartcardCoordinator {
   /** sessionId -> the private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
