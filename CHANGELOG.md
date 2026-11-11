@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **Team Vault:** unlocking with the wrong YubiKey plugged in (or none of the right one) now fails at once with a message that names the serial number of the YubiKey the vault needs, instead of blinking and waiting for 30 seconds. The timeout message now also says to touch the key and to check which YubiKey is inserted.
+- **Team Vault:** unlocking with the wrong YubiKey plugged in (or none of the right one) now fails within a few seconds with a message that names the serial number of the YubiKey the vault needs (a key that is plugged in during that time is still accepted), instead of blinking and waiting for 30 seconds. The timeout message now also says to touch the key and to check which YubiKey is inserted.
 
 ## [0.97.7] - 2026-11-10
 

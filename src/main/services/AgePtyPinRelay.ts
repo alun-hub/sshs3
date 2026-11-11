@@ -96,11 +96,16 @@ const WRONG_PIN_RE = /invalid pin \((\d+) tries? remaining/i;
 // opposite — failing to recognize an actual interactive prompt and writing into it blind.
 const DEFAULT_CREDENTIALS_WIZARD_RE = /choose a new (pin|puk)|enter.*new (piv )?(pin|puk)|enter.*management key/i;
 
-// age-plugin-yubikey's messages when the card for the identity's serial is absent: "Please insert YubiKey with serial N"
-// (also after "Could not open YubiKey."), "Could not find YubiKey with serial N" and "Timed out while waiting for YubiKey
-// with serial N to be inserted". The PIN prompt ("Enter PIN for YubiKey with serial N") deliberately does not match.
-// Matched against the view with its whitespace collapsed to single spaces.
-const YUBIKEY_MISSING_RE = /(?:please insert|could not find|timed out while waiting for) (?:the )?yubikey with serial (\d+)/i;
+// age-plugin-yubikey's messages when the card for the identity's serial is absent. "Could not find YubiKey with serial N"
+// and "Timed out while waiting for YubiKey with serial N to be inserted" are final: the plugin has given up.
+// "Please insert YubiKey with serial N" (also after "Could not open YubiKey.") is only a request: the plugin keeps
+// waiting and carries on if the card shows up, so it gets a grace period (YUBIKEY_INSERT_GRACE_MS) before we fail.
+// The PIN prompt ("Enter PIN for YubiKey with serial N") deliberately does not match. Matched against the view with its
+// whitespace collapsed to single spaces. The serial must be followed by a non-digit: this is tested against every pty
+// chunk, so without that a serial split across two chunks would be captured truncated.
+const YUBIKEY_MISSING_RE = /(?:could not find|timed out while waiting for) (?:the )?yubikey with serial (\d+)(?=\D)/i;
+const YUBIKEY_INSERT_RE = /please insert (?:the )?yubikey with serial (\d+)(?=\D)/i;
+const YUBIKEY_INSERT_GRACE_MS = 3000;
 
 /** `age-plugin-yubikey`'s prompt always includes "(default is 123456)" verbatim — fixed CLI
  * wording, not a real signal that this card is actually on its default PIN. Showing it in the
@@ -116,8 +121,15 @@ function cleanPinPrompt(text: string): string {
 // eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
+// ConPTY draws the gap between words as a cursor-forward move (ESC[C, ESC[nC) rather than a space; removing it outright
+// would glue the words together ("Pleaseinsert YubiKeywith serial N"), so it becomes the spaces it stands for.
+// eslint-disable-next-line no-control-regex
+const CURSOR_FORWARD_RE = /\x1b\[(\d*)C/g;
+
 export function stripAnsi(text: string): string {
-  return text.replace(ANSI_RE, '');
+  return text
+    .replace(CURSOR_FORWARD_RE, (_m, n: string) => ' '.repeat(Math.min(Math.max(Number(n) || 1, 1), 200)))
+    .replace(ANSI_RE, '');
 }
 
 /**
@@ -136,7 +148,8 @@ export function runAgeCommandViaPty(
   env: NodeJS.ProcessEnv,
   callbacks: AgePtyPromptCallbacks,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
-  stdin?: string
+  stdin?: string,
+  timeoutHint?: string
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const spawn = getSpawn();
@@ -161,12 +174,13 @@ export function runAgeCommandViaPty(
     let settled = false;
     let pinAttempt = 0;
     let awaitingPinResponse = false;
+    let insertGraceHandle: NodeJS.Timeout | undefined;
 
     const timeoutHandle = setTimeout(() => {
       finish(() =>
         reject(
           new Error(
-            `Timed out waiting for "${binary}" to finish. Touch the YubiKey when it blinks, and check that the YubiKey this vault belongs to is the one that is plugged in.`
+            `Timed out waiting for "${binary}" to finish.${timeoutHint ? ` ${timeoutHint}` : ''}`
           )
         )
       );
@@ -177,6 +191,7 @@ export function runAgeCommandViaPty(
       if (settled) return;
       settled = true;
       clearTimeout(timeoutHandle);
+      clearTimeout(insertGraceHandle);
       clearInterval(touchRefreshHandle);
       callbacks.onTouchCleared();
       action();
@@ -234,11 +249,22 @@ export function runAgeCommandViaPty(
         return;
       }
 
-      const missingKey = view.replace(/\s+/g, ' ').match(YUBIKEY_MISSING_RE);
+      const collapsed = view.replace(/\s+/g, ' ');
+      const missingKey = collapsed.match(YUBIKEY_MISSING_RE);
       if (missingKey) {
         finish(() => reject(new TeamVaultYubiKeyNotFoundError(missingKey[1])));
         term.kill();
         return;
+      }
+
+      // The plugin asks for the card and keeps waiting. Give a key that is being plugged in (or a smartcard stack that is
+      // briefly busy) a moment to appear: output after that (the PIN prompt, a result) or the process ending cancels this.
+      const insertKey = collapsed.match(YUBIKEY_INSERT_RE);
+      if (insertKey && insertGraceHandle === undefined) {
+        insertGraceHandle = setTimeout(() => {
+          finish(() => reject(new TeamVaultYubiKeyNotFoundError(insertKey[1])));
+          term.kill();
+        }, YUBIKEY_INSERT_GRACE_MS);
       }
 
       // The card's own message is authoritative on how many tries are left — once it says 0,
@@ -264,6 +290,8 @@ export function runAgeCommandViaPty(
       }
 
       if (PIN_PROMPT_RE.test(view) && pinAttempt === 0 && !awaitingPinResponse) {
+        // The card is there after all.
+        clearTimeout(insertGraceHandle);
         pinAttempt = 1;
         // Start at the prompt itself: on Windows the chunk also carries the plugin's preceding
         // status line ("Generating key...") with only cursor moves between it and the prompt.
