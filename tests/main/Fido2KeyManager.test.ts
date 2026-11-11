@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as SmartcardAgentLoader from '../../src/main/smartcard/SmartcardAgentLoader';
 import * as YkmanFido from '../../src/main/smartcard/YkmanFido';
+import * as YubiKeySerial from '../../src/main/smartcard/YubiKeySerial';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import { withPkcs11Lock } from '../../src/main/smartcard/Pkcs11Lock';
 import { generateFido2Key, listFido2ResidentKeys, deleteFido2ResidentKey } from '../../src/main/smartcard/Fido2KeyManager';
@@ -60,6 +61,36 @@ describe('Fido2KeyManager', () => {
         process.env.PATH = originalPath;
         await fs.rm(dir, { recursive: true, force: true });
         await fs.rm(fakeBinDir, { recursive: true, force: true });
+      }
+    });
+
+    it.each([
+      { connected: ['20185052'], tagged: true },
+      { connected: ['20185052', '7015986'], tagged: false },
+      { connected: [], tagged: false },
+      { connected: undefined, tagged: false },
+    ])('tags the key comment with the YubiKey serial only when exactly one is connected: $connected', async ({ connected, tagged }) => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fido2-serial-test-'));
+      const outPath = path.join(dir, 'id_ed25519_sk');
+      vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials').mockResolvedValue(connected);
+      let keygenArgs: string[] = [];
+      vi.spyOn(SmartcardAgentLoader, 'execWithPresenceDetection').mockImplementation(async (_bin, args) => {
+        keygenArgs = args;
+        await fs.writeFile(`${outPath}.pub`, 'sk-ssh-ed25519@openssh.com AAAA comment\n');
+        return undefined as never;
+      });
+
+      try {
+        await generateFido2Key({ outPath, keyType: 'ed25519-sk', resident: false, verifyRequired: false });
+        const at = keygenArgs.indexOf('-C');
+        if (tagged) {
+          expect(at).toBeGreaterThan(-1);
+          expect(keygenArgs[at + 1]).toMatch(/^.+@.+ yubikey:20185052$/);
+        } else {
+          expect(at).toBe(-1);
+        }
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
       }
     });
 

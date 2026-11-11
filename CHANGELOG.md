@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Windows, security-key key files:** a new `ed25519-sk` / `ecdsa-sk` key made in sshs3 with one YubiKey plugged in now records that YubiKey's serial number in its comment (`yubikey:<serial>`). Connecting with the key while that YubiKey is not plugged in shows the *Insert your security key* dialog naming the serial number, instead of failing with `signing failed ... invalid format`. Needs ykman (YubiKey Manager CLI); keys without the tag are not checked, and other platforms behave as before. To tag an existing key, append `yubikey:<serial>` to its `.pub` line.
+
 ## [0.97.7] - 2026-11-10
 
 The Markdown preview can copy with the keyboard, the file manager stops handing saved secrets to prompts they do not belong to, and a few login prompts and the shutdown sequence no longer get stuck.
