@@ -59,6 +59,7 @@ import {
   stripAnsi,
   TeamVaultWrongPinError,
   TeamVaultDefaultCredentialsError,
+  TeamVaultYubiKeyNotFoundError,
   type AgePtyPromptCallbacks,
 } from '../../src/main/services/AgePtyPinRelay';
 
@@ -81,6 +82,9 @@ function makeCallbacks(pins: string[]): AgePtyPromptCallbacks & { calls: unknown
 describe('stripAnsi', () => {
   it('removes CSI and OSC sequences but keeps the text', () => {
     expect(stripAnsi('[2J[H🎲 Generating key...]0;C:\\x.exe[?25hok')).toBe('🎲 Generating key...ok');
+  });
+  it('turns cursor-forward moves into the spaces they stand for', () => {
+    expect(stripAnsi('Please\x1b[Cinsert\x1b[3Cnow')).toBe('Please insert   now');
   });
 });
 
@@ -171,6 +175,121 @@ describe('runAgeCommandViaPty', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it.each([
+    'Could not find YubiKey with serial 20185052\r\n',
+    'Timed out while waiting for YubiKey with serial 20185052 to be inserted\r\n',
+  ])('rejects at once with TeamVaultYubiKeyNotFoundError, naming the serial, when the plugin gives up on the YubiKey: %j', async (output) => {
+    const callbacks = makeCallbacks([]);
+    const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData(output);
+
+    await expect(promise).rejects.toBeInstanceOf(TeamVaultYubiKeyNotFoundError);
+    await expect(promise).rejects.toMatchObject({ serial: '20185052', message: expect.stringContaining('20185052') });
+    expect(term.kill).toHaveBeenCalled();
+    expect(callbacks.requestPin).not.toHaveBeenCalled();
+    expect(callbacks.onTouchCleared).toHaveBeenCalled();
+  });
+
+  describe('when the plugin asks to insert the YubiKey', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it.each([
+      'Please insert YubiKey with serial 20185052\r\n',
+      'Could not open YubiKey. Please insert YubiKey with serial 20185052\r\n',
+      '\x1b[2J\x1b[HPlease insert \x1b[3;1HYubiKey with\x1b[?25l serial 20185052\r\n',
+      // ConPTY draws the gaps between words as cursor-forward moves, not spaces.
+      'Please\x1b[1Cinsert\x1b[C YubiKey\x1b[1Cwith\x1b[1Cserial\x1b[1C20185052\r\n',
+    ])('rejects with TeamVaultYubiKeyNotFoundError after the grace period: %j', async (output) => {
+      const callbacks = makeCallbacks([]);
+      const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+      const assertion = expect(promise).rejects.toMatchObject({ serial: '20185052', message: expect.stringContaining('20185052') });
+      const term = mockPtyInstances[0];
+
+      term.emitData(output);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(term.kill).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1500);
+
+      await assertion;
+      expect(term.kill).toHaveBeenCalled();
+      expect(callbacks.requestPin).not.toHaveBeenCalled();
+    });
+
+    it('does not fail when the YubiKey shows up (the PIN prompt follows) within the grace period', async () => {
+      const callbacks = makeCallbacks(['123456']);
+      const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+      const term = mockPtyInstances[0];
+
+      term.emitData('Could not open YubiKey. Please insert YubiKey with serial 20185052\r\n');
+      await vi.advanceTimersByTimeAsync(1000);
+      term.emitData('Enter PIN for YubiKey with serial 20185052: ');
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(callbacks.requestPin).toHaveBeenCalledTimes(1);
+      expect(term.kill).not.toHaveBeenCalled();
+      term.emitExit(0);
+      await promise;
+    });
+
+    it('does not fail when the process finishes within the grace period', async () => {
+      const callbacks = makeCallbacks([]);
+      const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+      const term = mockPtyInstances[0];
+
+      term.emitData('Please insert YubiKey with serial 20185052\r\n');
+      term.emitExit(0);
+      await promise;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(term.kill).not.toHaveBeenCalled();
+    });
+  });
+
+  it('does not report a truncated serial when the number is split across two pty chunks', async () => {
+    vi.useFakeTimers();
+    try {
+      const callbacks = makeCallbacks([]);
+      const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+      const assertion = expect(promise).rejects.toMatchObject({ serial: '20185052' });
+      const term = mockPtyInstances[0];
+
+      term.emitData('Could not find YubiKey with serial 2018');
+      term.emitData('5052\r\n');
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('appends the caller-supplied hint to the timeout error', async () => {
+    vi.useFakeTimers();
+    try {
+      const callbacks = makeCallbacks([]);
+      const promise = runAgeCommandViaPty('age', [], process.env, callbacks, 1000, undefined, 'Check the key.');
+      const assertion = expect(promise).rejects.toThrow('Timed out waiting for "age" to finish. Check the key.');
+      await vi.advanceTimersByTimeAsync(1500);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not mistake the PIN prompt for a missing YubiKey', async () => {
+    const callbacks = makeCallbacks(['123456']);
+    const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData('Enter PIN for YubiKey with serial 20185052: ');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(callbacks.requestPin).toHaveBeenCalledTimes(1);
+
+    term.emitExit(0);
+    await promise;
   });
 
   it('retries after a wrong PIN, forwarding the remaining-tries count, then succeeds', async () => {

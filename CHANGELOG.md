@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Windows, security-key key files:** a new `ed25519-sk` / `ecdsa-sk` key made in sshs3 with one YubiKey plugged in now records that YubiKey's serial number in its comment (`yubikey:<serial>`). Connecting with the key while that YubiKey is not plugged in shows the *Insert your security key* dialog naming the serial number, instead of failing with `signing failed ... invalid format`. The serial number is part of the public key line, so it is also copied into `authorized_keys` wherever you install the key. Needs ykman (YubiKey Manager CLI); keys without the tag (and resident keys) are not checked, nothing is checked while a connected device without a readable serial is present, and other platforms behave as before. To tag an existing key, append `yubikey:<serial>` to its `.pub` line.
 
+### Fixed
+- **Team Vault:** unlocking with the wrong YubiKey plugged in (or none of the right one) now fails within a few seconds with a message that names the serial number of the YubiKey the vault needs (a key that is plugged in during that time is still accepted), instead of blinking and waiting for 30 seconds. The timeout message now also says to touch the key and to check which YubiKey is inserted.
+
 ## [0.97.7] - 2026-11-10
 
 The Markdown preview can copy with the keyboard, the file manager stops handing saved secrets to prompts they do not belong to, and a few login prompts and the shutdown sequence no longer get stuck.
