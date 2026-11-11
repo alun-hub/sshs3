@@ -8,7 +8,7 @@ import { runAgeCommandViaPty, createSecretOutputChannel, readChannelAfterExit, t
 import { withPkcs11Lock } from '../smartcard/Pkcs11Lock';
 import type { TeamVaultAccessEntry, TeamVaultFile, TeamVaultRecovery } from '../../shared/types/teamVault';
 
-export { TeamVaultWrongPinError, TeamVaultDefaultCredentialsError } from './AgePtyPinRelay';
+export { TeamVaultWrongPinError, TeamVaultDefaultCredentialsError, TeamVaultYubiKeyNotFoundError } from './AgePtyPinRelay';
 export type { AgePtyPromptCallbacks } from './AgePtyPinRelay';
 
 const IV_LENGTH = 12;
@@ -416,7 +416,12 @@ export class TeamVaultCryptoService {
       return await readChannelAfterExit(channel);
     } finally {
       await channel.dispose();
-      if (ciphertextFile) await fs.rm(ciphertextFile, { force: true });
+      // When the run ended early (the relay killed `age`: wrong YubiKey, wrong PIN, timeout) Windows may still hold the
+      // file for a moment (EBUSY). Retry, and never let a leftover file replace the real error from the `try` above:
+      // the ciphertext is not a secret (the same text is in the vault file), a stray temp file is harmless.
+      if (ciphertextFile) {
+        await fs.rm(ciphertextFile, { force: true, maxRetries: 10, retryDelay: 100 }).catch(() => {});
+      }
     }
   }
 

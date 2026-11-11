@@ -38,6 +38,23 @@ export class TeamVaultDefaultCredentialsError extends Error {
   }
 }
 
+/**
+ * The YubiKey the vault identity belongs to is not plugged in (another YubiKey may be). Without this the plugin
+ * just asks "Please insert YubiKey with serial N" on the pty, nobody answers, and the unlock sits there blinking
+ * until the timeout.
+ */
+export class TeamVaultYubiKeyNotFoundError extends Error {
+  readonly serial: string;
+  constructor(serial: string) {
+    super(
+      `This Team Vault is unlocked with the YubiKey that has serial number ${serial}, but that YubiKey was not found. ` +
+        `Insert it (and unplug other YubiKeys if you have several), then try again.`
+    );
+    // No `this.name`: Electron's IPC error text begins with the class name, which would show up in front of the message in the UI.
+    this.serial = serial;
+  }
+}
+
 export interface AgePtyPromptRetryContext {
   error: string;
   attempt: number;
@@ -78,6 +95,12 @@ const WRONG_PIN_RE = /invalid pin \((\d+) tries? remaining/i;
 // positive is still safe here, just misleading; the real risk this pattern guards against is the
 // opposite — failing to recognize an actual interactive prompt and writing into it blind.
 const DEFAULT_CREDENTIALS_WIZARD_RE = /choose a new (pin|puk)|enter.*new (piv )?(pin|puk)|enter.*management key/i;
+
+// age-plugin-yubikey's messages when the card for the identity's serial is absent: "Please insert YubiKey with serial N"
+// (also after "Could not open YubiKey."), "Could not find YubiKey with serial N" and "Timed out while waiting for YubiKey
+// with serial N to be inserted". The PIN prompt ("Enter PIN for YubiKey with serial N") deliberately does not match.
+// Matched against the view with its whitespace collapsed to single spaces.
+const YUBIKEY_MISSING_RE = /(?:please insert|could not find|timed out while waiting for) (?:the )?yubikey with serial (\d+)/i;
 
 /** `age-plugin-yubikey`'s prompt always includes "(default is 123456)" verbatim — fixed CLI
  * wording, not a real signal that this card is actually on its default PIN. Showing it in the
@@ -140,7 +163,13 @@ export function runAgeCommandViaPty(
     let awaitingPinResponse = false;
 
     const timeoutHandle = setTimeout(() => {
-      finish(() => reject(new Error(`Timed out waiting for "${binary}" to finish`)));
+      finish(() =>
+        reject(
+          new Error(
+            `Timed out waiting for "${binary}" to finish. Touch the YubiKey when it blinks, and check that the YubiKey this vault belongs to is the one that is plugged in.`
+          )
+        )
+      );
       term.kill();
     }, timeoutMs);
 
@@ -201,6 +230,13 @@ export function runAgeCommandViaPty(
 
       if (DEFAULT_CREDENTIALS_WIZARD_RE.test(view)) {
         finish(() => reject(new TeamVaultDefaultCredentialsError()));
+        term.kill();
+        return;
+      }
+
+      const missingKey = view.replace(/\s+/g, ' ').match(YUBIKEY_MISSING_RE);
+      if (missingKey) {
+        finish(() => reject(new TeamVaultYubiKeyNotFoundError(missingKey[1])));
         term.kill();
         return;
       }

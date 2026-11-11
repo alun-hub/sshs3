@@ -59,6 +59,7 @@ import {
   stripAnsi,
   TeamVaultWrongPinError,
   TeamVaultDefaultCredentialsError,
+  TeamVaultYubiKeyNotFoundError,
   type AgePtyPromptCallbacks,
 } from '../../src/main/services/AgePtyPinRelay';
 
@@ -171,6 +172,40 @@ describe('runAgeCommandViaPty', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it.each([
+    'Please insert YubiKey with serial 20185052\r\n',
+    'Could not open YubiKey. Please insert YubiKey with serial 20185052\r\n',
+    'Could not find YubiKey with serial 20185052\r\n',
+    'Timed out while waiting for YubiKey with serial 20185052 to be inserted\r\n',
+    '\x1b[2J\x1b[HPlease insert \x1b[3;1HYubiKey with\x1b[?25l serial 20185052',
+  ])('rejects with TeamVaultYubiKeyNotFoundError, naming the serial, when the plugin asks for the missing YubiKey: %j', async (output) => {
+    const callbacks = makeCallbacks([]);
+    const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData(output);
+
+    await expect(promise).rejects.toBeInstanceOf(TeamVaultYubiKeyNotFoundError);
+    await expect(promise).rejects.toMatchObject({ serial: '20185052', message: expect.stringContaining('20185052') });
+    expect(term.kill).toHaveBeenCalled();
+    expect(callbacks.requestPin).not.toHaveBeenCalled();
+    expect(callbacks.onTouchCleared).toHaveBeenCalled();
+  });
+
+  it('does not mistake the PIN prompt for a missing YubiKey', async () => {
+    const callbacks = makeCallbacks(['123456']);
+    const promise = runAgeCommandViaPty('age', ['-d', '-i', '/tmp/identity.txt'], process.env, callbacks);
+    const term = mockPtyInstances[0];
+
+    term.emitData('Enter PIN for YubiKey with serial 20185052: ');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(callbacks.requestPin).toHaveBeenCalledTimes(1);
+
+    term.emitExit(0);
+    await promise;
   });
 
   it('retries after a wrong PIN, forwarding the remaining-tries count, then succeeds', async () => {
