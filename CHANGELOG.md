@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.8] - 2026-11-11
+
+### Fixed
+- **Team Vault:** unlocking with the wrong YubiKey plugged in (or none of the right one) now fails within a few seconds with a message that names the serial number of the YubiKey the vault needs (a key that is plugged in during that time is still accepted), instead of blinking and waiting for 30 seconds. The timeout message now also says to touch the key and to check which YubiKey is inserted.
+
 ## [0.97.7] - 2026-11-10
 
 The Markdown preview can copy with the keyboard, the file manager stops handing saved secrets to prompts they do not belong to, and a few login prompts and the shutdown sequence no longer get stuck.
