@@ -8,6 +8,8 @@ import { loadSmartcardIntoPrivateAgent, loadFido2ResidentKeysIntoPrivateAgent, p
 import type { AskpassPromptHandler, AskpassPromptRetryContext, AskpassServer } from './AskpassServer';
 import { isSmartcardTokenPresent, readSmartcardCertificates } from './SmartcardCertificateReader';
 import { isFido2DeviceConnected } from './Fido2DeviceDetector';
+import { TokenNotInsertedError } from './TokenNotInsertedError';
+import { ensureKeyFileYubiKeyPresent } from './KeyFileYubiKeyGuard';
 import type { SmartcardCertificateDetails } from './CertificateParser';
 import { getAgentIdentities, getKeyAlgorithm } from './SmartcardSyncService';
 import { parseSshWirePublicKey, type SshWireKeyInfo } from '../ca/sshPublicKeyFormat';
@@ -72,14 +74,6 @@ interface SshCaConnection {
 const FIDO2_KEY = '__fido2__';
 /** After a failed load of a card, wait this long before prompting for its PIN again. */
 const LOAD_COOLDOWN_MS = 30_000;
-
-/** The user dismissed the "insert your token" prompt: the connection must stop, not fall back to another PIN prompt. */
-export class TokenNotInsertedError extends Error {
-  constructor(kind: 'smartcard' | 'fido2') {
-    super(kind === 'fido2' ? 'No security key inserted' : 'No smartcard inserted');
-    this.name = 'TokenNotInsertedError';
-  }
-}
 
 export class SmartcardCoordinator {
   /** sessionId -> the private ssh-agent pre-loaded with a smartcard for 'agent-per-session' mode. */
@@ -303,6 +297,7 @@ export class SmartcardCoordinator {
    * OpenSSH's own `-i` handling already deals with `-sk` key files natively.
    */
   public async prepareFido2Config(config: SSHConnectionConfig): Promise<SSHConnectionConfig> {
+    await ensureKeyFileYubiKeyPresent(config, `connecting to ${config.name || config.host}`, this.deps.waitForToken);
     if (config.authType !== 'fido2' || !config.fido2Resident || config.agentPath) {
       return config;
     }
@@ -350,6 +345,7 @@ export class SmartcardCoordinator {
 
   /** Same rationale as prepareFido2Config, applied to an SFTP connection (see prepareSftpSmartcardConfig). */
   public async prepareFido2SftpConfig(config: SFTPConfig, providerId: string): Promise<SFTPConfig> {
+    await ensureKeyFileYubiKeyPresent(config, `connecting via SFTP to ${config.name || config.host}`, this.deps.waitForToken);
     if (config.authType !== 'fido2' || !config.fido2Resident || config.agentPath) {
       return config;
     }

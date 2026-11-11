@@ -8,9 +8,12 @@ vi.mock('electron', () => {
 import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
 import * as SmartcardCertificateReader from '../../src/main/smartcard/SmartcardCertificateReader';
 import type { SmartcardCertificateDetails } from '../../src/main/smartcard/CertificateParser';
+import * as YubiKeySerial from '../../src/main/smartcard/YubiKeySerial';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import { AppAgent, KeysLockedWhileLoadingError } from '../../src/main/ssh/AppAgent';
-import { SmartcardCoordinator, TokenNotInsertedError, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
+import { SmartcardCoordinator, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
+import { TokenNotInsertedError } from '../../src/main/smartcard/TokenNotInsertedError';
+import { resetYubiKeyPresenceCache } from '../../src/main/smartcard/KeyFileYubiKeyGuard';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { SFTPConfig } from '../../src/shared/types/storage';
 
@@ -354,6 +357,87 @@ describe('SmartcardCoordinator', () => {
       } as any);
 
       expect(prepared.pkcs11LibPath).toBeUndefined();
+    });
+  });
+
+  describe('security key file: the YubiKey it was made on', () => {
+    const KEY = '/home/u/.ssh/id_ed25519_sk';
+    const config = { id: 's1', name: 'gnarg', host: 'gnarg', port: 22, username: 'u', authType: 'fido2', privateKeyPath: KEY } as SSHConnectionConfig;
+
+    beforeEach(() => resetYubiKeyPresenceCache());
+
+    it('lists the devices only once for connections made right after each other, and again once the key was missing', async () => {
+      const { coordinator } = build();
+      vi.spyOn(YubiKeySerial, 'readKeyYubiKeySerial').mockResolvedValue('20185052');
+      const list = vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials').mockResolvedValue(['20185052']);
+
+      await coordinator.prepareFido2Config(config);
+      await coordinator.prepareFido2Config(config);
+      expect(list).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks for the tagged YubiKey, naming its serial, when only another one is plugged in', async () => {
+      const { coordinator, deps } = build();
+      vi.spyOn(YubiKeySerial, 'readKeyYubiKeySerial').mockResolvedValue('20185052');
+      vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials').mockResolvedValue(['7015986']);
+
+      await coordinator.prepareFido2Config(config);
+
+      expect(deps.waitForToken).toHaveBeenCalledWith('fido2', 'connecting to gnarg (YubiKey serial 20185052)', expect.any(Function));
+      const isPresent = vi.mocked(deps.waitForToken).mock.calls[0][2];
+      expect(await isPresent()).toBe(false);
+      vi.mocked(YubiKeySerial.listConnectedYubiKeySerials).mockResolvedValue(['7015986', '20185052']);
+      expect(await isPresent()).toBe(true);
+    });
+
+    it('stops the connection with TokenNotInsertedError when the prompt is dismissed', async () => {
+      const { coordinator, deps } = build();
+      vi.spyOn(YubiKeySerial, 'readKeyYubiKeySerial').mockResolvedValue('20185052');
+      vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials').mockResolvedValue([]);
+      vi.mocked(deps.waitForToken).mockResolvedValue(false);
+
+      await expect(coordinator.prepareFido2Config(config)).rejects.toBeInstanceOf(TokenNotInsertedError);
+    });
+
+    it('applies to SFTP connections too', async () => {
+      const { coordinator, deps } = build();
+      vi.spyOn(YubiKeySerial, 'readKeyYubiKeySerial').mockResolvedValue('20185052');
+      vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials').mockResolvedValue(['7015986']);
+
+      await coordinator.prepareFido2SftpConfig({ ...config } as unknown as SFTPConfig, 'p1');
+
+      expect(deps.waitForToken).toHaveBeenCalledWith('fido2', 'connecting via SFTP to gnarg (YubiKey serial 20185052)', expect.any(Function));
+    });
+
+    it('does nothing when the right YubiKey is plugged in, the key has no tag, or the serials cannot be listed', async () => {
+      const { coordinator, deps } = build();
+      const read = vi.spyOn(YubiKeySerial, 'readKeyYubiKeySerial');
+      const list = vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials');
+
+      read.mockResolvedValue('20185052');
+      list.mockResolvedValue(['20185052']);
+      await coordinator.prepareFido2Config(config);
+
+      read.mockResolvedValue(undefined);
+      list.mockResolvedValue([]);
+      await coordinator.prepareFido2Config(config);
+
+      read.mockResolvedValue('20185052');
+      list.mockResolvedValue(undefined);
+      await coordinator.prepareFido2Config(config);
+
+      expect(deps.waitForToken).not.toHaveBeenCalled();
+    });
+
+    it('does not look at key files for other auth types', async () => {
+      const { coordinator, deps } = build();
+      const read = vi.spyOn(YubiKeySerial, 'readKeyYubiKeySerial').mockResolvedValue('20185052');
+      vi.spyOn(YubiKeySerial, 'listConnectedYubiKeySerials').mockResolvedValue([]);
+
+      await coordinator.prepareFido2Config({ ...config, authType: 'privateKey' });
+
+      expect(read).not.toHaveBeenCalled();
+      expect(deps.waitForToken).not.toHaveBeenCalled();
     });
   });
 
