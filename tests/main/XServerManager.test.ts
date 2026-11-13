@@ -123,6 +123,8 @@ describe('XServerManager', () => {
     });
 
     it('correctly calculates port from display offset (e.g. :1 -> 6001)', async () => {
+      // Without this a real /tmp/.X11-unix/X1 on the machine running the tests short-circuits the TCP probe.
+      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
       let connectedPort: number | undefined;
       const mockSocket = new EventEmitter() as any;
       mockSocket.destroy = vi.fn();
