@@ -42,18 +42,18 @@
 | **Windows** | Portable standalone | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-*-portable.exe`) |
 | **Windows** | Portable ZIP (unpack & run) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-*.zip`) |
 
-The app checks GitHub Releases for new versions (switch off under *Settings → App Behavior*, or set `SSHS3_DISABLE_UPDATES=1` for air-gapped machines) and never installs anything without your click. Windows builds are not code-signed yet, so on Windows download new versions manually. The COPR package repackages the same release: every release is built there shortly after it is published, and `dnf upgrade` installs it. If you use it, switch the in-app update check off. Release assets carry `SHA256SUMS` and a build-provenance attestation. Installation steps, requirements (OpenSSH client, keyring, smartcard drivers) and update details: [Installation & Updates](https://docs.sshs3.com/docs/getting-started/).
+The app checks GitHub Releases for new versions (switch off under *Settings → App Behavior*, or set `SSHS3_DISABLE_UPDATES=1` for air-gapped machines) and never installs anything without your click. Windows builds are not code-signed yet, so on Windows download new versions manually. The COPR package repackages the same release: every release is built there shortly after it is published, and `dnf upgrade` installs it. If you use it, switch the in-app update check off. Release assets carry `SHA256SUMS` and a build-provenance attestation. Installation steps, requirements (OpenSSH client, keyring, smartcard drivers) and update details: [Installation & Updates](https://sshs3.com/docs/get-started/installation/).
 
 ## What it does
 
-- **Terminal** — real OpenSSH in tabs and recursive split panes, local shells, search, snippets, clipboard history, session restore, clickable links and paths, optional live performance bar. → [Terminal](https://docs.sshs3.com/docs/terminal/), [Performance bar](https://docs.sshs3.com/docs/performance-bar/)
-- **File manager** — two panes over local disk, SFTP, S3 and Kubernetes pods; transfer queue, editor with Markdown preview, folder sync and diff, content search, `tail -f`, Git status. → [File manager](https://docs.sshs3.com/docs/file-manager/), [S3 storage](https://docs.sshs3.com/docs/s3-storage/), [Git & developer tools](https://docs.sshs3.com/docs/git-developer/)
-- **Kubernetes & OpenShift** — cluster discovery from `~/.kube/config`, exec terminals, logs, pod file explorer, ephemeral debug containers, port forwarding. → [Kubernetes](https://docs.sshs3.com/docs/kubernetes/)
-- **Hardware keys & smartcards** — FIDO2 / YubiKey, PKCS#11 (SITHS, Net iD, OpenSC, p11-kit), in-app PIN dialog, three PIN caching modes. → [Security & smartcards](https://docs.sshs3.com/docs/security-smartcards/), [Windows differences](https://docs.sshs3.com/docs/windows/)
-- **SSH Certificate Authority (SSH CA)** — On-demand short-lived user certificates via OpenID Connect (OIDC) through Smallstep Step-CA or HashiCorp Vault / OpenBao; supports both in-memory ephemeral Ed25519 keys and hardware tokens (YubiKey or any PKCS#11 / PIV smartcard) with zero private key disk exposure. → [SSH Certificate Authority guide](https://docs.sshs3.com/docs/security/ssh-ca/)
-- **Networking** — ProxyJump bastions, saved `-L` / `-R` / `-D` tunnels, outgoing proxies, X11 forwarding with a bundled X server on Windows. → [Networking & tunnels](https://docs.sshs3.com/docs/networking-tunnels/)
-- **Profiles & sync** — folders, encrypted secrets at rest, opt-in zero-knowledge sync to your own S3 or SFTP target, dotfiles pool, Team Vault, `~/.ssh/config` kept in sync. → [Connections](https://docs.sshs3.com/docs/connections/), [Sync](https://docs.sshs3.com/docs/sync-environment/), [Team Vault](https://docs.sshs3.com/docs/team-vault/)
-- **Keyboard-first** — rebindable shortcuts and mouse-free navigation with `Ctrl+Shift+Arrows`, `Enter` and `Escape`. → [Settings & shortcuts](https://docs.sshs3.com/docs/settings-shortcuts/)
+- **Terminal** — real OpenSSH in tabs and recursive split panes, local shells, search, snippets, clipboard history, session restore, clickable links and paths, optional live performance bar. → [Terminal](https://sshs3.com/docs/workspace/terminal/), [Performance bar](https://sshs3.com/docs/workspace/telemetry/)
+- **File manager** — two panes over local disk, SFTP, S3 and Kubernetes pods; transfer queue, editor with Markdown preview, folder sync and diff, content search, `tail -f`, Git status. → [File manager](https://sshs3.com/docs/workspace/file-manager/), [S3 storage](https://sshs3.com/docs/cloud/s3-storage/), [Git & developer tools](https://sshs3.com/docs/security/git-developer/)
+- **Kubernetes & OpenShift** — cluster discovery from `~/.kube/config`, exec terminals, logs, pod file explorer, ephemeral debug containers, port forwarding. → [Kubernetes](https://sshs3.com/docs/cloud/kubernetes/)
+- **Hardware keys & smartcards** — FIDO2 / YubiKey, PKCS#11 (SITHS, Net iD, OpenSC, p11-kit), in-app PIN dialog, three PIN caching modes. → [Security & smartcards](https://sshs3.com/docs/security/smartcards/), [Windows differences](https://sshs3.com/docs/reference/windows/)
+- **SSH Certificate Authority (SSH CA)** — On-demand short-lived user certificates via OpenID Connect (OIDC) through Smallstep Step-CA or HashiCorp Vault / OpenBao; supports both in-memory ephemeral Ed25519 keys and hardware tokens (YubiKey or any PKCS#11 / PIV smartcard) with zero private key disk exposure. → [SSH Certificate Authority guide](https://sshs3.com/docs/security/ssh-ca/)
+- **Networking** — ProxyJump bastions, saved `-L` / `-R` / `-D` tunnels, outgoing proxies, X11 forwarding with a bundled X server on Windows. → [Networking & tunnels](https://sshs3.com/docs/cloud/tunnels/)
+- **Profiles & sync** — folders, encrypted secrets at rest, opt-in zero-knowledge sync to your own S3 or SFTP target, dotfiles pool, Team Vault, `~/.ssh/config` kept in sync. → [Connections](https://sshs3.com/docs/workspace/connections/), [Sync](https://sshs3.com/docs/security/sync-environment/), [Team Vault](https://sshs3.com/docs/security/team-vault/)
+- **Keyboard-first** — rebindable shortcuts and mouse-free navigation with `Ctrl+Shift+Arrows`, `Enter` and `Escape`. → [Settings & shortcuts](https://sshs3.com/docs/reference/shortcuts-settings/)
 
 ## Documentation
 
@@ -65,7 +65,7 @@ Full user documentation lives at **[docs.sshs3.com](https://docs.sshs3.com)** (s
 
 ## Privacy
 
-sshs3 sends no telemetry, analytics or crash reports. Its only background request is the update check against GitHub Releases, which you can switch off. Private keys on hardware tokens never leave the device, and saved secrets are encrypted at rest with the OS keyring. Details, including exactly how PINs are handled, are in [Security & smartcards](https://docs.sshs3.com/docs/security-smartcards/).
+sshs3 sends no telemetry, analytics or crash reports. Its only background request is the update check against GitHub Releases, which you can switch off. Private keys on hardware tokens never leave the device, and saved secrets are encrypted at rest with the OS keyring. Details, including exactly how PINs are handled, are in [Security & smartcards](https://sshs3.com/docs/security/smartcards/).
 
 ## Contributing
 
