@@ -44,7 +44,7 @@ Invoke-WebRequest -Uri "https://github.com/alun-hub/sshs3/releases/download/v{{A
 | **Windows Installer** | `%LocalAppData%\Programs\sshs3` | Start Menu shortcut, uninstaller | Bundled portable build writes to `<exe-dir>\data` |
 
 > [!IMPORTANT]
-> **Fedora COPR:** The [COPR repository](https://copr.fedorainfracloud.org/coprs/alun-hub/sshs3/) currently provides Fedora 44 on x86_64 only. It repackages the GitHub release (the release's checksum and build-provenance attestation are verified first), is signed by COPR, and every release is built there shortly after it is published, so `dnf upgrade` installs it. If you install from COPR, let `dnf` handle updates and switch the in-app update check off (*Settings → General → App Behavior*, or `SSHS3_DISABLE_UPDATES=1`).
+> **Fedora COPR:** The [COPR repository](https://copr.fedorainfracloud.org/coprs/alun-hub/sshs3/) currently provides Fedora 44 on x86_64 only; on Fedora 45 use the `.rpm` from the GitHub release (tested on Fedora 45). It repackages the GitHub release (the release's checksum and build-provenance attestation are verified first), is signed by COPR, and every release is built there shortly after it is published, so `dnf upgrade` installs it. If you install from COPR, let `dnf` handle updates and switch the in-app update check off (*Settings → General → App Behavior*, or `SSHS3_DISABLE_UPDATES=1`).
 
 > [!TIP]
 > **External Encrypted USB Drive:** Launch sshs3 with `--portable-data-dir <path>` (e.g. `sshs3 --portable-data-dir /media/usb/sshs3-data`) to isolate your profiles and keys entirely on an external encrypted volume.
