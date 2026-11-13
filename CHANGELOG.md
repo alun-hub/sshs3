@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.9] - 2026-11-13
+
+### Fixed
+- **SSH CA:** if a browser sign-in never comes back (for example you picked the wrong passkey at the identity provider and the page stayed on its error), clicking *Log In with SSH CA* or *Renew Certificate* again now replaces the stalled sign-in and opens the browser straight away. Before, the retry waited behind it for up to two minutes, and the buttons were disabled meanwhile. Log out and the automatic silent renewal are not affected.
+
+### Changed
+- **Fedora COPR:** the COPR repository now builds for Fedora 45 as well as Fedora 44 (x86_64).
+
 ## [0.97.8] - 2026-11-11
 
 ### Added
