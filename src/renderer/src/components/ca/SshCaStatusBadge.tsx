@@ -189,7 +189,6 @@ export const SshCaStatusBadge: React.FC<SshCaStatusBadgeProps> = ({ onOpenSettin
               <>
                 <button
                   type="button"
-                  disabled={loading}
                   onClick={async () => {
                     try {
                       await renew();
@@ -223,7 +222,7 @@ export const SshCaStatusBadge: React.FC<SshCaStatusBadgeProps> = ({ onOpenSettin
               <>
                 <button
                   type="button"
-                  disabled={loading}
+                  title={loading ? 'Click to cancel the pending sign-in and try again' : undefined}
                   onClick={async () => {
                     try {
                       await login();

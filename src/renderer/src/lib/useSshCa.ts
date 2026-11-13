@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SshCaConfig, SshCaStatus } from '@shared/types/sshCa';
 import { ELECTRON_IPC_PREFIX } from './format';
 
@@ -11,6 +11,8 @@ export function useSshCa() {
   const [status, setStatus] = useState<SshCaStatus>({ active: false });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Id of the newest action; a superseded (cancelled) one must not touch loading/error. */
+  const latestAction = useRef(0);
 
   const refreshStatus = useCallback(async (): Promise<SshCaStatus> => {
     if (!window.sshs3?.sshCaGetStatus) {
@@ -43,16 +45,17 @@ export function useSshCa() {
 
   /** Runs one IPC action with the shared loading/error handling; rethrows the cleaned error. */
   const run = useCallback(async <T,>(action: () => Promise<T>): Promise<T> => {
+    const id = ++latestAction.current;
     setLoading(true);
     setError(null);
     try {
       return await action();
     } catch (err) {
       const msg = cleanIpcError(err);
-      setError(msg);
+      if (id === latestAction.current) setError(msg);
       throw new Error(msg, { cause: err });
     } finally {
-      setLoading(false);
+      if (id === latestAction.current) setLoading(false);
     }
   }, []);
 

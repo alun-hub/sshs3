@@ -521,13 +521,34 @@ describe('SshCaService', () => {
           providers: new Map([['step-ca', provider]]),
         });
 
-        await Promise.all([service.login(ephemeralConfig()), service.login(ephemeralConfig())]);
+        const first = service.login(ephemeralConfig()).catch((e: Error) => e.message);
+        await until(() => running === 1);
+        await service.login(ephemeralConfig());
 
+        // The newer sign-in supersedes the one in flight, and the two never overlap.
+        expect(await first).toMatch(/cancel/i);
         expect(maxRunning).toBe(1);
-        expect(mockAppAgent.addCertifiedEd25519Key).toHaveBeenCalledTimes(2);
-        // The first identity was evicted once the second was in place; exactly one remains.
-        expect(mockAppAgent.removeIdentities).toHaveBeenCalledTimes(1);
-        expect(mockAppAgent.removeIdentities).toHaveBeenCalledWith([computeOpenSshFingerprint(issued[0].wire)]);
+        expect(mockAppAgent.addCertifiedEd25519Key).toHaveBeenCalledTimes(1);
+        await service.logout();
+      });
+
+      it('a retry replaces a browser sign-in that never came back (wrong passkey) and opens the browser again', async () => {
+        const mockAppAgent = makeAgent();
+        const openExternal = vi.fn().mockImplementationOnce(async () => {}).mockImplementation(completeBrowserLogin());
+        const service = new SshCaService({
+          appAgent: mockAppAgent,
+          openExternal,
+          providers: new Map([['step-ca', newProvider()]]),
+        });
+
+        const first = service.login(ephemeralConfig()).catch((e: Error) => e.message);
+        await until(() => openExternal.mock.calls.length === 1);
+
+        const status = await service.login(ephemeralConfig());
+
+        expect(await first).toMatch(/cancel/i);
+        expect(openExternal).toHaveBeenCalledTimes(2);
+        expect(status.active).toBe(true);
         await service.logout();
       });
 

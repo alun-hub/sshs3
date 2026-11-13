@@ -76,4 +76,45 @@ describe('OperationQueue', () => {
     already.abort();
     await expect(queue.run(async () => 'x', already.signal)).rejects.toThrow('cancelled!');
   });
+
+  it('runReplacing aborts a running replaceable operation and runs the new one', async () => {
+    const queue = new OperationQueue('cancelled!');
+    const stalled = queue.runReplacing(
+      (signal) => new Promise<string>((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('stopped'))))
+    );
+    await delay(5);
+    const retry = queue.runReplacing(async () => 'retried');
+    await expect(stalled).rejects.toThrow('stopped');
+    await expect(retry).resolves.toBe('retried');
+  });
+
+  it('runReplacing drops a queued replaceable operation but never a plain one', async () => {
+    const queue = new OperationQueue('cancelled!');
+    const order: string[] = [];
+    const plain = queue.run(async () => {
+      await delay(10);
+      order.push('plain');
+    });
+    const dropped = queue.runReplacing(async () => order.push('dropped'));
+    const logout = queue.run(async () => order.push('logout'));
+    const newest = queue.runReplacing(async () => order.push('newest'));
+    await plain;
+    await expect(dropped).rejects.toThrow('cancelled!');
+    await logout;
+    await newest;
+    expect(order).toEqual(['plain', 'logout', 'newest']);
+  });
+
+  it('runReplacing does not abort a running plain operation', async () => {
+    const queue = new OperationQueue('cancelled!');
+    let aborted = false;
+    const plain = queue.run(async (signal) => {
+      await delay(15);
+      aborted = signal.aborted;
+    });
+    const replacing = queue.runReplacing(async () => 'ok');
+    await plain;
+    expect(aborted).toBe(false);
+    await expect(replacing).resolves.toBe('ok');
+  });
 });

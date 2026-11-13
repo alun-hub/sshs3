@@ -128,7 +128,9 @@ export class SshCaService {
   }
 
   public login(config?: SshCaConfig, signal?: AbortSignal): Promise<SshCaStatus> {
-    return this.operations.run((opSignal) => this.performLogin(config, opSignal), signal);
+    // A new explicit sign-in replaces one still waiting for the browser (e.g. the wrong passkey was picked and
+    // the IdP never redirected back); otherwise the retry queues behind it for up to the sign-in timeout.
+    return this.operations.runReplacing((opSignal) => this.performLogin(config, opSignal), signal);
   }
 
   private async performLogin(config: SshCaConfig | undefined, signal: AbortSignal): Promise<SshCaStatus> {
@@ -209,7 +211,7 @@ export class SshCaService {
 
   /** User-initiated renewal: tries a silent token refresh, then falls back to an interactive sign-in. */
   public renew(signal?: AbortSignal): Promise<SshCaStatus> {
-    return this.operations.run((opSignal) => this.performRenew(opSignal, true), signal);
+    return this.operations.runReplacing((opSignal) => this.performRenew(opSignal, true), signal);
   }
 
   /** Timer-driven renewal: never opens a browser with nobody there to use it. */
