@@ -138,6 +138,13 @@ jobs:
     environment: store
 
     steps:
+      # msstore needs a recognised project root (package.json + electron-builder.json) to resolve the
+      # publisher identity; the package itself comes from the artifact below.
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
       - name: Download Store package
         uses: actions/download-artifact@v8
         with:
@@ -171,7 +178,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path msstore-input | Out-Null
           Copy-Item $appx.FullName (Join-Path 'msstore-input' ($appx.BaseName + '.msix'))
           Write-Host "Submitting $($appx.Name) to product $env:PRODUCT_ID (commit=$env:COMMIT)"
-          $args = @('publish', 'msstore-input', '--inputDirectory', 'msstore-input', '--appId', $env:PRODUCT_ID, '--verbose')
+          $args = @('publish', '.', '--inputDirectory', 'msstore-input', '--appId', $env:PRODUCT_ID, '--verbose')
           if ($env:COMMIT -ne 'true') { $args += '--noCommit' }
           msstore @args
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed" }
