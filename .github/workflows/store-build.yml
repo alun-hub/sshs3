@@ -138,13 +138,6 @@ jobs:
     environment: store
 
     steps:
-      # msstore needs a recognised project root (package.json + electron-builder.json) to resolve the
-      # publisher identity; the package itself comes from the artifact below.
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
       - name: Download Store package
         uses: actions/download-artifact@v8
         with:
@@ -173,12 +166,13 @@ jobs:
         run: |
           $appx = Get-ChildItem -Path store-package -Filter *.appx | Select-Object -First 1
           if (-not $appx) { throw "No .appx file in the store-package artifact" }
-          # msstore only looks for .msix/.msixupload in --inputDirectory; an electron-builder .appx is the
-          # same package format, so give it the .msix extension.
-          New-Item -ItemType Directory -Force -Path msstore-input | Out-Null
-          Copy-Item $appx.FullName (Join-Path 'msstore-input' ($appx.BaseName + '.msix'))
+          # Pointing msstore at a project directory makes it treat this as an Electron project (npm install,
+          # own packaging). Pointing it at a .msix file selects the plain MSIX publisher, which uploads
+          # exactly that file. An electron-builder .appx is the same package format, so give it .msix.
+          $msix = Join-Path (Get-Location) ($appx.BaseName + '.msix')
+          Copy-Item $appx.FullName $msix
           Write-Host "Submitting $($appx.Name) to product $env:PRODUCT_ID (commit=$env:COMMIT)"
-          $args = @('publish', '.', '--inputDirectory', 'msstore-input', '--appId', $env:PRODUCT_ID, '--verbose')
+          $args = @('publish', $msix, '--appId', $env:PRODUCT_ID, '--verbose')
           if ($env:COMMIT -ne 'true') { $args += '--noCommit' }
           msstore @args
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed" }
