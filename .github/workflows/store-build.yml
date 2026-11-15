@@ -1,13 +1,26 @@
 name: Microsoft Store build
 
-# Builds the MSIX/APPX package for upload to Partner Center (Microsoft Store). Manual only: the Store
-# package is a separate channel from the GitHub release and is submitted by hand. The Store signs the
-# package itself, so no code-signing certificate is used here.
+# Builds the MSIX/APPX package for the Microsoft Store. Manual only: the Store package is a separate
+# channel from the GitHub release. The Store signs the package itself, so no code-signing certificate
+# is used here.
+# Optional submit job (input "submit"): uploads the package to Partner Center with the Microsoft Store
+# Developer CLI. It runs in the "store" environment (holds the Partner Center credentials; configure
+# required reviewers there). By default the submission is left as a DRAFT in Partner Center
+# (--noCommit); tick "commit" to also send it to certification.
 # The bundled-tool steps (age, age-plugin-yubikey, VcXsrv) mirror release.yml (same pinned versions and
 # checksums); update both files together.
 
 on:
   workflow_dispatch:
+    inputs:
+      submit:
+        description: Upload the package to Partner Center after building
+        type: boolean
+        default: false
+      commit:
+        description: Commit the submission for certification (otherwise it stays a draft)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -116,3 +129,45 @@ jobs:
           path: release/*.appx
           if-no-files-found: error
           retention-days: 14
+
+  submit:
+    name: Submit to Microsoft Store
+    needs: store
+    if: ${{ inputs.submit }}
+    runs-on: windows-latest
+    environment: store
+
+    steps:
+      - name: Download Store package
+        uses: actions/download-artifact@v8
+        with:
+          name: store-package
+          path: store-package
+
+      - name: Setup Microsoft Store Developer CLI
+        uses: microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+
+      - name: Configure Microsoft Store Developer CLI
+        shell: pwsh
+        env:
+          TENANT_ID: ${{ vars.PARTNER_CENTER_TENANT_ID }}
+          SELLER_ID: ${{ vars.PARTNER_CENTER_SELLER_ID }}
+          CLIENT_ID: ${{ vars.PARTNER_CENTER_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          msstore reconfigure --tenantId $env:TENANT_ID --sellerId $env:SELLER_ID --clientId $env:CLIENT_ID --clientSecret $env:CLIENT_SECRET
+          if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed" }
+
+      - name: Publish to Partner Center
+        shell: pwsh
+        env:
+          PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          $appx = Get-ChildItem -Path store-package -Filter *.appx | Select-Object -First 1
+          if (-not $appx) { throw "No .appx file in the store-package artifact" }
+          Write-Host "Submitting $($appx.Name) to product $env:PRODUCT_ID (commit=$env:COMMIT)"
+          $args = @('publish', 'store-package', '--inputFile', $appx.FullName, '--appId', $env:PRODUCT_ID, '--verbose')
+          if ($env:COMMIT -ne 'true') { $args += '--noCommit' }
+          msstore @args
+          if ($LASTEXITCODE -ne 0) { throw "msstore publish failed" }
