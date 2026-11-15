@@ -166,8 +166,12 @@ jobs:
         run: |
           $appx = Get-ChildItem -Path store-package -Filter *.appx | Select-Object -First 1
           if (-not $appx) { throw "No .appx file in the store-package artifact" }
+          # msstore only looks for .msix/.msixupload in --inputDirectory; an electron-builder .appx is the
+          # same package format, so give it the .msix extension.
+          New-Item -ItemType Directory -Force -Path msstore-input | Out-Null
+          Copy-Item $appx.FullName (Join-Path 'msstore-input' ($appx.BaseName + '.msix'))
           Write-Host "Submitting $($appx.Name) to product $env:PRODUCT_ID (commit=$env:COMMIT)"
-          $args = @('publish', 'store-package', '--inputFile', $appx.FullName, '--appId', $env:PRODUCT_ID, '--verbose')
+          $args = @('publish', 'msstore-input', '--inputDirectory', 'msstore-input', '--appId', $env:PRODUCT_ID, '--verbose')
           if ($env:COMMIT -ne 'true') { $args += '--noCommit' }
           msstore @args
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed" }
