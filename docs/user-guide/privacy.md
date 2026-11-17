@@ -58,19 +58,32 @@ Builds installed outside the Microsoft Store can check GitHub Releases for new v
 
 ---
 
-## 4. Children
+## 4. The sshs3 Websites
+
+The websites (sshs3.com and docs.sshs3.com) are static pages hosted on Cloudflare. They set no cookies, run no analytics or advertising scripts, and have no forms or accounts.
+
+| Question | Answer |
+| :--- | :--- |
+| What does Cloudflare process? | Like any web host, Cloudflare processes the IP address and request details of each visitor to deliver the pages and protect them against abuse. This is covered by [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/). |
+| Does the developer see visitor data? | No personal visitor data is collected or used by the developer. Only aggregate, non-identifying traffic figures may be visible in the hosting dashboard. |
+| Are there cookies? | No. A cookie banner is therefore not needed. |
+| Where are the downloads hosted? | On GitHub Releases, which has its own [privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). |
+
+---
+
+## 5. Children
 
 sshs3 is a developer and system administration tool and is not directed at children. It collects no personal information from anyone.
 
 ---
 
-## 5. Changes to This Policy
+## 6. Changes to This Policy
 
 If this policy changes, the new version is published on this page with an updated date. Because sshs3 collects no data, changes would concern new optional features, not existing data.
 
 ---
 
-## 6. Contact
+## 7. Contact
 
 Questions about privacy can be raised as an issue at [github.com/alun-hub/sshs3/issues](https://github.com/alun-hub/sshs3/issues). To report a security vulnerability, follow the [Security Policy](https://github.com/alun-hub/sshs3/blob/master/SECURITY.md).
 
@@ -78,7 +91,7 @@ Technical details on how secrets and PINs are handled are in [Security & smartca
 
 ---
 
-## 7. Troubleshooting & Diagnostics
+## 8. Troubleshooting & Diagnostics
 
 | Symptom | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |

@@ -62,6 +62,7 @@ Full user documentation lives at **[docs.sshs3.com](https://docs.sshs3.com)** (s
 - [Product Comparison](docs/COMPARISON.md)
 - [Architecture notes](docs/user-guide/architecture-internals.md) · [Third-party software](THIRD_PARTY.md)
 - [Security Policy](SECURITY.md) — how to report vulnerabilities
+- [Terms of Use](docs/user-guide/terms.md) · [Privacy Policy](docs/user-guide/privacy.md)
 
 ## Privacy
 
