@@ -1,5 +1,5 @@
 import type { AwsSsoConfig } from './types/aws';
-import type { SshSsmConfig } from './types/ssm';
+import type { SshSsmConfig, SsmInstance } from './types/ssm';
 
 /**
  * Pure helpers for SSH over AWS Systems Manager. Everything here that ends up in a shell-run
@@ -103,4 +103,38 @@ export function suggestLoginName(platformName: string | undefined): string {
   if (p.includes('rocky')) return 'rocky';
   if (p.includes('bitnami')) return 'bitnami';
   return 'ec2-user';
+}
+
+/** Upper bound on instances shown in the picker. */
+export const MAX_DISCOVERED_INSTANCES = 500;
+
+/** AWS-returned text is untrusted: drop control/format characters, collapse whitespace, cap the length. */
+export function sanitizeAwsText(value: unknown, max = 100): string {
+  if (typeof value !== 'string') return '';
+  // eslint-disable-next-line no-control-regex -- stripping control characters is the point
+  return value.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+const PLATFORMS = new Set(['Windows', 'Linux', 'MacOS']);
+const PINGS = new Set(['Online', 'ConnectionLost', 'Inactive']);
+
+/** Tolerant mapping of `InstanceInformation` records: entries without a valid instance id are dropped. */
+export function mapInstances(raw: ReadonlyArray<Record<string, unknown>>): SsmInstance[] {
+  const out: SsmInstance[] = [];
+  for (const r of raw) {
+    const id = r.InstanceId;
+    if (!isValidInstanceId(id)) continue;
+    const platformType = typeof r.PlatformType === 'string' && PLATFORMS.has(r.PlatformType) ? (r.PlatformType as SsmInstance['platformType']) : undefined;
+    const pingStatus = typeof r.PingStatus === 'string' && PINGS.has(r.PingStatus) ? (r.PingStatus as SsmInstance['pingStatus']) : undefined;
+    const ip = sanitizeAwsText(r.IPAddress, 45);
+    out.push({
+      instanceId: id,
+      name: sanitizeAwsText(r.ComputerName, 80) || id,
+      platformName: sanitizeAwsText(r.PlatformName, 60) || undefined,
+      platformType,
+      ipAddress: /^[0-9a-fA-F.:]+$/.test(ip) ? ip : undefined,
+      pingStatus,
+    });
+  }
+  return out;
 }

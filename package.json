@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1166.0",
+    "@aws-sdk/client-ssm": "^3.1171.0",
     "@aws-sdk/client-sso": "^3.1166.0",
     "@aws-sdk/client-sso-oidc": "^3.1166.0",
     "@aws-sdk/credential-provider-sso": "^3.973.16",

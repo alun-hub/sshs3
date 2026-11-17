@@ -1,4 +1,4 @@
-import type { AwsSsmTools } from './ssm';
+import type { AwsSsmTools, SsmDiscoveryRequest, SsmDiscoveryResult } from './ssm';
 import type { UpdateState } from './update';
 import type {
   SshCaConfig,
@@ -315,6 +315,7 @@ export const IPC_CHANNELS = {
 
   // SSH over AWS Systems Manager
   AWS_SSM_CHECK_TOOLS: 'aws-ssm:check-tools',
+  AWS_SSM_DISCOVER_INSTANCES: 'aws-ssm:discover-instances',
 
   // Git & Git Provider Integration
   GIT_FETCH_PUBLIC_KEYS: 'git:fetch-public-keys',
@@ -889,6 +890,8 @@ export interface MultiSSHApi {
   awsSsoLogin(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginResult>;
   /** Detects the `aws` CLI and `session-manager-plugin` needed for SSH over AWS SSM. */
   awsSsmCheckTools(): Promise<AwsSsmTools>;
+  /** Lists SSM-managed instances for an SSO account/role and region (the user must be signed in). */
+  awsSsmDiscoverInstances(request: SsmDiscoveryRequest): Promise<SsmDiscoveryResult>;
   awsSsoCancelLogin(id: string): Promise<void>;
   onAwsSsoPrompt(callback: (event: AwsSsoPromptEvent) => void): () => void;
   /** Fires with the prompt id once a login attempt has ended (approved, failed, expired or cancelled). */

@@ -26,3 +26,25 @@ export interface AwsSsmTools {
   aws: AwsSsmToolStatus;
   plugin: AwsSsmToolStatus;
 }
+
+/** One SSM-managed node as shown in the instance picker (all strings already sanitised). */
+export interface SsmInstance {
+  instanceId: string;
+  /** SSM `ComputerName` (the EC2 Name tag needs ec2:DescribeInstances and is not used). */
+  name: string;
+  platformName?: string;
+  platformType?: 'Windows' | 'Linux' | 'MacOS';
+  ipAddress?: string;
+  pingStatus?: 'Online' | 'ConnectionLost' | 'Inactive';
+}
+
+export interface SsmDiscoveryRequest {
+  sso: AwsSsoConfig;
+  region: string;
+}
+
+export interface SsmDiscoveryResult {
+  instances: SsmInstance[];
+  /** True when the result was cut at the cap; the user should narrow by account/region. */
+  truncated: boolean;
+}
