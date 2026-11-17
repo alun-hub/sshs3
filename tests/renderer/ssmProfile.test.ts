@@ -18,3 +18,17 @@ describe('ssmProfile', () => {
     expect(hostIsValid({ host: ' ' })).toBe(false);
   });
 });
+
+import { ssmProblem } from '../../src/renderer/src/lib/ssmProfile';
+describe('ssmProblem', () => {
+  const host = 'i-0123456789abcdef0';
+  it('flags settings the connect path would refuse', () => {
+    expect(ssmProblem({ host })).toBeUndefined();
+    expect(ssmProblem({ host, ssm: { enabled: true } })).toBeUndefined();
+    expect(ssmProblem({ host, ssm: { enabled: true, awsProfile: '' } })).toMatch(/profile/);
+    expect(ssmProblem({ host, ssm: { enabled: true, region: 'nope' } })).toMatch(/region/);
+    const sso = { startUrl: 'https://d-1.awsapps.com/start', region: 'eu-north-1' };
+    expect(ssmProblem({ host, ssm: { enabled: true, sso } })).toMatch(/account ID and role/);
+    expect(ssmProblem({ host, ssm: { enabled: true, sso: { ...sso, accountId: '123456789012', roleName: 'Admin' } } })).toBeUndefined();
+  });
+});

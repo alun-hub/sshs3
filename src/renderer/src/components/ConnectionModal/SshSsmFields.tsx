@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import type { SshSsmConfig } from '@shared/types/ssm';
-import { isValidInstanceId } from '@shared/ssm';
+import { ssmProblem } from '../../lib/ssmProfile';
 import { describeIpcError } from '../../lib/format';
 import { useAwsSsmTools } from '../../lib/useAwsSsmTools';
 import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
@@ -91,9 +91,9 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
             Enter the instance ID as hostname (i-0123456789abcdef0). The instance still needs an SSH daemon and SSH
             authentication; SSM only carries the connection. A jump host or outgoing proxy cannot be combined with SSM.
           </p>
-          {host.trim() !== '' && !isValidInstanceId(host.trim()) && (
+          {host.trim() !== '' && ssmProblem({ host, ssm }) && (
             <p role="alert" className="text-xs text-red-400">
-              Hostname must be an instance ID such as i-0123456789abcdef0 (mi-… for a hybrid node).
+              {ssmProblem({ host, ssm })}
             </p>
           )}
 

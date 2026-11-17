@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm } from '../../../src/main/ssh/ssmProxy';
+import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm, setSsmAllowed } from '../../../src/main/ssh/ssmProxy';
 import { buildSsoConfigFile, ensureSsoConfigFile, ssoProfileName } from '../../../src/main/aws/ssoConfigFile';
 import { candidateDirs, findExecutable, pathDirs, pluginStatusFromVersion, toolDirsMissingFromPath } from '../../../src/main/aws/AwsSsmToolchain';
 import { SmartcardDetector } from '../../../src/main/smartcard/SmartcardDetector';
@@ -68,6 +68,7 @@ describe('buildSsmEnv', () => {
   it('scrubs credential vars when sshs3 chose the source and preserves Path casing', () => {
     const env = buildSsmEnv({ enabled: true, awsProfile: 'p' }, ['C:\\Program Files\\Amazon\\AWSCLIV2'], { Path: 'C:\\Windows', AWS_SECRET_ACCESS_KEY: 's' }, 'win32');
     expect(env.AWS_SECRET_ACCESS_KEY).toBe('');
+    expect(env.AWS_CONFIG_FILE).toBeUndefined(); // user's own config location is kept in profile mode
     expect(env.Path).toBe('C:\\Program Files\\Amazon\\AWSCLIV2;C:\\Windows');
     expect(env.PATH).toBeUndefined();
     expect(env.AWS_PROFILE).toBeUndefined();
@@ -146,5 +147,28 @@ describe('toolDirsMissingFromPath', () => {
       fs.writeFileSync(path.join(d, 'session-manager-plugin'), '');
       expect(toolDirsMissingFromPath('linux', { PATH: d }, '/nonexistent')).toEqual([]);
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  });
+});
+
+describe('review fixes', () => {
+  it('keeps the user config location in awsProfile mode but replaces it for sso', () => {
+    const base = { AWS_CONFIG_FILE: '/work/aws/config', AWS_SHARED_CREDENTIALS_FILE: '/work/aws/creds' };
+    expect(buildSsmEnv({ enabled: true, awsProfile: 'prod' }, [], base, 'linux')).not.toHaveProperty('AWS_CONFIG_FILE');
+    const sso = buildSsmEnv({ enabled: true, sso: SSO }, [], base, 'linux', '/app/x.config');
+    expect(sso.AWS_CONFIG_FILE).toBe('/app/x.config');
+    expect(sso.AWS_SHARED_CREDENTIALS_FILE).toBe('');
+  });
+  it('emits each Windows env name once, in the casing already present', () => {
+    const env = buildSsmEnv({ enabled: true, sso: SSO }, [], { Aws_Config_File: 'C:\\old', Aws_Access_Key_Id: 'k' }, 'win32', 'C:\\app\\x.config');
+    expect(Object.keys(env).filter((k) => k.toUpperCase() === 'AWS_CONFIG_FILE')).toEqual(['Aws_Config_File']);
+    expect(env.Aws_Config_File).toBe('C:\\app\\x.config');
+    expect(Object.keys(env).filter((k) => k.toUpperCase() === 'AWS_ACCESS_KEY_ID')).toEqual(['Aws_Access_Key_Id']);
+  });
+  it('refuses every spawn path when the awsSsm policy is off', () => {
+    setSsmAllowed(false);
+    try {
+      expect(() => SmartcardDetector.buildSSHArguments(base())).toThrow(/disabled by your administrator/);
+    } finally { setSsmAllowed(true); }
+    expect(() => SmartcardDetector.buildSSHArguments(base())).not.toThrow();
   });
 });

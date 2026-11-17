@@ -61,6 +61,21 @@ export function validateSsmConfig(ssm: SshSsmConfig, host: unknown): string | un
   return undefined;
 }
 
+/** Field-wise equality of two SSM settings (independent of key order and undefined-vs-absent). */
+export function ssmEqual(a: SshSsmConfig | undefined, b: SshSsmConfig | undefined): boolean {
+  if (!a?.enabled || !b?.enabled) return Boolean(a?.enabled) === Boolean(b?.enabled);
+  return (
+    (a.region ?? '') === (b.region ?? '') &&
+    (a.awsProfile ?? '') === (b.awsProfile ?? '') &&
+    (a.sso?.startUrl ?? '') === (b.sso?.startUrl ?? '') &&
+    (a.sso?.region ?? '') === (b.sso?.region ?? '') &&
+    (a.sso?.accountId ?? '') === (b.sso?.accountId ?? '') &&
+    (a.sso?.roleName ?? '') === (b.sso?.roleName ?? '') &&
+    Boolean(a.sso) === Boolean(b.sso) &&
+    (a.awsProfile === undefined) === (b.awsProfile === undefined)
+  );
+}
+
 /** Compares dotted numeric versions ("1.2.707.0"); returns <0, 0, >0. Non-numeric parts count as 0. */
 export function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map((n) => parseInt(n, 10) || 0);

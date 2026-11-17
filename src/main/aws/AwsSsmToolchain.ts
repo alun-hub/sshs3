@@ -54,24 +54,31 @@ export function findExecutable(dirs: string[], name: string, platform: NodeJS.Pl
   return undefined;
 }
 
-const versionCache = new Map<string, string | undefined>();
+const versionCache = new Map<string, string>();
 
+function fingerprint(file: string): string | undefined {
+  try {
+    const st = fs.statSync(file);
+    return `${file}|${st.mtimeMs}|${st.size}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Version of the tool; cached per file *version* (path+mtime+size) so an in-place upgrade is noticed, and failures are never cached. */
 function probeVersion(file: string): Promise<string | undefined> {
-  if (versionCache.has(file)) return Promise.resolve(versionCache.get(file));
+  const key = fingerprint(file);
+  const hit = key ? versionCache.get(key) : undefined;
+  if (hit) return Promise.resolve(hit);
   return new Promise((resolve) => {
-    // Fixed argument, absolute file found by fs check, bounded time/output; run once per path.
+    // Fixed argument, absolute file found by fs check, bounded time/output; run once per file version.
     // nosemgrep: javascript.lang.security.detect-child-process -- fixed args, detected binary, no shell
     execFile(file, ['--version'], { timeout: 5000, maxBuffer: 16 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       const v = err ? undefined : parseToolVersion(`${stdout}${stderr}`);
-      versionCache.set(file, v);
+      if (v && key) versionCache.set(key, v);
       resolve(v);
     });
   });
-}
-
-export interface ToolOverrides {
-  aws?: string;
-  plugin?: string;
 }
 
 /** Cheap check (no exec): where would the tools be found? */
@@ -79,16 +86,13 @@ export function locateTools(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
   home: string = os.homedir(),
-  overrides: ToolOverrides = {},
 ): { aws?: string; plugin?: string } {
   const cand = candidateDirs(platform, env, home);
   const onPath = pathDirs(env, platform);
   const names = (n: typeof AWS_NAMES) => (platform === 'win32' ? n.win32 : n.other);
-  const pick = (override: string | undefined, dirs: string[], name: string) =>
-    override && path.isAbsolute(override) && isFile(override) ? override : findExecutable([...onPath, ...dirs], name, platform);
   return {
-    aws: pick(overrides.aws, cand.aws, names(AWS_NAMES)),
-    plugin: pick(overrides.plugin, cand.plugin, names(PLUGIN_NAMES)),
+    aws: findExecutable([...onPath, ...cand.aws], names(AWS_NAMES), platform),
+    plugin: findExecutable([...onPath, ...cand.plugin], names(PLUGIN_NAMES), platform),
   };
 }
 
@@ -113,29 +117,13 @@ export function toolDirsMissingFromPath(
   return dirs;
 }
 
-let cached: AwsSsmTools = { aws: { found: false }, plugin: { found: false } };
-
-/** Detects both tools; versions are probed once per newly found path. Updates the sync cache. */
-export async function detectAwsSsmTools(overrides: ToolOverrides = {}): Promise<AwsSsmTools> {
-  const loc = locateTools(process.platform, process.env, os.homedir(), overrides);
+/** Detects both tools; versions are probed once per tool file version (see probeVersion). */
+export async function detectAwsSsmTools(): Promise<AwsSsmTools> {
+  const loc = locateTools();
   const status = async (file: string | undefined, isPlugin: boolean): Promise<AwsSsmToolStatus> => {
     if (!file) return { found: false };
     const version = await probeVersion(file);
     return { found: true, path: file, version, ok: isPlugin ? pluginStatusFromVersion(version) !== false : true };
   };
-  cached = { aws: await status(loc.aws, false), plugin: await status(loc.plugin, true) };
-  return cached;
-}
-
-/** Directories of the tools found by the last detection, for the synchronous ssh argument builder. */
-export function getCachedToolDirs(): string[] {
-  const dirs: string[] = [];
-  for (const t of [cached.aws, cached.plugin]) if (t.found && t.path) dirs.push(path.dirname(t.path));
-  return dirs;
-}
-
-/** Test hook. */
-export function resetToolchainCache(): void {
-  cached = { aws: { found: false }, plugin: { found: false } };
-  versionCache.clear();
+  return { aws: await status(loc.aws, false), plugin: await status(loc.plugin, true) };
 }

@@ -1,3 +1,4 @@
+import { ssmEqual } from '../../shared/ssm';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { S3Config } from '../../shared/types/storage';
 
@@ -76,7 +77,7 @@ export function sshRoutingChanged(incoming: SSHConnectionConfig, existing: SSHCo
     incoming.username !== existing.username ||
     incoming.authType !== existing.authType ||
     incoming.proxyJump !== existing.proxyJump ||
-    JSON.stringify(incoming.ssm ?? null) !== JSON.stringify(existing.ssm ?? null) ||
+    !ssmEqual(incoming.ssm, existing.ssm) ||
     incoming.proxyJumpProfileId !== existing.proxyJumpProfileId ||
     Boolean(incoming.proxy?.enabled) !== Boolean(existing.proxy?.enabled) ||
     (incoming.proxy?.host ?? '') !== (existing.proxy?.host ?? '') ||

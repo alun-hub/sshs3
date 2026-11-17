@@ -1,3 +1,4 @@
+import { toSftpConfig } from '../../shared/toSftpConfig';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
@@ -60,23 +61,12 @@ export function registerConnectionTestHandlers(bridge: ConnectionTestHost): void
 
       try {
         const port = config.port ?? 22;
-        let sftpConfig: SFTPConfig = {
+        let sftpConfig: SFTPConfig = toSftpConfig(config, {
           id: `test-${crypto.randomUUID()}`,
           name: 'Test SSH',
-          host: config.host,
-          port,
-          username: config.username,
-          authType: config.authType,
-          password: config.password,
-          privateKeyPath: config.privateKeyPath,
-          passphrase: config.passphrase,
-          agentPath: config.agentPath,
           agentIdentityFiles: config.agentIdentityFiles,
-          pkcs11LibPath: config.pkcs11LibPath,
-          proxy: config.proxy,
-          ssm: config.ssm,
           useSshCa: config.useSshCa,
-        };
+        });
         if (bridge.smartcard) {
           sftpConfig = await bridge.smartcard.prepareSftpSshCaConfig(sftpConfig);
         }

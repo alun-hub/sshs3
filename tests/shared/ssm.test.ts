@@ -58,3 +58,14 @@ describe('version helpers', () => {
     expect(suggestLoginName(undefined)).toBe('ec2-user');
   });
 });
+
+import { ssmEqual } from '../../src/shared/ssm';
+describe('ssmEqual', () => {
+  it('ignores key order and undefined', () => {
+    expect(ssmEqual({ enabled: true, region: 'a-b-1' }, { region: 'a-b-1', enabled: true, awsProfile: undefined } as never)).toBe(true);
+    expect(ssmEqual(undefined, undefined)).toBe(true);
+    expect(ssmEqual({ enabled: true }, undefined)).toBe(false);
+    expect(ssmEqual({ enabled: true, awsProfile: 'a' }, { enabled: true, awsProfile: 'b' })).toBe(false);
+    expect(ssmEqual({ enabled: true, awsProfile: '' }, { enabled: true })).toBe(false);
+  });
+});

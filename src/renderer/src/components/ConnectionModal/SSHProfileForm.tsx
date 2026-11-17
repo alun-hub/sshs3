@@ -426,7 +426,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           >
             <option value="">None</option>
             {allProfiles
-              .filter((p) => p.id !== config.id && p.proxyJumpProfileId !== config.id)
+              .filter((p) => p.id !== config.id && p.proxyJumpProfileId !== config.id && !p.ssm?.enabled)
               .map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name || p.host}

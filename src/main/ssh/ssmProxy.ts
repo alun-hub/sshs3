@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { app } from 'electron';
@@ -8,19 +9,20 @@ import { ensureSsoConfigFile, ssoProfileName } from '../aws/ssoConfigFile';
 import { SSM_START_SESSION_POSIX, SSM_START_SESSION_WINDOWS, validateSsmConfig } from '../../shared/ssm';
 
 /**
- * Env vars that would silently change which AWS identity the session uses. Scrubbed only when
- * sshs3 picked the credential source (`awsProfile` / `sso`); the default-chain mode leaves the
- * user's environment alone. AWS_PROFILE / AWS_DEFAULT_PROFILE are deliberately not listed: the
- * `--profile` option overrides them (verified on aws-cli 2.38, see tests/main/ssmProxy.test.ts
- * notes) and an empty value is *not* treated as unset by the CLI (it errors "profile () not found").
+ * Credential variables that would silently change which AWS identity the session uses. Scrubbed only
+ * when sshs3 picked the credential source (`awsProfile` / `sso`); the default-chain mode leaves the
+ * user's environment alone. AWS_PROFILE / AWS_DEFAULT_PROFILE are deliberately not listed: `--profile`
+ * overrides them (verified on aws-cli 2.38) and an empty value is *not* treated as unset by the CLI.
  */
-export const AWS_ENV_SCRUB = [
-  'AWS_ACCESS_KEY_ID',
-  'AWS_SECRET_ACCESS_KEY',
-  'AWS_SESSION_TOKEN',
-  'AWS_SHARED_CREDENTIALS_FILE',
-  'AWS_CONFIG_FILE',
-] as const;
+export const AWS_CREDENTIAL_ENV = ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN'] as const;
+/** Config-location variables: scrubbed only for `sso`, where sshs3 supplies its own config file. */
+export const AWS_CONFIG_ENV = ['AWS_SHARED_CREDENTIALS_FILE', 'AWS_CONFIG_FILE'] as const;
+
+let ssmAllowed = true;
+/** Machine policy switch (`awsSsm`), set once at startup by IpcBridge; enforced in assertValidSsm for every ssh spawn. */
+export function setSsmAllowed(allowed: boolean): void {
+  ssmAllowed = allowed;
+}
 
 /**
  * Throws when the SSM settings cannot be used. Called from buildSSHArguments, the single point
@@ -29,6 +31,7 @@ export const AWS_ENV_SCRUB = [
 export function assertValidSsm(config: SSHConnectionConfig): void {
   const ssm = config.ssm;
   if (!ssm?.enabled) return;
+  if (!ssmAllowed) throw new Error('SSH over AWS SSM is disabled by your administrator');
   const problem = validateSsmConfig(ssm, config.host);
   if (problem) throw new Error(`Invalid AWS SSM settings: ${problem}`);
   if (config.proxy?.enabled || config.proxyJump?.trim() || config.proxyJumpProfileId) {
@@ -52,7 +55,7 @@ export function buildSsmProxyCommand(ssm: SshSsmConfig, platform: NodeJS.Platfor
 }
 
 /**
- * Environment for the ssh child: drops ambient AWS credential/profile variables, prepends the
+ * Environment for the ssh child: drops ambient AWS credential variables (and, for `sso`, config-location variables), prepends the
  * directories of the detected tools to PATH (keeping the existing key's exact casing — Windows
  * uses `Path`) and points AWS_CONFIG_FILE at the app-owned config for `ssm.sso`.
  * Returns only the overlay to spread over the base environment.
@@ -65,15 +68,16 @@ export function buildSsmEnv(
   ssoConfigFile?: string,
 ): Record<string, string> {
   // Scrubbed variables are set to '' rather than removed: callers spread this over process.env, and
-  // the AWS CLI treats an empty value as unset for these keys (verified on aws-cli 2.38).
+  // the AWS CLI treats an empty value as unset for these keys (verified on aws-cli 2.38). Windows env
+  // names are case-insensitive, so each name is emitted once, in the casing the base env already uses.
+  const nameIn = (name: string): string =>
+    platform === 'win32' ? (Object.keys(baseEnv).find((k) => k.toUpperCase() === name) ?? name) : name;
   const overlay: Record<string, string> = {};
-  if (ssm.sso || ssm.awsProfile) {
-    for (const k of Object.keys(baseEnv)) {
-      if ((AWS_ENV_SCRUB as readonly string[]).includes(platform === 'win32' ? k.toUpperCase() : k)) overlay[k] = '';
-    }
-    for (const k of AWS_ENV_SCRUB) overlay[k] = '';
+  if (ssm.sso || ssm.awsProfile) for (const n of AWS_CREDENTIAL_ENV) overlay[nameIn(n)] = '';
+  if (ssm.sso) {
+    for (const n of AWS_CONFIG_ENV) overlay[nameIn(n)] = '';
+    if (ssoConfigFile) overlay[nameIn('AWS_CONFIG_FILE')] = ssoConfigFile;
   }
-  if (ssm.sso && ssoConfigFile) overlay.AWS_CONFIG_FILE = ssoConfigFile;
 
   const sep = platform === 'win32' ? ';' : ':';
   const key = Object.keys(baseEnv).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
@@ -95,12 +99,23 @@ function appDataDir(): string {
   }
 }
 
+const ensured = new Map<string, string>();
+/** App-owned SSO config path for the profile; written once per process unless the file went missing. */
+function ssoConfigPath(sso: NonNullable<SshSsmConfig['sso']>): string {
+  const name = ssoProfileName(sso);
+  const known = ensured.get(name);
+  if (known && fs.existsSync(known)) return known;
+  const file = ensureSsoConfigFile(sso, appDataDir());
+  ensured.set(name, file);
+  return file;
+}
+
 /** `-o ProxyCommand=…` for an SSM profile (writes the app-owned SSO config when needed). */
 export function ssmProxyOption(config: SSHConnectionConfig): string | undefined {
   const ssm = config.ssm;
   if (!ssm?.enabled) return undefined;
   const profile = ssm.sso ? ssoProfileName(ssm.sso) : undefined;
-  if (ssm.sso) ensureSsoConfigFile(ssm.sso, appDataDir());
+  if (ssm.sso) ssoConfigPath(ssm.sso);
   return `ProxyCommand=${buildSsmProxyCommand(ssm, process.platform, profile)}`;
 }
 
@@ -109,6 +124,6 @@ export function ssmEnvOverlay(config: SSHConnectionConfig): Record<string, strin
   const ssm = config.ssm;
   if (!ssm?.enabled) return {};
   const dirs = toolDirsMissingFromPath();
-  const cfg = ssm.sso ? ensureSsoConfigFile(ssm.sso, appDataDir()) : undefined;
+  const cfg = ssm.sso ? ssoConfigPath(ssm.sso) : undefined;
   return buildSsmEnv(ssm, dirs, process.env, process.platform, cfg);
 }

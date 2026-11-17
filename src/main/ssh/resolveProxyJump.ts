@@ -19,6 +19,9 @@ export function resolveProxyJumpTarget(
   if (config.proxyJumpProfileId) {
     const jumpProfile = getProfile(config.proxyJumpProfileId);
     if (jumpProfile) {
+      if (jumpProfile.ssm?.enabled) {
+        throw new Error(`Jump host "${jumpProfile.name}" connects through AWS SSM, which cannot be used as a jump host`);
+      }
       const port = jumpProfile.port && jumpProfile.port !== 22 ? `:${jumpProfile.port}` : '';
       return `${jumpProfile.username}@${jumpProfile.host}${port}`;
     }
