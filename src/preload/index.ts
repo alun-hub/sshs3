@@ -51,6 +51,7 @@ import type {
   SshCaVaultDetectRequest,
   SshCaVaultDetectResult,
 } from '../shared/types/sshCa';
+import type { AwsSsmTools } from '../shared/types/ssm';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
@@ -730,6 +731,8 @@ export const api: MultiSSHApi = {
     network?: AwsSsoNetworkOptions
   ): Promise<AwsSsoAccountRole[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, accessToken, region, accountId, network),
+
+  awsSsmCheckTools: (): Promise<AwsSsmTools> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSM_CHECK_TOOLS),
 
   awsSsoReloginProvider: (providerId: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, providerId),

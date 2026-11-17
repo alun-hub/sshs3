@@ -1,3 +1,5 @@
+import { hostIsValid, withSsm } from '../../lib/ssmProfile';
+import { SshSsmFields } from './SshSsmFields';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -292,7 +294,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     void scanFido2ResidentKeys();
   }, [config.authType, config.fido2Resident]);
 
-  const isValid = config.name.trim() && config.host.trim() && config.username.trim();
+  const isValid = config.name.trim() && hostIsValid(config) && config.username.trim();
 
   // A saved result no longer applies once anything the chain depends on changes.
   const accessResetKey = [
@@ -901,6 +903,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           </div>
         </div>
       )}
+
+      <SshSsmFields ssm={config.ssm} host={config.host} onChange={(ssm) => setConfig((prev) => withSsm(prev, ssm))} />
 
       {/* Outgoing Proxy Settings */}
       <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">

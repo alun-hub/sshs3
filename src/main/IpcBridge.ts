@@ -63,6 +63,7 @@ import { ListenerSet } from './ipc/listenerSet';
 import { registerSearchHandlers } from './ipc/searchHandlers';
 import { addGuardedPrompt, type WatchableWebContents } from './ipc/promptWindowGuard';
 import { registerAwsSsoHandlers } from './ipc/awsSsoHandlers';
+import { registerAwsSsmHandlers } from './ipc/awsSsmHandlers';
 import { registerDirSyncHandlers } from './ipc/dirSyncHandlers';
 import { registerDragOutHandlers, createDragOutService } from './ipc/dragOutHandlers';
 import type { DragOutService } from './dragout/DragOutService';
@@ -520,6 +521,7 @@ export class IpcBridge {
     registerKeyInstallHandlers(this);
     registerGitHandlers(this);
     registerAwsSsoHandlers(this);
+    registerAwsSsmHandlers(this);
     registerFileEditorHandlers(this);
     registerSearchHandlers(this);
     registerGeneralHandlers(this);

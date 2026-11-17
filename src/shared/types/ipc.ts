@@ -1,3 +1,4 @@
+import type { AwsSsmTools } from './ssm';
 import type { UpdateState } from './update';
 import type {
   SshCaConfig,
@@ -311,6 +312,9 @@ export const IPC_CHANNELS = {
   AWS_SSO_LIST_ACCOUNTS: 'aws-sso:list-accounts',
   AWS_SSO_LIST_ROLES: 'aws-sso:list-roles',
   AWS_SSO_RELOGIN_PROVIDER: 'aws-sso:relogin-provider',
+
+  // SSH over AWS Systems Manager
+  AWS_SSM_CHECK_TOOLS: 'aws-ssm:check-tools',
 
   // Git & Git Provider Integration
   GIT_FETCH_PUBLIC_KEYS: 'git:fetch-public-keys',
@@ -883,6 +887,8 @@ export interface MultiSSHApi {
 
   // AWS SSO login (device-authorization flow)
   awsSsoLogin(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginResult>;
+  /** Detects the `aws` CLI and `session-manager-plugin` needed for SSH over AWS SSM. */
+  awsSsmCheckTools(): Promise<AwsSsmTools>;
   awsSsoCancelLogin(id: string): Promise<void>;
   onAwsSsoPrompt(callback: (event: AwsSsoPromptEvent) => void): () => void;
   /** Fires with the prompt id once a login attempt has ended (approved, failed, expired or cancelled). */

@@ -1,0 +1,20 @@
+import { describe, it, expect } from 'vitest';
+import { withSsm, hostIsValid } from '../../src/renderer/src/lib/ssmProfile';
+import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
+
+const base = { id: 'a', name: 'n', host: 'i-0123456789abcdef0', username: 'u', authType: 'agent', proxyJump: 'a@b', proxy: { enabled: true, type: 'http', host: 'p', port: 1 } } as unknown as SSHConnectionConfig;
+
+describe('ssmProfile', () => {
+  it('drops proxy and jump host when SSM is enabled, keeps them when cleared', () => {
+    const on = withSsm(base, { enabled: true });
+    expect(on.proxy).toBeUndefined();
+    expect(on.proxyJump).toBeUndefined();
+    expect(withSsm(base, undefined).proxyJump).toBe('a@b');
+  });
+  it('requires an instance id with SSM', () => {
+    expect(hostIsValid({ host: 'example.com' })).toBe(true);
+    expect(hostIsValid({ host: 'example.com', ssm: { enabled: true } })).toBe(false);
+    expect(hostIsValid({ host: 'i-0123456789abcdef0', ssm: { enabled: true } })).toBe(true);
+    expect(hostIsValid({ host: ' ' })).toBe(false);
+  });
+});
