@@ -20,6 +20,7 @@ import type {
   AwsSsoLoginResult,
   AwsSsoNetworkOptions,
 } from '../../shared/types/aws';
+import { parseSsoTokenCache, type AwsSsoTokenStatus } from '../../shared/types/aws';
 import { encryptSecretValue, decryptSecretValue } from '../crypto/SecretFieldCrypto';
 import { buildAwsNodeHttpHandler } from './buildAwsNodeHttpHandler';
 
@@ -310,6 +311,17 @@ export class AwsSsoAuthService extends EventEmitter {
    * schema that `aws sso login` uses, so `fromSSO()` (used by
    * `S3StorageProvider`) can read the token directly with no extra glue.
    */
+  /** Offline status of the cached token for this start URL (see parseSsoTokenCache). */
+  public async getTokenStatus(startUrl: string): Promise<AwsSsoTokenStatus> {
+    const key = crypto.createHash('sha1').update(startUrl).digest('hex');
+    try {
+      const raw = await fs.readFile(path.join(this.ssoCacheDir(), `${key}.json`), 'utf-8');
+      return parseSsoTokenCache(JSON.parse(raw) as unknown, Date.now());
+    } catch {
+      return 'missing';
+    }
+  }
+
   private async writeSsoTokenCache(
     startUrl: string,
     token: {
