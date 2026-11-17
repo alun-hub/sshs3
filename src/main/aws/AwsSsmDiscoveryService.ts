@@ -35,7 +35,7 @@ export async function discoverInstances(req: SsmDiscoveryRequest, network: AwsSs
     let truncated = false;
     const pages = paginateDescribeInstanceInformation(
       { client },
-      { Filters: [{ Key: 'ResourceType', Values: ['EC2Instance'] }, { Key: 'PingStatus', Values: ['Online'] }], MaxResults: 50 }
+      { Filters: [{ Key: 'PingStatus', Values: ['Online'] }], MaxResults: 50 }
     );
     outer: for await (const page of pages) {
       for (const info of page.InstanceInformationList ?? []) {

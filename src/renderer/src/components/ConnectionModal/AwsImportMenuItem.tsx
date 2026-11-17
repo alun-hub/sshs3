@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Cloud } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { buildProfilesFromInstances } from '@shared/ssmProfileFactory';
@@ -14,13 +14,18 @@ interface Props {
 /** "Import from AWS…" entry of the Import / Export menu: pick SSM-managed instances and save them as SSM profiles. */
 export const AwsImportMenuItem: React.FC<Props> = ({ onDone, profiles }) => {
   const [open, setOpen] = useState(false);
+  // Profiles saved by this dialog so far: a retry after a failed save must not create them twice.
+  const savedIds = useRef(new Set<string>());
 
   const save = async (r: AwsPickResult) => {
-    const created = buildProfilesFromInstances(r.instances, { sso: r.sso, region: r.region, username: r.username, existing: new Set(profiles.filter((p) => p.ssm?.enabled).map((p) => p.host)) }).map(
+    const created = buildProfilesFromInstances(r.instances, { sso: r.sso, region: r.region, username: r.username, existing: new Set([...profiles.filter((p) => p.ssm?.enabled).map((p) => p.host), ...savedIds.current]) }).map(
       (p) => ({ ...p, group: r.folder })
     );
     if (r.folder) await window.multissh.profilesSaveFolder(r.folder).catch(() => {});
-    for (const p of created) await window.multissh.profilesSaveSSH(p);
+    for (const p of created) {
+      await window.multissh.profilesSaveSSH(p);
+      savedIds.current.add(p.host);
+    }
     setOpen(false);
     onDone(created.length);
   };

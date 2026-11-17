@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import type { SshSsmConfig } from '@shared/types/ssm';
+import { normalizeStartUrl } from '@shared/ssm';
 import { ssmProblem } from '../../lib/ssmProfile';
 import { describeIpcError } from '../../lib/format';
 import { AwsInstancePickerModal } from '../AwsInstancePickerModal';
@@ -126,7 +127,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-txt-secondary">
-              Region (optional)
+              {source === 'sso' ? 'Region of the instance' : 'Region (optional)'}
               <input
                 value={ssm.region ?? ''}
                 onChange={(e) => patch({ region: e.target.value.trim() || undefined })}
@@ -154,7 +155,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
                 SSO start URL
                 <input
                   value={ssm.sso.startUrl}
-                  onChange={(e) => patch({ sso: { ...ssm.sso!, startUrl: e.target.value.trim() } })}
+                  onChange={(e) => patch({ sso: { ...ssm.sso!, startUrl: normalizeStartUrl(e.target.value) } })}
                   className={inputCls}
                   placeholder="https://d-xxxxxxxxxx.awsapps.com/start"
                 />

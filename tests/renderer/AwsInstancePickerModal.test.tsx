@@ -64,6 +64,16 @@ describe('AwsInstancePickerModal', () => {
     expect(screen.queryByRole('option', { name: /web-1/ })).toBeNull();
   });
 
+  it('drops the sign-in, accounts and instances when the start URL is edited, and strips #/ from it', async () => {
+    render(<AwsInstancePickerModal mode="single" onClose={vi.fn()} onPick={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/awsapps/), { target: { value: 'https://d-1.awsapps.com/start#/' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByLabelText('Account');
+    expect(window.multissh.awsSsoLogin).toHaveBeenCalledWith('https://d-1.awsapps.com/start', 'us-east-1');
+    fireEvent.change(screen.getByPlaceholderText(/awsapps/), { target: { value: 'https://d-2.awsapps.com/start' } });
+    expect(screen.queryByLabelText('Account')).toBeNull();
+  });
+
   it('shows a helpful empty state and the error with a sign-in hint', async () => {
     mockApi({ awsSsmDiscoverInstances: vi.fn().mockResolvedValue({ instances: [], truncated: false }) });
     render(<AwsInstancePickerModal mode="multi" onClose={vi.fn()} onPick={vi.fn()} />);

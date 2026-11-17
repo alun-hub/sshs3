@@ -81,19 +81,33 @@ function probeVersion(file: string): Promise<string | undefined> {
   });
 }
 
-/** Cheap check (no exec): where would the tools be found? */
+interface Located {
+  file: string;
+  /** Resolved through PATH itself (as opposed to a fixed install folder). */
+  viaPath: boolean;
+}
+
+function locate(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): { aws?: Located; plugin?: Located } {
+  const cand = candidateDirs(platform, env, home);
+  const onPath = pathDirs(env, platform);
+  const names = (n: typeof AWS_NAMES) => (platform === 'win32' ? n.win32 : n.other);
+  const find = (dirs: string[], name: string): Located | undefined => {
+    const viaPath = findExecutable(onPath, name, platform);
+    if (viaPath) return { file: viaPath, viaPath: true };
+    const file = findExecutable(dirs, name, platform);
+    return file ? { file, viaPath: false } : undefined;
+  };
+  return { aws: find(cand.aws, names(AWS_NAMES)), plugin: find(cand.plugin, names(PLUGIN_NAMES)) };
+}
+
+/** Cheap check (no exec): where would the tools be found? PATH wins over the fixed install folders. */
 export function locateTools(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
   home: string = os.homedir(),
 ): { aws?: string; plugin?: string } {
-  const cand = candidateDirs(platform, env, home);
-  const onPath = pathDirs(env, platform);
-  const names = (n: typeof AWS_NAMES) => (platform === 'win32' ? n.win32 : n.other);
-  return {
-    aws: findExecutable([...onPath, ...cand.aws], names(AWS_NAMES), platform),
-    plugin: findExecutable([...onPath, ...cand.plugin], names(PLUGIN_NAMES), platform),
-  };
+  const l = locate(platform, env, home);
+  return { aws: l.aws?.file, plugin: l.plugin?.file };
 }
 
 /**
@@ -106,15 +120,9 @@ export function toolDirsMissingFromPath(
   env: NodeJS.ProcessEnv = process.env,
   home: string = os.homedir(),
 ): string[] {
-  const loc = locateTools(platform, env, home);
-  const onPath = pathDirs(env, platform);
-  const dirs: string[] = [];
-  const check = (file: string | undefined, name: string) => {
-    if (file && !findExecutable(onPath, name, platform)) dirs.push((platform === 'win32' ? path.win32 : path).dirname(file));
-  };
-  check(loc.aws, platform === 'win32' ? AWS_NAMES.win32 : AWS_NAMES.other);
-  check(loc.plugin, platform === 'win32' ? PLUGIN_NAMES.win32 : PLUGIN_NAMES.other);
-  return dirs;
+  const dirname = platform === 'win32' ? path.win32.dirname : path.dirname;
+  const l = locate(platform, env, home);
+  return [l.aws, l.plugin].filter((t): t is Located => !!t && !t.viaPath).map((t) => dirname(t.file));
 }
 
 /** Detects both tools; versions are probed once per tool file version (see probeVersion). */
@@ -125,5 +133,6 @@ export async function detectAwsSsmTools(): Promise<AwsSsmTools> {
     const version = await probeVersion(file);
     return { found: true, path: file, version, ok: isPlugin ? pluginStatusFromVersion(version) !== false : true };
   };
-  return { aws: await status(loc.aws, false), plugin: await status(loc.plugin, true) };
+  const [aws, plugin] = await Promise.all([status(loc.aws, false), status(loc.plugin, true)]);
+  return { aws, plugin };
 }

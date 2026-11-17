@@ -28,7 +28,8 @@ describe('ssmProblem', () => {
     expect(ssmProblem({ host, ssm: { enabled: true, awsProfile: '' } })).toMatch(/profile/);
     expect(ssmProblem({ host, ssm: { enabled: true, region: 'nope' } })).toMatch(/region/);
     const sso = { startUrl: 'https://d-1.awsapps.com/start', region: 'eu-north-1' };
-    expect(ssmProblem({ host, ssm: { enabled: true, sso } })).toMatch(/account ID and role/);
-    expect(ssmProblem({ host, ssm: { enabled: true, sso: { ...sso, accountId: '123456789012', roleName: 'Admin' } } })).toBeUndefined();
+    expect(ssmProblem({ host, ssm: { enabled: true, sso } })).toMatch(/region of the instance/);
+    expect(ssmProblem({ host, ssm: { enabled: true, region: 'eu-west-1', sso } })).toMatch(/account ID and role/);
+    expect(ssmProblem({ host, ssm: { enabled: true, region: 'eu-west-1', sso: { ...sso, accountId: '123456789012', roleName: 'Admin' } } })).toBeUndefined();
   });
 });

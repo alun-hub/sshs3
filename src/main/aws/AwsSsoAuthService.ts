@@ -306,11 +306,6 @@ export class AwsSsoAuthService extends EventEmitter {
     }
   }
 
-  /**
-   * Writes to the same `~/.aws/sso/cache/<sha1(startUrl)>.json` path and
-   * schema that `aws sso login` uses, so `fromSSO()` (used by
-   * `S3StorageProvider`) can read the token directly with no extra glue.
-   */
   /** Offline status of the cached token for this start URL (see parseSsoTokenCache). */
   public async getTokenStatus(startUrl: string): Promise<AwsSsoTokenStatus> {
     const key = crypto.createHash('sha1').update(startUrl).digest('hex');
@@ -322,6 +317,11 @@ export class AwsSsoAuthService extends EventEmitter {
     }
   }
 
+  /**
+   * Writes to the same `~/.aws/sso/cache/<sha1(startUrl)>.json` path and
+   * schema that `aws sso login` uses, so `fromSSO()` (used by
+   * `S3StorageProvider`) can read the token directly with no extra glue.
+   */
   private async writeSsoTokenCache(
     startUrl: string,
     token: {

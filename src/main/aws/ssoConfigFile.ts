@@ -39,6 +39,8 @@ export function ensureSsoConfigFile(sso: AwsSsoConfig, baseDir: string): string 
   const dir = path.join(baseDir, 'aws');
   const file = path.join(dir, `${ssoProfileName(sso)}.config`);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // mkdir's mode does not apply to a directory that already exists; this file is read by a CLI that can run credential_process.
+  if (process.platform !== 'win32') fs.chmodSync(dir, 0o700);
   try {
     if (fs.lstatSync(file).isSymbolicLink()) fs.rmSync(file);
   } catch {

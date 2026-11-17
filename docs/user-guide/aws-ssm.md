@@ -29,7 +29,7 @@ Connect to EC2 instances (or hybrid nodes) that have no public SSH port by tunne
 | AWS CLI profile | A named profile, for example after `aws sso login --profile prod`. |
 | Signed in with sshs3 (SSO) | Enter start URL, region, account ID and role name and press **Sign in**. sshs3 uses the same IAM Identity Center sign-in as S3 profiles and writes only a small app-owned AWS config file. |
 
-4. Optionally set a **Region**. The tool panel shows whether the AWS CLI and plugin were found and switches to **Ready** by itself once you install them.
+4. Set the **Region** of the instance (required with SSO sign-in, because the Identity Center home region is often a different one; optional otherwise). The tool panel shows whether the AWS CLI and plugin were found and switches to **Ready** by itself once you install them.
 
 A jump host or outgoing proxy cannot be combined with SSM; enabling SSM clears them. An SSM profile also cannot be used as another profile's jump host.
 
@@ -42,7 +42,7 @@ Press **Pick from AWS…** in the form to choose the instance from a list, or us
 3. Select the instances (<kbd>Enter</kbd> or <kbd>Space</kbd> toggles a row), check the **SSH login name** (suggested from the platform) and, for an import, the **Folder** (default `AWS/<account>/<region>`).
 
 > [!NOTE]
-> Only instances that are online in Systems Manager are listed, so an instance without the SSM Agent or an instance profile will not appear, and the list cannot tell whether an SSH daemon is running. The role needs `ssm:DescribeInstanceInformation`. The list is cut at 500 instances; narrow it with another account or region. Instance names are the SSM computer name, not the EC2 Name tag.
+> Only nodes that are online in Systems Manager are listed (EC2 instances and hybrid `mi-…` nodes), so an instance without the SSM Agent or an instance profile will not appear, and the list cannot tell whether an SSH daemon is running. The role needs `ssm:DescribeInstanceInformation`. The list is cut at 500 instances; narrow it with another account or region. Instance names are the SSM computer name, not the EC2 Name tag.
 
 ### Technical Internals: ProxyCommand
 
@@ -52,6 +52,7 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 
 - AWS offers no session logging for SSH over SSM.
 - The AWS CLI itself caches short-lived role credentials in `~/.aws/cli/cache`; sshs3 does not write them.
+- Sign-in and instance listing do not use an HTTP proxy or custom CA setting (S3 profiles have those per profile); on a network that only reaches AWS through a proxy, enter the instance ID by hand.
 - On Windows every connection opens its own SSM session (no connection sharing).
 - SSM profiles are not exported to `~/.ssh/config`, and the performance bar does not show a TCP ping.
 - Plain SSM shell without sshd is not available yet.

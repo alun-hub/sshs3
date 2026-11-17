@@ -29,6 +29,11 @@ const ACCOUNT_ID = /^\d{12}$/;
 const ROLE_NAME = /^[\w+=,.@-]{1,64}$/;
 const START_URL = /^https:\/\/[A-Za-z0-9.-]+(:\d+)?(\/[A-Za-z0-9._~%/-]*)?$/;
 
+/** Portal URLs are often copied with a fragment or query (`…/start#/`); the sign-in and token cache use the bare URL. */
+export function normalizeStartUrl(value: string): string {
+  return value.trim().replace(/[#?].*$/, '');
+}
+
 export function isValidRegion(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 32 && REGION.test(value);
 }
@@ -54,6 +59,7 @@ export function isValidSsoConfig(value: unknown): value is AwsSsoConfig {
 /** First problem with an SSM config as a short message, or undefined when it is usable. */
 export function validateSsmConfig(ssm: SshSsmConfig, host: unknown): string | undefined {
   if (!isValidInstanceId(host)) return 'Instance ID must look like i-0123456789abcdef0 (or mi-… for a hybrid node)';
+  if (ssm.sso !== undefined && !ssm.region) return 'Choose the AWS region of the instance';
   if (ssm.region !== undefined && !isValidRegion(ssm.region)) return 'Invalid AWS region';
   if (ssm.awsProfile !== undefined && !isValidAwsProfile(ssm.awsProfile)) return 'Invalid AWS CLI profile name';
   if (ssm.sso !== undefined && !isValidSsoConfig(ssm.sso)) return 'Invalid AWS SSO settings';

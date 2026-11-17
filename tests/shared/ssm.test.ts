@@ -36,7 +36,8 @@ describe('ssm validators', () => {
     expect(validateSsmConfig({ enabled: true }, 'i-0123456789abcdef0')).toBeUndefined();
     expect(validateSsmConfig({ enabled: true }, 'example.com')).toMatch(/Instance ID/);
     expect(validateSsmConfig({ enabled: true, region: 'bad' }, 'i-0123456789abcdef0')).toMatch(/region/);
-    expect(validateSsmConfig({ enabled: true, awsProfile: 'a', sso: { startUrl: 'https://x.com/s', region: 'eu-north-1' } }, 'i-0123456789abcdef0')).toMatch(/not both/);
+    expect(validateSsmConfig({ enabled: true, region: 'eu-north-1', awsProfile: 'a', sso: { startUrl: 'https://x.com/s', region: 'eu-north-1' } }, 'i-0123456789abcdef0')).toMatch(/not both/);
+    expect(validateSsmConfig({ enabled: true, sso: { startUrl: 'https://x.com/s', region: 'eu-north-1' } }, 'i-0123456789abcdef0')).toMatch(/region of the instance/);
   });
 });
 
@@ -67,5 +68,14 @@ describe('ssmEqual', () => {
     expect(ssmEqual({ enabled: true }, undefined)).toBe(false);
     expect(ssmEqual({ enabled: true, awsProfile: 'a' }, { enabled: true, awsProfile: 'b' })).toBe(false);
     expect(ssmEqual({ enabled: true, awsProfile: '' }, { enabled: true })).toBe(false);
+  });
+});
+
+import { normalizeStartUrl } from '../../src/shared/ssm';
+describe('normalizeStartUrl', () => {
+  it('strips fragment and query that browsers add to the portal URL', () => {
+    expect(normalizeStartUrl(' https://d-1.awsapps.com/start#/ ')).toBe('https://d-1.awsapps.com/start');
+    expect(normalizeStartUrl('https://d-1.awsapps.com/start?x=1')).toBe('https://d-1.awsapps.com/start');
+    expect(normalizeStartUrl('https://d-1.awsapps.com/start')).toBe('https://d-1.awsapps.com/start');
   });
 });

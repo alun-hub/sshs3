@@ -4,6 +4,7 @@ import { Cloud, Loader2, X } from 'lucide-react';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoConfig } from '@shared/types/aws';
 import { offersAwsSsoSignIn } from '@shared/types/aws';
 import type { SsmInstance } from '@shared/types/ssm';
+import { normalizeStartUrl } from '@shared/ssm';
 import { ssmFolder } from '@shared/ssmProfileFactory';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { useModalDismiss } from '../lib/useModalDismiss';
@@ -58,7 +59,18 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const sso: AwsSsoConfig = { startUrl: startUrl.trim(), region: ssoRegion.trim(), accountId, roleName };
+  const sso: AwsSsoConfig = { startUrl: normalizeStartUrl(startUrl), region: ssoRegion.trim(), accountId, roleName };
+
+  // The access token belongs to one start URL + region: editing either invalidates everything derived from it.
+  const resetSignIn = () => {
+    setToken(null);
+    setAccounts([]);
+    setAccountId('');
+    setRoles([]);
+    setRoleName('');
+    setInstances(null);
+    setSelected(new Set());
+  };
   const visible = useMemo(() => filterInstances(instances ?? [], query), [instances, query]);
   const chosen = useMemo(() => (instances ?? []).filter((i) => selected.has(i.instanceId)), [instances, selected]);
 
@@ -103,7 +115,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
     });
 
   useEffect(() => {
-    setUsername(suggestLogin(chosen));
+    if (chosen.length > 0) setUsername(suggestLogin(chosen));
     // Only follows the platform of the selection; later edits by the user are kept until the selection changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chosen[0]?.instanceId]);
@@ -144,11 +156,11 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
         <section className="grid grid-cols-[1fr_140px_auto] items-end gap-2" aria-label="Sign in">
           <label className="flex flex-col gap-1 text-txt-secondary">
             SSO start URL
-            <input value={startUrl} onChange={(e) => setStartUrl(e.target.value)} className={field} placeholder="https://d-xxxxxxxxxx.awsapps.com/start" autoFocus />
+            <input value={startUrl} onChange={(e) => { setStartUrl(e.target.value); resetSignIn(); }} className={field} placeholder="https://d-xxxxxxxxxx.awsapps.com/start" autoFocus />
           </label>
           <label className="flex flex-col gap-1 text-txt-secondary">
             SSO region
-            <input value={ssoRegion} onChange={(e) => setSsoRegion(e.target.value)} className={field} />
+            <input value={ssoRegion} onChange={(e) => { setSsoRegion(e.target.value); resetSignIn(); }} className={field} />
           </label>
           <button type="button" onClick={() => void signIn()} disabled={!!busy || !startUrl.trim()} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50">
             {token ? 'Sign in again' : 'Sign in'}

@@ -25,8 +25,9 @@ describe('buildSsmProxyCommand', () => {
       'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p --region eu-north-1 --profile prod"',
     );
   });
-  it('uses the sso region and given profile name', () => {
-    expect(buildSsmProxyCommand({ enabled: true, sso: SSO }, 'linux', 'sshs3-abc')).toContain('--region eu-north-1 --profile sshs3-abc');
+  it('uses the instance region (not the SSO home region) and the given profile name', () => {
+    expect(buildSsmProxyCommand({ enabled: true, region: 'eu-west-1', sso: SSO }, 'linux', 'sshs3-abc')).toContain('--region eu-west-1 --profile sshs3-abc');
+    expect(buildSsmProxyCommand({ enabled: true, sso: SSO }, 'linux', 'sshs3-abc')).not.toContain('--region');
   });
 });
 

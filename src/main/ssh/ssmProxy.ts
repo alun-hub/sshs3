@@ -46,7 +46,8 @@ export function assertValidSsm(config: SSHConnectionConfig): void {
  * @param profileName CLI profile to pass as --profile (app-owned SSO profile or the user's own)
  */
 export function buildSsmProxyCommand(ssm: SshSsmConfig, platform: NodeJS.Platform, profileName?: string): string {
-  const region = ssm.region ?? ssm.sso?.region;
+  // The instance's region, never the Identity Center home region (they routinely differ).
+  const region = ssm.region;
   const profile = profileName ?? ssm.awsProfile;
   let extra = '';
   if (region) extra += ` --region ${region}`;
