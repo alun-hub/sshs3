@@ -17,7 +17,7 @@ export function candidateDirs(platform: NodeJS.Platform, env: NodeJS.ProcessEnv,
       plugin: [path.win32.join(pf, 'Amazon', 'SessionManagerPlugin', 'bin')],
     };
   }
-  const common = ['/usr/local/bin', '/usr/bin', '/snap/bin', path.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/home/linuxbrew/.linuxbrew/bin'];
+  const common = ['/usr/local/bin', '/usr/bin', '/snap/bin', path.posix.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/home/linuxbrew/.linuxbrew/bin'];
   return {
     aws: ['/usr/local/aws-cli/v2/current/bin', ...common],
     plugin: ['/usr/local/sessionmanagerplugin/bin', ...common],
@@ -46,7 +46,7 @@ function isFile(p: string): boolean {
 
 /** First existing executable named `names` in `dirs` (fs checks only — nothing is executed). */
 export function findExecutable(dirs: string[], name: string, platform: NodeJS.Platform): string | undefined {
-  const join = platform === 'win32' ? path.win32.join : path.join;
+  const join = platform === 'win32' ? path.win32.join : path.posix.join;
   for (const d of dirs) {
     const candidate = join(d, name);
     if (isFile(candidate)) return candidate;

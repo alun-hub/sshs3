@@ -125,7 +125,7 @@ describe('toolchain helpers', () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ssm-tc-'));
     try {
       fs.writeFileSync(path.join(d, 'aws'), '');
-      expect(findExecutable(['/nonexistent', d], 'aws', 'linux')).toBe(path.join(d, 'aws'));
+      expect(path.normalize(findExecutable(['/nonexistent', d], 'aws', 'linux')!)).toBe(path.join(d, 'aws'));
       expect(findExecutable([d], 'nope', 'linux')).toBeUndefined();
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
     expect(pluginStatusFromVersion('1.1.9.0')).toBe(false);

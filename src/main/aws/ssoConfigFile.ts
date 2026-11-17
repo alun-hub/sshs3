@@ -13,7 +13,7 @@ import type { AwsSsoConfig } from '../../shared/types/aws';
  * so a hostile synced profile cannot inject extra keys or sections.
  */
 export function ssoProfileName(sso: AwsSsoConfig): string {
-  const h = crypto.createHash('sha1').update(`${sso.startUrl}\n${sso.region}\n${sso.accountId ?? ''}\n${sso.roleName ?? ''}`).digest('hex');
+  const h = crypto.createHash('sha256').update(`${sso.startUrl}\n${sso.region}\n${sso.accountId ?? ''}\n${sso.roleName ?? ''}`).digest('hex');
   return `sshs3-${h.slice(0, 12)}`;
 }
 

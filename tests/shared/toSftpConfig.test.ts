@@ -4,7 +4,7 @@ import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
 // Every routing/auth field set to a distinct value: a field dropped from the mapping shows up as undefined.
 const full: SSHConnectionConfig = {
-  id: 'p1', name: 'n', host: 'h', port: 2200, username: 'u', authType: 'privateKey', password: 'pw',
+  id: 'p1', name: 'n', host: 'h', port: 2200, username: 'u', authType: 'privateKey', password: 'pw', // pragma: allowlist secret
   privateKeyPath: '/k', passphrase: 'pp', agentPath: '/a', pkcs11LibPath: '/lib', fido2Resident: true,
   initialPath: '/srv', proxy: { type: 'http', host: 'px', port: 1 }, proxyJump: 'j@h', proxyJumpProfileId: 'jp',
   ssm: { enabled: true, region: 'eu-north-1' },
@@ -17,7 +17,7 @@ describe('toSftpConfig', () => {
   });
   it('defaults the port and applies overrides', () => {
     expect(toSftpConfig({ ...full, port: undefined }).port).toBe(22);
-    expect(toSftpConfig(full, { password: 'other' }).password).toBe('other');
+    expect(toSftpConfig(full, { password: 'other' }).password).toBe('other'); // pragma: allowlist secret
   });
   it('has compile-time parity for fields shared by both types', () => {
     expect(SFTP_FIELD_PARITY).toBe(true);
