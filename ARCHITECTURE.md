@@ -49,7 +49,7 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── index.ts                # Application lifecycle, window creation, quit hooks
 │   │   ├── IpcBridge.ts            # IPC bridge: constructor/wiring, prompt layer (pending prompts, presence), auto-sync, dispose
 │   │   ├── ipc/                    # One registerXHandlers(bridge) per domain (terminal, smartcard, storage, transfer, profile, dotfile, sync, k8s, key install, git, …) + ipcHelpers.ts
-│   │   ├── aws/                    # AWS SSO OIDC device auth service (AwsSsoAuthService)
+│   │   ├── aws/                    # AWS SSO OIDC device auth (AwsSsoAuthService), SSM tool detection, instance discovery, app-owned SSO config (ssoConfigFile)
 │   │   ├── ca/                     # SSH Certificate Authority: SshCaService (session, cert install, timers), oidcFlow (OIDC discovery/browser login/refresh), operationQueue, providers/ (Step-CA, Vault), cert validation, agent protocol, sshWire (wire encoding)
 │   │   ├── oauth/                  # Shared OAuth/OIDC loopback callback server, PKCE, requestJson
 │   │   ├── crypto/                 # System CA trust store & SecretFieldCrypto
@@ -183,6 +183,7 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
    | Connection tests | `ipc/connectionTestHandlers.ts` |
    | Git | `ipc/gitHandlers.ts` |
    | AWS SSO | `ipc/awsSsoHandlers.ts` |
+   | AWS SSM (SSH over Session Manager) | `ipc/awsSsmHandlers.ts`; ProxyCommand/env in `ssh/ssmProxy.ts`, validators in `shared/ssm.ts` |
    | File editor / tail | `ipc/fileEditorHandlers.ts` |
    | Search | `ipc/searchHandlers.ts` |
    | Kubernetes, perf, tunnels | `ipc/k8sHandlers.ts` |

@@ -47,6 +47,7 @@ import {
 import { ProfileFolderHeader } from './ProfileFolderHeader';
 import { EmptyFolderDropZone } from './EmptyFolderDropZone';
 import { ImportCandidatesModal } from './ImportCandidatesModal';
+import { AwsImportMenuItem } from './AwsImportMenuItem';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
@@ -1080,6 +1081,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                                   <span>Import ~/.ssh/config</span>
                                 </button>
                               )}
+                              {tab === 'ssh' && <AwsImportMenuItem profiles={sshProfiles} onDone={() => { setImportMenuOpen(false); void load(); }} />}
                               <button
                                 type="button"
                                 onClick={() => void handleExportJson()}

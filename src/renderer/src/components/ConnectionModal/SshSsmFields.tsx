@@ -3,6 +3,7 @@ import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import type { SshSsmConfig } from '@shared/types/ssm';
 import { ssmProblem } from '../../lib/ssmProfile';
 import { describeIpcError } from '../../lib/format';
+import { AwsInstancePickerModal } from '../AwsInstancePickerModal';
 import { useAwsSsmTools } from '../../lib/useAwsSsmTools';
 import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
 import { FeatureBlockedNotice } from '../SettingsModal/Managed';
@@ -12,7 +13,7 @@ type CredentialSource = 'default' | 'profile' | 'sso';
 interface Props {
   ssm: SshSsmConfig | undefined;
   host: string;
-  onChange: (ssm: SshSsmConfig | undefined) => void;
+  onChange: (ssm: SshSsmConfig | undefined, extra?: { host?: string; username?: string }) => void;
 }
 
 const inputCls =
@@ -43,6 +44,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
   const blocked = isFeatureBlocked(usePolicy(), 'awsSsm');
   const enabled = Boolean(ssm?.enabled);
   const { tools, readiness, refresh } = useAwsSsmTools(enabled);
+  const [picking, setPicking] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [signInMsg, setSignInMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -95,6 +97,23 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
             <p role="alert" className="text-xs text-red-400">
               {ssmProblem({ host, ssm })}
             </p>
+          )}
+
+          <div>
+            <button type="button" onClick={() => setPicking(true)} className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-txt-primary hover:bg-app-hover">
+              Pick from AWS…
+            </button>
+          </div>
+          {picking && (
+            <AwsInstancePickerModal
+              mode="single"
+              initialSso={ssm.sso ? { startUrl: ssm.sso.startUrl, region: ssm.sso.region } : undefined}
+              onClose={() => setPicking(false)}
+              onPick={(r) => {
+                onChange({ enabled: true, region: r.region, sso: r.sso }, { host: r.instances[0].instanceId, username: r.username });
+                setPicking(false);
+              }}
+            />
           )}
 
           <div className="grid grid-cols-2 gap-2.5">

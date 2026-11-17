@@ -3,8 +3,18 @@ import type { SshSsmConfig } from '@shared/types/ssm';
 import { validateSsmConfig } from '@shared/ssm';
 
 /** Sets/clears the SSM option. SSM owns the route to the instance, so a jump host or outgoing proxy is dropped. */
-export function withSsm(config: SSHConnectionConfig, ssm: SshSsmConfig | undefined): SSHConnectionConfig {
-  return { ...config, ssm, ...(ssm ? { proxy: undefined, proxyJump: undefined, proxyJumpProfileId: undefined } : {}) };
+export function withSsm(
+  config: SSHConnectionConfig,
+  ssm: SshSsmConfig | undefined,
+  extra?: { host?: string; username?: string }
+): SSHConnectionConfig {
+  return {
+    ...config,
+    ssm,
+    ...(ssm ? { proxy: undefined, proxyJump: undefined, proxyJumpProfileId: undefined } : {}),
+    ...(extra?.host ? { host: extra.host } : {}),
+    ...(extra?.username ? { username: extra.username } : {}),
+  };
 }
 
 /** First problem that would make the main process refuse this SSM profile at connect time, or undefined. */

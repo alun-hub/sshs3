@@ -904,7 +904,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         </div>
       )}
 
-      <SshSsmFields ssm={config.ssm} host={config.host} onChange={(ssm) => setConfig((prev) => withSsm(prev, ssm))} />
+      <SshSsmFields ssm={config.ssm} host={config.host} onChange={(ssm, extra) => setConfig((prev) => withSsm(prev, ssm, extra))} />
 
       {/* Outgoing Proxy Settings */}
       <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">

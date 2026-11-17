@@ -12,6 +12,7 @@ archive:compress
 archive:extract
 askpass:submit-pin
 aws-ssm:check-tools
+aws-ssm:discover-instances
 aws-sso:list-accounts
 aws-sso:list-roles
 aws-sso:login

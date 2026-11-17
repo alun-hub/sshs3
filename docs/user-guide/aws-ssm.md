@@ -31,7 +31,18 @@ Connect to EC2 instances (or hybrid nodes) that have no public SSH port by tunne
 
 4. Optionally set a **Region**. The tool panel shows whether the AWS CLI and plugin were found and switches to **Ready** by itself once you install them.
 
-A jump host or outgoing proxy cannot be combined with SSM; enabling SSM clears them.
+A jump host or outgoing proxy cannot be combined with SSM; enabling SSM clears them. An SSM profile also cannot be used as another profile's jump host.
+
+### Picking instances from AWS
+
+Press **Pick from AWS…** in the form to choose the instance from a list, or use **Import from AWS…** in the Import / Export menu of the connection manager to create several profiles at once.
+
+1. Enter the IAM Identity Center start URL and region and press **Sign in**; the browser approval is the same as for S3 profiles.
+2. Choose **Account**, **Role** and **Region**, then press **Find instances**.
+3. Select the instances (<kbd>Enter</kbd> or <kbd>Space</kbd> toggles a row), check the **SSH login name** (suggested from the platform) and, for an import, the **Folder** (default `AWS/<account>/<region>`).
+
+> [!NOTE]
+> Only instances that are online in Systems Manager are listed, so an instance without the SSM Agent or an instance profile will not appear, and the list cannot tell whether an SSH daemon is running. The role needs `ssm:DescribeInstanceInformation`. The list is cut at 500 instances; narrow it with another account or region. Instance names are the SSM computer name, not the EC2 Name tag.
 
 ### Technical Internals: ProxyCommand
 
@@ -43,7 +54,7 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 - The AWS CLI itself caches short-lived role credentials in `~/.aws/cli/cache`; sshs3 does not write them.
 - On Windows every connection opens its own SSM session (no connection sharing).
 - SSM profiles are not exported to `~/.ssh/config`, and the performance bar does not show a TCP ping.
-- Plain SSM shell without sshd, and picking instances from a list, are not available yet.
+- Plain SSM shell without sshd is not available yet.
 
 ## 4. Troubleshooting & Diagnostics
 
@@ -53,4 +64,6 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 | Panel says **Too old** | Session Manager plugin below 1.1.23.0 | Update the plugin. |
 | Connection closes immediately | Instance not SSM-managed, no IAM permission, or no SSH daemon running | Check the instance appears in Systems Manager Fleet Manager, the IAM permissions above, and that `sshd` runs. |
 | "Instance ID must look like i-…" | Hostname is a DNS name | Enter the instance ID, or disable SSM. |
-| SSO sign-in expired | Identity Center session ended | Press **Sign in** in the profile form, then reconnect. |
+| SSO sign-in expired | Identity Center session ended | Terminals sign in again automatically; otherwise press **Sign in** in the profile form, then reconnect. |
+| Instance missing from **Pick from AWS…** | No SSM Agent, no instance profile, offline, or another account or region | Check Fleet Manager in the AWS console and the selected account and region. |
+| "Access denied" when listing | The role lacks `ssm:DescribeInstanceInformation` | Add the permission, or enter the instance ID by hand. |
