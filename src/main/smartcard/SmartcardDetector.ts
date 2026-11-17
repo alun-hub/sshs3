@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
 import { isAllowedExtraOption } from '../ssh/blockedSshDirectives';
+import { assertValidSsm, ssmEnvOverlay, ssmProxyOption } from '../ssh/ssmProxy';
 import { createLogger } from '../log';
 const smartcardLog = createLogger('smartcard');
 
@@ -232,6 +233,9 @@ export class SmartcardDetector {
     if (!isSafeHostToken(config.host)) {
       throw new Error('Invalid SSH host: contains characters not allowed in a hostname');
     }
+
+    // SSH over AWS SSM: host is an instance id; combining with a proxy/jump host is rejected here.
+    assertValidSsm(config);
 
     const port = config.port ?? 22;
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -488,6 +492,11 @@ export class SmartcardDetector {
       args.push('-o', `ProxyCommand=${proxyCliLauncher()}"${cliPath}" ${p.type} ${p.host} ${port} %h %p`);
     }
 
+    // SSH over AWS SSM (-o ProxyCommand=aws ssm start-session …). A command-line -o beats any
+    // hand-written ~/.ssh/config entry for the same host, so the two never double up.
+    const ssmOption = ssmProxyOption(config);
+    if (ssmOption) args.push('-o', ssmOption);
+
     // Destination target (username@host or host), preceded by '--' to prevent flag injection
     const destination = config.username ? `${config.username}@${config.host}` : config.host;
     args.push('--');
@@ -505,6 +514,7 @@ export class SmartcardDetector {
    * ProxyCommand — see the comment in buildSSHArguments.
    */
   public static buildProxyEnv(config: SSHConnectionConfig): Record<string, string> {
+    if (config.ssm?.enabled) return ssmEnvOverlay(config);
     if (!config.proxy?.enabled || !config.proxy.host) {
       return {};
     }

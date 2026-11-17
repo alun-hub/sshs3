@@ -1,3 +1,6 @@
+import type { AwsSsoConfig } from './aws';
+import type { SshSsmConfig } from './ssm';
+
 export type StorageType = 'local' | 'sftp' | 's3' | 'k8s';
 
 export interface FileEntry {
@@ -180,6 +183,8 @@ export interface SFTPConfig {
   proxy?: ProxyConfig;
   proxyJumpProfileId?: string;
   proxyJump?: string;
+  /** Connect through AWS Systems Manager (SSH over SSM); `host` is then the instance id. */
+  ssm?: SshSsmConfig;
   group?: string;
   lastUsedAt?: string;
   compression?: boolean;
@@ -192,12 +197,7 @@ export interface SFTPConfig {
 
 export type S3AuthMode = 'static' | 'sso';
 
-export interface S3SsoConfig {
-  startUrl: string;
-  region: string;
-  accountId?: string;
-  roleName?: string;
-}
+export type S3SsoConfig = AwsSsoConfig;
 
 export type S3ServerSideEncryption = 'none' | 'AES256' | 'aws:kms';
 

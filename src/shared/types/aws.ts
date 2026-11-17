@@ -39,3 +39,11 @@ export interface AwsSsoAccount {
 export interface AwsSsoAccountRole {
   roleName: string;
 }
+
+/** IAM Identity Center (SSO) sign-in target shared by S3 profiles and SSM-routed SSH profiles. */
+export interface AwsSsoConfig {
+  startUrl: string;
+  region: string;
+  accountId?: string;
+  roleName?: string;
+}

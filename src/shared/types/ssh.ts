@@ -1,4 +1,5 @@
 import type { ProxyConfig } from './storage';
+import type { SshSsmConfig } from './ssm';
 
 export type SSHAuthType = 'password' | 'privateKey' | 'smartcard' | 'agent' | 'fido2';
 
@@ -90,6 +91,8 @@ export interface SSHConnectionConfig {
   extraOptions?: Record<string, string>;
   initialPath?: string;
   proxy?: ProxyConfig;
+  /** Connect through AWS Systems Manager (SSH over SSM); `host` is then the instance id (`i-…`). Experimental. */
+  ssm?: SshSsmConfig;
   group?: string;
   /** Free-form labels for searching and filtering; cleaned by `normalizeTags` (shared/tags.ts) on every save. */
   tags?: string[];
