@@ -1,3 +1,4 @@
+import { toSftpConfig } from '@shared/toSftpConfig';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
@@ -189,25 +190,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
               (sshProfile.password || sshProfile.privateKeyPath || sshProfile.authType === 'agent')
             ) {
               try {
-                const sftpConfig: SFTPConfig = {
-                  id: sshProfile.id,
-                  name: sshProfile.name,
-                  host: sshProfile.host,
-                  port: sshProfile.port ?? 22,
-                  username: sshProfile.username,
-                  authType: sshProfile.authType,
-                  password: sshProfile.password,
-                  privateKeyPath: sshProfile.privateKeyPath,
-                  passphrase: sshProfile.passphrase,
-                  agentPath: sshProfile.agentPath,
-                  pkcs11LibPath: sshProfile.pkcs11LibPath,
-                  fido2Resident: sshProfile.fido2Resident,
-                  initialPath: sshProfile.initialPath,
-                  proxy: sshProfile.proxy,
-                  proxyJump: sshProfile.proxyJump,
-                  proxyJumpProfileId: sshProfile.proxyJumpProfileId,
-                  ssm: sshProfile.ssm,
-                };
+                const sftpConfig: SFTPConfig = toSftpConfig(sshProfile);
                 await window.multissh.connectStorage({
                   id: savedPane.providerId,
                   name: sshProfile.name,
@@ -402,26 +385,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
 
       setConnecting(true);
       try {
-        const sftpConfig: SFTPConfig = {
-          id: config.id,
-          name: config.name,
-          host: config.host,
-          port: config.port ?? 22,
-          username: config.username,
-          authType: config.authType,
-          password: passwordToUse,
-          privateKeyPath: config.privateKeyPath,
-          passphrase: config.passphrase,
-          agentPath: config.agentPath,
-          pkcs11LibPath: config.pkcs11LibPath,
-          fido2Resident: config.fido2Resident,
-          initialPath: config.initialPath,
-          proxy: config.proxy,
-          proxyJump: config.proxyJump,
-          proxyJumpProfileId: config.proxyJumpProfileId,
-          ssm: config.ssm,
-          teamVaultProfileRef: config.teamVaultProfileRef,
-        };
+        const sftpConfig: SFTPConfig = toSftpConfig(config, { password: passwordToUse, teamVaultProfileRef: config.teamVaultProfileRef });
         const providerId = `sftp-${config.id}`;
         await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });
         const defaultHome = config.username === 'root' ? '/root' : `/home/${config.username || 'user'}`;
