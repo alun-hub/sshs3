@@ -5,7 +5,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm } from '../../../src/main/ssh/ssmProxy';
 import { buildSsoConfigFile, ensureSsoConfigFile, ssoProfileName } from '../../../src/main/aws/ssoConfigFile';
-import { candidateDirs, findExecutable, pathDirs, pluginStatusFromVersion } from '../../../src/main/aws/AwsSsmToolchain';
+import { candidateDirs, findExecutable, pathDirs, pluginStatusFromVersion, toolDirsMissingFromPath } from '../../../src/main/aws/AwsSsmToolchain';
 import { SmartcardDetector } from '../../../src/main/smartcard/SmartcardDetector';
 import type { SSHConnectionConfig } from '../../../src/shared/types/ssh';
 
@@ -135,5 +135,16 @@ describe('toolchain helpers', () => {
 describe('buildSsmEnv PATH handling', () => {
   it('does not re-add directories that are already on PATH', () => {
     expect(buildSsmEnv({ enabled: true }, ['/usr/bin', '/opt/aws/bin'], { PATH: '/bin:/usr/bin' }, 'linux')).toEqual({ PATH: '/opt/aws/bin:/bin:/usr/bin' });
+  });
+});
+
+describe('toolDirsMissingFromPath', () => {
+  it('adds nothing for tools PATH already resolves, so an earlier aws on PATH keeps priority', () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ssm-pp-'));
+    try {
+      fs.writeFileSync(path.join(d, 'aws'), '');
+      fs.writeFileSync(path.join(d, 'session-manager-plugin'), '');
+      expect(toolDirsMissingFromPath('linux', { PATH: d }, '/nonexistent')).toEqual([]);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
 });

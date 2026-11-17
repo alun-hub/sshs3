@@ -92,6 +92,27 @@ export function locateTools(
   };
 }
 
+/**
+ * Directories that must be added to PATH so the ssh child can run the tools: only for a tool that
+ * is NOT already resolvable through PATH. A tool PATH already resolves is left alone, so the user's
+ * own command priority (and any other `aws` earlier on PATH) is never changed.
+ */
+export function toolDirsMissingFromPath(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+): string[] {
+  const loc = locateTools(platform, env, home);
+  const onPath = pathDirs(env, platform);
+  const dirs: string[] = [];
+  const check = (file: string | undefined, name: string) => {
+    if (file && !findExecutable(onPath, name, platform)) dirs.push((platform === 'win32' ? path.win32 : path).dirname(file));
+  };
+  check(loc.aws, platform === 'win32' ? AWS_NAMES.win32 : AWS_NAMES.other);
+  check(loc.plugin, platform === 'win32' ? PLUGIN_NAMES.win32 : PLUGIN_NAMES.other);
+  return dirs;
+}
+
 let cached: AwsSsmTools = { aws: { found: false }, plugin: { found: false } };
 
 /** Detects both tools; versions are probed once per newly found path. Updates the sync cache. */
