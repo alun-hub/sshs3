@@ -206,6 +206,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
                   proxy: sshProfile.proxy,
                   proxyJump: sshProfile.proxyJump,
                   proxyJumpProfileId: sshProfile.proxyJumpProfileId,
+                  ssm: sshProfile.ssm,
                 };
                 await window.multissh.connectStorage({
                   id: savedPane.providerId,
@@ -418,6 +419,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
           proxy: config.proxy,
           proxyJump: config.proxyJump,
           proxyJumpProfileId: config.proxyJumpProfileId,
+          ssm: config.ssm,
           teamVaultProfileRef: config.teamVaultProfileRef,
         };
         const providerId = `sftp-${config.id}`;

@@ -74,6 +74,7 @@ export function registerConnectionTestHandlers(bridge: ConnectionTestHost): void
           agentIdentityFiles: config.agentIdentityFiles,
           pkcs11LibPath: config.pkcs11LibPath,
           proxy: config.proxy,
+          ssm: config.ssm,
           useSshCa: config.useSshCa,
         };
         if (bridge.smartcard) {

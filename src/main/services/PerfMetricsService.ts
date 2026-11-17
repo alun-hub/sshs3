@@ -243,9 +243,9 @@ async function localDisk(): Promise<{ mount: string; usedPct: number; sizeKb: nu
   }
 }
 
-/** TCP connect time to the session's sshd, or undefined when not meaningful (proxy/jump host) or unreachable. */
+/** TCP connect time to the session's sshd, or undefined when not meaningful (proxy/jump host/SSM: host is an instance id) or unreachable. */
 function tcpConnectMs(config: SSHConnectionConfig | undefined): Promise<number | undefined> {
-  if (!config || config.proxy?.enabled || config.proxyJump?.trim()) return Promise.resolve(undefined);
+  if (!config || config.proxy?.enabled || config.proxyJump?.trim() || config.ssm?.enabled) return Promise.resolve(undefined);
   // Resolve first (untimed, IPv4 preferred like ping) so DNS and IPv6->IPv4 fallback delays aren't counted.
   const lookup = (family: 4 | 0): Promise<string | undefined> =>
     dns.promises.lookup(config.host, { family }).then(

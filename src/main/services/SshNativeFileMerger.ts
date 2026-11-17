@@ -263,6 +263,9 @@ export function buildManagedSshConfigBlockFromProfiles(
   previousBlock: ManagedSshConfigBlock | null,
   now: string = new Date().toISOString()
 ): ManagedSshConfigBlock {
+  // SSM profiles are not exported: a Host entry with their instance id would not reach the instance
+  // without the aws ProxyCommand, which is deliberately only built by the app (see ssmProxy.ts).
+  profiles = profiles.filter((p) => !p.ssm?.enabled);
   const aliasById = assignHostAliases(profiles);
   const blocks = sortProfilesForConfig(profiles).map((profile) =>
     buildSshConfigHostBlock(profile, aliasById.get(profile.id)!, aliasById)
