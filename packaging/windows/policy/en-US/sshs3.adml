@@ -51,6 +51,10 @@ Disabled: the feature is blocked. Enabled or Not configured: allowed.</string>
       <string id="DotfileGitImport_Help">Allows importing dotfiles from a Git repository.
 
 Disabled: the feature is blocked. Enabled or Not configured: allowed.</string>
+      <string id="AwsSsm">SSH over AWS Systems Manager</string>
+      <string id="AwsSsm_Help">Allows SSH connections through AWS Systems Manager (SSM).
+
+Disabled: the feature is blocked. Enabled or Not configured: allowed.</string>
     </stringTable>
   </resources>
 </policyDefinitionResources>

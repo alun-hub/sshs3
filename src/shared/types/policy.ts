@@ -16,7 +16,7 @@ export type PolicySettingId =
   | 'enableOpenShift';
 
 /** Policy-only switches with no user setting behind them. Allowed unless the policy says `false`. */
-export type PolicyFeatureId = 'gitKeyFetch' | 'dotfileGitImport';
+export type PolicyFeatureId = 'gitKeyFetch' | 'dotfileGitImport' | 'awsSsm';
 
 export type PolicyValueType =
   | { type: 'boolean' }
@@ -82,6 +82,12 @@ export const POLICY_DEFINITIONS: readonly PolicyDefinition[] = [
     target: 'feature',
     type: 'boolean',
     description: 'Allow importing dotfiles from a Git repository.',
+  },
+  {
+    id: 'awsSsm',
+    target: 'feature',
+    type: 'boolean',
+    description: 'Allow SSH connections through AWS Systems Manager (SSM).',
   },
 ];
 

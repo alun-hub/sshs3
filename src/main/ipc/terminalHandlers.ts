@@ -11,6 +11,7 @@ export type TerminalHost = Pick<
   IpcBridge,
   | 'assignSession'
   | 'awsSsoAuthService'
+  | 'policy'
   | 'k8sTerminalManager'
   | 'scrollback'
   | 'registerHandler'
@@ -46,7 +47,7 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
         // Real secrets are resolved server-side: a member's copy of a shared config has them stripped
         // (TeamVaultService.getPayloadForRenderer), so never trust `config.password`/`passphrase` here.
         config = await resolveSshConfigForConnect(bridge, config);
-        await assertSsmSignedIn(bridge.awsSsoAuthService, config.ssm);
+        await assertSsmSignedIn(bridge.awsSsoAuthService, config.ssm, bridge.policy.policy);
         config = await bridge.resolveProxyJumpConfig(config);
         config = await bridge.smartcard.prepareSmartcardConfig(config);
         config = await bridge.smartcard.prepareFido2Config(config);

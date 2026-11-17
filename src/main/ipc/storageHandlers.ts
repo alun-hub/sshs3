@@ -24,7 +24,7 @@ import { assertStrings, isMissingPathError } from './ipcHelpers';
 /** The part of IpcBridge this handler group may use. */
 export type StorageHost = Pick<
   IpcBridge,
-  'awsSsoAuthService' | 'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'storageRegistry' | 'teamVaultService' | 'sshPtyManager'
+  'awsSsoAuthService' | 'policy' | 'registerHandler' | 'requireS3Capability' | 'resolveProxyJumpConfig' | 'storageRegistry' | 'teamVaultService' | 'sshPtyManager'
 > & {
   smartcard: Pick<
     SmartcardCoordinator,
@@ -71,7 +71,7 @@ export function registerStorageHandlers(bridge: StorageHost): void {
         resolvedConfig = { ...config, s3Config: { ...(resolved as S3Config), id: config.s3Config.id } };
       }
       if (resolvedConfig.type === 'sftp' && resolvedConfig.sftpConfig && !bridge.storageRegistry.has(config.id)) {
-        await assertSsmSignedIn(bridge.awsSsoAuthService, resolvedConfig.sftpConfig.ssm);
+        await assertSsmSignedIn(bridge.awsSsoAuthService, resolvedConfig.sftpConfig.ssm, bridge.policy.policy);
         let sftpConfig = await bridge.resolveProxyJumpConfig(resolvedConfig.sftpConfig);
         sftpConfig = await bridge.smartcard.prepareSftpSmartcardConfig(sftpConfig, config.id);
         sftpConfig = await bridge.smartcard.prepareFido2SftpConfig(sftpConfig, config.id);

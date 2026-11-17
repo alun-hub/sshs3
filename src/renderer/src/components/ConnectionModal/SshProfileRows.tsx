@@ -47,6 +47,11 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
             Agent Fwd
           </span>
         )}
+        {profile.ssm?.enabled && (
+          <span title="Connects through AWS Systems Manager (experimental)" className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
+            SSM
+          </span>
+        )}
         {profile.group && (
           <span
             title={`In folder "${profile.group}"`}

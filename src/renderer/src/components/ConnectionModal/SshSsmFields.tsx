@@ -4,6 +4,8 @@ import type { SshSsmConfig } from '@shared/types/ssm';
 import { isValidInstanceId } from '@shared/ssm';
 import { describeIpcError } from '../../lib/format';
 import { useAwsSsmTools } from '../../lib/useAwsSsmTools';
+import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
+import { FeatureBlockedNotice } from '../SettingsModal/Managed';
 
 type CredentialSource = 'default' | 'profile' | 'sso';
 
@@ -38,6 +40,7 @@ const INSTALL_STEPS: Array<{ os: string; steps: string[] }> = [
 ];
 
 export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
+  const blocked = isFeatureBlocked(usePolicy(), 'awsSsm');
   const enabled = Boolean(ssm?.enabled);
   const { tools, readiness, refresh } = useAwsSsmTools(enabled);
   const [signingIn, setSigningIn] = useState(false);
@@ -73,6 +76,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
         <input
           type="checkbox"
           checked={enabled}
+          disabled={blocked}
           onChange={(e) => onChange(e.target.checked ? { enabled: true } : undefined)}
           className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
         />
@@ -80,6 +84,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
         <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">Experimental</span>
       </label>
 
+      <FeatureBlockedNotice blocked={blocked} id="aws-ssm-blocked" />
       {enabled && ssm && (
         <div className="mt-2.5 flex flex-col gap-2.5 border-t border-divider pt-2">
           <p className="text-xs text-txt-muted">

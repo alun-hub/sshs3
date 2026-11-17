@@ -1,6 +1,8 @@
 import { AWS_SSO_EXPIRED_PREFIX } from '../../shared/types/aws';
 import type { SshSsmConfig } from '../../shared/types/ssm';
 import type { AwsSsoAuthService } from '../aws/AwsSsoAuthService';
+import type { PolicyDocument } from '../../shared/types/policy';
+import { isFeatureAllowed } from '../policy/policyApply';
 
 /**
  * Before connecting an SSM profile that uses sshs3's own SSO sign-in: fail fast with the
@@ -10,9 +12,14 @@ import type { AwsSsoAuthService } from '../aws/AwsSsoAuthService';
  */
 export async function assertSsmSignedIn(
   auth: Pick<AwsSsoAuthService, 'getTokenStatus'>,
-  ssm: SshSsmConfig | undefined
+  ssm: SshSsmConfig | undefined,
+  policy?: PolicyDocument
 ): Promise<void> {
-  if (!ssm?.enabled || !ssm.sso) return;
+  if (!ssm?.enabled) return;
+  if (policy && !isFeatureAllowed(policy, 'awsSsm')) {
+    throw new Error('SSH over AWS SSM is disabled by your administrator');
+  }
+  if (!ssm.sso) return;
   const status = await auth.getTokenStatus(ssm.sso.startUrl);
   if (status !== 'valid') {
     throw new Error(`${AWS_SSO_EXPIRED_PREFIX}: sign in again, then reconnect.`);

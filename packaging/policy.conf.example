@@ -40,3 +40,6 @@
 
 # Allow importing dotfiles from a Git repository. false blocks it.
 # dotfileGitImport = false
+
+# Allow SSH connections through AWS Systems Manager (SSM). false blocks it.
+# awsSsm = false

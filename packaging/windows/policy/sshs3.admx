@@ -74,5 +74,11 @@
       <enabledValue><decimal value="1" /></enabledValue>
       <disabledValue><decimal value="0" /></disabledValue>
     </policy>
+    <policy name="AwsSsm" class="Machine" displayName="$(string.AwsSsm)" explainText="$(string.AwsSsm_Help)" key="SOFTWARE\Policies\sshs3" valueName="AwsSsm">
+      <parentCategory ref="Sshs3" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
   </policies>
 </policyDefinitions>

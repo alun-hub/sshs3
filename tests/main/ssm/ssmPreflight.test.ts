@@ -31,6 +31,12 @@ describe('assertSsmSignedIn', () => {
     await expect(assertSsmSignedIn(svc, { enabled: true })).resolves.toBeUndefined();
     await expect(assertSsmSignedIn(svc, { enabled: true, awsProfile: 'p' })).resolves.toBeUndefined();
   });
+  it('is blocked by the awsSsm policy, also for profiles without SSO', async () => {
+    const off = { settings: {}, features: { awsSsm: false } };
+    await expect(assertSsmSignedIn(svc, { enabled: true }, off)).rejects.toThrow(/disabled by your administrator/);
+    await expect(assertSsmSignedIn(svc, undefined, off)).resolves.toBeUndefined();
+    await expect(assertSsmSignedIn(svc, { enabled: true }, { settings: {}, features: {} })).resolves.toBeUndefined();
+  });
   it('rejects a missing or expired token with the expiry prefix, accepts a valid one', async () => {
     await expect(assertSsmSignedIn(svc, ssm)).rejects.toThrow(/^AWS SSO session expired/);
     const file = path.join(dir, `${crypto.createHash('sha1').update(startUrl).digest('hex')}.json`);
