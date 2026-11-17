@@ -75,11 +75,13 @@ export function buildSsmEnv(
   }
   if (ssm.sso && ssoConfigFile) overlay.AWS_CONFIG_FILE = ssoConfigFile;
 
-  const dirs = [...new Set(toolDirs.filter((d) => path.isAbsolute(d) || /^[A-Za-z]:\\/.test(d)))];
+  const sep = platform === 'win32' ? ';' : ':';
+  const key = Object.keys(baseEnv).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+  const current = baseEnv[key];
+  // Only directories not already on PATH are added, so existing command priority is never reshuffled.
+  const onPath = new Set((current ?? '').split(sep));
+  const dirs = [...new Set(toolDirs.filter((d) => (path.isAbsolute(d) || /^[A-Za-z]:\\/.test(d)) && !onPath.has(d)))];
   if (dirs.length > 0) {
-    const sep = platform === 'win32' ? ';' : ':';
-    const key = Object.keys(baseEnv).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
-    const current = baseEnv[key];
     overlay[key] = current ? `${dirs.join(sep)}${sep}${current}` : dirs.join(sep);
   }
   return overlay;

@@ -11,6 +11,7 @@ app:quit-confirm-respond
 archive:compress
 archive:extract
 askpass:submit-pin
+aws-ssm:check-tools
 aws-sso:list-accounts
 aws-sso:list-roles
 aws-sso:login

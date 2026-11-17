@@ -131,3 +131,9 @@ describe('toolchain helpers', () => {
     expect(pluginStatusFromVersion(undefined)).toBeUndefined();
   });
 });
+
+describe('buildSsmEnv PATH handling', () => {
+  it('does not re-add directories that are already on PATH', () => {
+    expect(buildSsmEnv({ enabled: true }, ['/usr/bin', '/opt/aws/bin'], { PATH: '/bin:/usr/bin' }, 'linux')).toEqual({ PATH: '/opt/aws/bin:/bin:/usr/bin' });
+  });
+});
