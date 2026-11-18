@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-li
 import '@testing-library/jest-dom/vitest';
 import { ConnectionManagerModal } from '../../src/renderer/src/components/ConnectionModal/ConnectionManagerModal';
 import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
+import { AwsEnabledContext } from '../../src/renderer/src/lib/awsEnabled';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { S3Config } from '../../src/shared/types/storage';
 
@@ -89,6 +90,19 @@ describe('ConnectionManagerModal', () => {
       </ConfirmProvider>
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it.each([[false, 0], [true, 1]])('shows the Add from AWS button only when AWS features are on (on = %s)', async (on, count) => {
+    render(
+      <AwsEnabledContext.Provider value={on}>
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} onConnectSSH={vi.fn()} />
+        </ConfirmProvider>
+      </AwsEnabledContext.Provider>
+    );
+    await waitFor(() => expect(screen.getAllByText('Prod Web 01').length).toBeGreaterThanOrEqual(1));
+    expect(screen.queryAllByTestId('add-from-aws')).toHaveLength(count);
+    expect(screen.queryByText('Import from AWS…')).toBeNull();
   });
 
   it('renders profile groups and recently used section for SSH', async () => {

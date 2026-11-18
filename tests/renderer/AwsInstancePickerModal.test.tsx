@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { AwsInstancePickerModal } from '../../src/renderer/src/components/AwsInstancePickerModal';
-import { AwsImportMenuItem } from '../../src/renderer/src/components/ConnectionModal/AwsImportMenuItem';
+import { AwsAddButton } from '../../src/renderer/src/components/aws/AwsAddButton';
 import { AwsEnabledContext } from '../../src/renderer/src/lib/awsEnabled';
 
 const CORP = 'https://corp.awsapps.com/start';
@@ -181,18 +181,18 @@ describe('AwsInstancePickerModal (single mode)', () => {
   });
 });
 
-describe('AwsImportMenuItem', () => {
+describe('AwsAddButton', () => {
   it('is not shown while AWS features are off', () => {
-    render(<AwsImportMenuItem profiles={[]} onDone={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /Import from AWS/ })).toBeNull();
+    render(<AwsAddButton profiles={[]} onDone={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Add from AWS/ })).toBeNull();
   });
 
   it('saves one SSM profile per picked instance in its folder and skips nodes that already have one', async () => {
     const onDone = vi.fn();
     const existing = [{ id: 'old', name: 'old', host: id(2), username: 'u', authType: 'agent', ssm: { enabled: true } }] as never;
     profiles = existing;
-    render(<AwsEnabledContext.Provider value={true}><AwsImportMenuItem profiles={existing} onDone={onDone} /></AwsEnabledContext.Provider>);
-    fireEvent.click(screen.getByRole('button', { name: /Import from AWS/ }));
+    render(<AwsEnabledContext.Provider value={true}><AwsAddButton profiles={existing} onDone={onDone} /></AwsEnabledContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: /Add from AWS/ }));
     await chooseAccount();
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
