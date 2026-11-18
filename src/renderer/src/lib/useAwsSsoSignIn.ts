@@ -51,7 +51,7 @@ export function useAwsSsoSignIn({ value, onChange, network, pickAccountRole = tr
       if (!accountId || !ready) return;
       setLoadingRoles(true);
       try {
-        setRoles(await window.multissh.awsSsoListRolesCached({ startUrl, region, accountId, network: networkRef.current }));
+        setRoles(await window.multissh.awsSsoListRolesCached({ startUrl, region, accountId }));
       } catch (err) {
         setError(describeIpcError(err, 'Failed to list roles for this account'));
       } finally {
@@ -64,7 +64,7 @@ export function useAwsSsoSignIn({ value, onChange, network, pickAccountRole = tr
   const loadAccounts = useCallback(async () => {
     try {
       setManualEntry(false);
-      setAccounts(await window.multissh.awsSsoListAccountsCached({ startUrl, region, network: networkRef.current }));
+      setAccounts(await window.multissh.awsSsoListAccountsCached({ startUrl, region }));
       const current = valueRef.current.accountId;
       if (current) void loadRoles(current);
     } catch {

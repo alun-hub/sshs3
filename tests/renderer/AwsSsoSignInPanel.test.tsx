@@ -52,7 +52,7 @@ describe('AwsSsoSignInPanel', () => {
     await waitFor(() => expect(account.querySelectorAll('option')).toHaveLength(3));
     expect(screen.getByRole('option', { name: 'Prod (123456789012)' })).toBeInTheDocument();
     fireEvent.change(account, { target: { value: '123456789012' } });
-    await waitFor(() => expect(api.awsSsoListRolesCached).toHaveBeenCalledWith({ startUrl: URL_, region: 'us-east-1', accountId: '123456789012', network: undefined }));
+    await waitFor(() => expect(api.awsSsoListRolesCached).toHaveBeenCalledWith({ startUrl: URL_, region: 'us-east-1', accountId: '123456789012' }));
     const role = screen.getByTestId('aws-sso-role');
     await waitFor(() => expect(role).toBeEnabled());
     fireEvent.change(role, { target: { value: 'Admin' } });
@@ -84,12 +84,13 @@ describe('AwsSsoSignInPanel', () => {
     expect(screen.getByText('Role Name')).toBeInTheDocument();
   });
 
-  it('shows a sign-in failure and passes the profile network options along', async () => {
+  it('shows a sign-in failure; only the sign-in itself carries the profile network options, never the cached lists', async () => {
     api.awsSsoLogin.mockRejectedValueOnce(new Error('AWS SSO login was cancelled'));
     render(<Harness initial={{ startUrl: URL_ }} network={{ rejectUnauthorized: false }} />);
     await waitFor(() => expect(api.awsSsoStatus).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('aws-sso-sign-in'));
     expect(await screen.findByRole('alert')).toHaveTextContent('cancelled');
     expect(api.awsSsoLogin).toHaveBeenCalledWith(URL_, 'us-east-1', { rejectUnauthorized: false });
+    for (const call of api.awsSsoListAccountsCached.mock.calls) expect(JSON.stringify(call)).not.toContain('rejectUnauthorized');
   });
 });

@@ -49,23 +49,23 @@ describe('cached SSO handlers', () => {
     expect(r).toEqual([{ roleName: 'Dev' }]);
   });
 
-  it('passes only well-formed network options (a profile proxy / CA) through', async () => {
-    writeToken(new Date(Date.now() + 3600_000).toISOString());
-    await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: { customCaPath: '/ca.pem', rejectUnauthorized: false, extra: 'dropped' } });
-    expect(accounts).toHaveBeenLastCalledWith(TOKEN, 'us-east-1', { customCaPath: '/ca.pem', rejectUnauthorized: false, proxy: undefined });
-    await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: 'x' })).rejects.toThrow(/Invalid network/);
-    await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: { rejectUnauthorized: 'no' } })).rejects.toThrow(/Invalid network/);
-  });
-
-  it('falls back to the AWS network settings when the caller brings none', async () => {
+  it('always uses the AWS network settings: a renderer cannot choose the proxy or CA the token is sent through', async () => {
     writeToken(new Date(Date.now() + 3600_000).toISOString());
     setAwsNetworkSettings({ httpsProxy: 'http://proxy.corp:3128', customCaPath: '/etc/corp-ca.pem' });
     try {
       await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1' });
       expect(accounts).toHaveBeenLastCalledWith(TOKEN, 'us-east-1', expect.objectContaining({ customCaPath: '/etc/corp-ca.pem', proxy: expect.objectContaining({ host: 'proxy.corp', port: 3128 }) }));
-      // an explicit (S3 profile) setting wins over the global one
-      await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: { customCaPath: '/profile-ca.pem' } });
-      expect(accounts).toHaveBeenLastCalledWith(TOKEN, 'us-east-1', expect.objectContaining({ customCaPath: '/profile-ca.pem' }));
+
+      // A hostile request tries to send the token through its own proxy with TLS verification off.
+      const hostile = { startUrl: URL_, region: 'us-east-1', accountId: '123456789012', network: { rejectUnauthorized: false, proxy: { enabled: true, type: 'http', host: 'attacker.example', port: 8080 } } };
+      await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, hostile);
+      await call(IPC_CHANNELS.AWS_SSO_LIST_ROLES_CACHED, hostile);
+      for (const fn of [accounts, roles]) {
+        const network = fn.mock.calls.at(-1)!.at(-1) as { proxy?: { host: string }; rejectUnauthorized?: boolean };
+        expect(network.proxy?.host).toBe('proxy.corp');
+        expect(network.rejectUnauthorized).toBeUndefined();
+        expect(JSON.stringify(fn.mock.calls.at(-1))).not.toContain('attacker.example');
+      }
     } finally { setAwsNetworkSettings(undefined); }
   });
 

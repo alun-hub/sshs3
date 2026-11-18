@@ -1,7 +1,7 @@
 import { globalAwsNetwork } from '../aws/awsNetworkSettings';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import { isValidRegion, isValidSsoConfig } from '../../shared/ssm';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoNetworkOptions } from '../../shared/types/aws';
+import type { AwsSsoAccount, AwsSsoAccountRole } from '../../shared/types/aws';
 import type { AwsSsoCachedRequest, AwsSsoStatusInfo } from '../../shared/types/awsScan';
 import { isFeatureAllowed } from '../policy/policyApply';
 import type { IpcBridge } from '../IpcBridge';
@@ -15,16 +15,6 @@ function checkPolicy(bridge: AwsSsoCachedHost): void {
   if (!isFeatureAllowed(bridge.policy.policy, 'awsSsm')) throw new Error('AWS features are disabled by your administrator');
 }
 
-/** Only the known network fields, with their types checked; anything else the renderer sends is dropped. */
-function checkNetwork(network: unknown): AwsSsoNetworkOptions | undefined {
-  if (network === undefined) return undefined;
-  if (typeof network !== 'object' || network === null) throw new Error('Invalid network options');
-  const n = network as AwsSsoNetworkOptions;
-  if (n.customCaPath !== undefined && typeof n.customCaPath !== 'string') throw new Error('Invalid network options');
-  if (n.rejectUnauthorized !== undefined && typeof n.rejectUnauthorized !== 'boolean') throw new Error('Invalid network options');
-  return { customCaPath: n.customCaPath, rejectUnauthorized: n.rejectUnauthorized, proxy: n.proxy };
-}
-
 function checkRequest(req: unknown, needsAccount: boolean): AwsSsoCachedRequest {
   const r = req as AwsSsoCachedRequest | undefined;
   // Validated like any IPC argument; the start URL only selects which token file the main process reads.
@@ -35,7 +25,9 @@ function checkRequest(req: unknown, needsAccount: boolean): AwsSsoCachedRequest 
 
 /**
  * Sign-in state and account/role listing for a start URL, using the token cache in the main process.
- * SECURITY: the access token never crosses IPC; results are status, expiry and the lists AWS returned.
+ * SECURITY: the access token never crosses IPC; results are status, expiry and the lists AWS returned. The renderer
+ * cannot choose where the token is sent: proxy and CA come only from the AWS settings (`globalAwsNetwork`), never from
+ * the request, so a compromised renderer cannot point the token at a host of its own or switch off TLS verification.
  */
 export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
   bridge.registerHandler(IPC_CHANNELS.AWS_SSO_STATUS, async (_event, startUrl: string): Promise<AwsSsoStatusInfo> => {
@@ -48,7 +40,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
     async (_event, req: AwsSsoCachedRequest): Promise<AwsSsoAccount[]> => {
       checkPolicy(bridge);
       const r = checkRequest(req, false);
-      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, checkNetwork(r.network) ?? globalAwsNetwork());
+      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, globalAwsNetwork());
     }
   );
 
@@ -61,7 +53,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
         r.startUrl,
         r.region,
         r.accountId!,
-        checkNetwork(r.network) ?? globalAwsNetwork()
+        globalAwsNetwork()
       );
     }
   );

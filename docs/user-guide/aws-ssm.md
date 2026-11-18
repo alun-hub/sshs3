@@ -79,6 +79,7 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 ## 6. Limits
 
 - The AWS CLI itself caches short-lived role credentials in `~/.aws/cli/cache`; sshs3 does not write them.
+- Account and role lists (here and in the S3 profile form) are fetched through the proxy and CA in **Settings → AWS → Network**, never through a setting sent from a profile form; if the list cannot be loaded, type the account ID and role name.
 - A CLI profile that asks for an MFA code cannot be answered from the app; run `aws sts get-caller-identity --profile <name>` once in a terminal, then try again.
 - sshs3's own sign-in has no refresh token: sign in again when the Identity Center session ends (the AWS button turns amber). CLI profiles with an `sso-session` refresh on their own.
 - On Windows every connection opens its own SSM session (no connection sharing).
