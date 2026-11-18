@@ -135,7 +135,8 @@ export function mapInstances(raw: ReadonlyArray<Record<string, unknown>>): SsmIn
     const ip = sanitizeAwsText(r.IPAddress, 45);
     out.push({
       instanceId: id,
-      name: sanitizeAwsText(r.ComputerName, 80) || id,
+      // Hybrid nodes carry a `Name` set at activation; EC2 instances only have the OS host name here.
+      name: sanitizeAwsText(r.Name, 80) || sanitizeAwsText(r.ComputerName, 80) || id,
       platformName: sanitizeAwsText(r.PlatformName, 60) || undefined,
       platformType,
       ipAddress: /^[0-9a-fA-F.:]+$/.test(ip) ? ip : undefined,

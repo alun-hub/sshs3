@@ -1,0 +1,67 @@
+import { defaultProvider } from '@aws-sdk/credential-provider-node';
+import { fromSSO } from '@aws-sdk/credential-provider-sso';
+import type { SSMClientConfig } from '@aws-sdk/client-ssm';
+import { isValidAwsProfile, isValidSsoConfig } from '../../shared/ssm';
+import type { AwsSsoNetworkOptions } from '../../shared/types/aws';
+import type { AwsCredentialSource } from '../../shared/types/awsScan';
+import { buildAwsNodeHttpHandler } from './buildAwsNodeHttpHandler';
+
+export type AwsCredentials = NonNullable<SSMClientConfig['credentials']>;
+
+/** Refresh this long before the credentials expire. */
+const REFRESH_MARGIN_MS = 5 * 60_000;
+
+/**
+ * Wraps a provider so concurrent and repeated calls (one per region of a scan) share one result until shortly
+ * before it expires. The SDK only caches per client, and a scan creates many clients.
+ */
+export function shareCredentials(provider: () => Promise<{ expiration?: Date }>): () => Promise<any> {
+  let current: Promise<{ expiration?: Date }> | undefined;
+  return () => {
+    if (current) {
+      return current.then(
+        (c) => {
+          if (c.expiration && c.expiration.getTime() - Date.now() < REFRESH_MARGIN_MS) {
+            current = provider();
+            return current;
+          }
+          return c;
+        },
+        () => {
+          current = provider();
+          return current;
+        }
+      );
+    }
+    current = provider();
+    return current;
+  };
+}
+
+/**
+ * Credentials for one scan target. SSO uses the token sshs3 cached; profiles and the default chain use the SDK's
+ * own provider chain, which reads the AWS CLI configuration like the CLI does (SSO sessions, assume-role, `aws login`,
+ * credential_process, environment, instance role). Nothing here prompts: a profile that needs MFA fails with the
+ * SDK's error and the UI explains how to sign in once from a terminal.
+ */
+export function buildCredentialProvider(source: AwsCredentialSource, network: AwsSsoNetworkOptions = {}): AwsCredentials {
+  const handler = buildAwsNodeHttpHandler(network);
+  if (source.kind === 'sso') {
+    const sso = source.sso;
+    if (!isValidSsoConfig(sso) || !sso.accountId || !sso.roleName) throw new Error('Choose an AWS account and role first');
+    return shareCredentials(
+      fromSSO({
+        ssoStartUrl: sso.startUrl,
+        ssoRegion: sso.region,
+        ssoAccountId: sso.accountId,
+        ssoRoleName: sso.roleName,
+        clientConfig: { requestHandler: handler },
+      })
+    );
+  }
+  if (source.kind === 'profile') {
+    if (!isValidAwsProfile(source.name)) throw new Error('Invalid AWS CLI profile name');
+    return shareCredentials(defaultProvider({ profile: source.name, clientConfig: { requestHandler: handler } }));
+  }
+  return shareCredentials(defaultProvider({ clientConfig: { requestHandler: handler } }));
+}

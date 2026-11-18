@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { discoverInstances } from '../../../src/main/aws/AwsSsmDiscoveryService';
 import { AwsSsoAuthService } from '../../../src/main/aws/AwsSsoAuthService';
+import { scanInstances } from '../../../src/main/aws/awsScanService';
 import { suggestLoginName } from '../../../src/shared/ssm';
 
 /**
@@ -114,4 +115,34 @@ describe.skipIf(!ssoUrl || !instance || !key)('IAM Identity Center sign-in throu
     const r = sshThroughSsm({ enabled: true, region, sso });
     expect(r.stdout).toContain('sshs3-ok');
   }, 600_000);
+});
+
+/**
+ * Opt-in: the multi-region scan against real AWS with an AWS CLI profile (SDK provider chain, e.g. an `aws login`
+ * profile) and with the default chain (AWS_PROFILE in the environment). Needs SSHS3_AWS_TEST_PROFILE,
+ * SSHS3_AWS_TEST_INSTANCE, SSHS3_AWS_TEST_REGION and optionally SSHS3_AWS_TEST_NAME (expected EC2 Name tag).
+ */
+describe.skipIf(!instance || !profile)('multi-region scan against real AWS', () => {
+  const regions = [region, 'us-east-1', 'eu-west-1'];
+  const expectedName = process.env.SSHS3_AWS_TEST_NAME;
+
+  it('finds the node through an AWS CLI profile, uses the Name tag and skips nothing it can reach', async () => {
+    const r = await scanInstances({ targets: [{ id: 'p', label: profile!, source: { kind: 'profile', name: profile! } }], regions });
+    const found = r.instances.find((i) => i.instanceId === instance);
+    expect(found).toBeDefined();
+    expect(found!.region).toBe(region);
+    if (expectedName) expect(found!.name).toBe(expectedName);
+    expect(r.searched).toBe(regions.length);
+  }, 120_000);
+
+  it('finds the node through the default credential chain', async () => {
+    const before = process.env.AWS_PROFILE;
+    process.env.AWS_PROFILE = profile;
+    try {
+      const r = await scanInstances({ targets: [{ id: 'd', label: 'default', source: { kind: 'default' } }], regions: [region] }, { includeNames: false });
+      expect(r.instances.map((i) => i.instanceId)).toContain(instance);
+    } finally {
+      if (before === undefined) delete process.env.AWS_PROFILE; else process.env.AWS_PROFILE = before;
+    }
+  }, 120_000);
 });
