@@ -3,7 +3,7 @@
 Connect to EC2 instances (or hybrid nodes) that have no public SSH port by tunnelling SSH through AWS Systems Manager Session Manager. sshs3 hands OpenSSH the AWS-documented `ProxyCommand`, so the terminal, file manager, editor, search, directory sync, tunnels and key install all work like on any other SSH profile.
 
 > [!IMPORTANT]
-> This feature is **Experimental**. It could not yet be tested end to end against a live AWS account.
+> This feature is **Experimental**. It has been tested end to end on Linux (Fedora) against a live AWS account with Amazon Linux 2023 (AWS CLI profile, default credentials and IAM Identity Center sign-in). Windows is verified for the `ProxyCommand` hand-off only, and Debian/Ubuntu are not tested.
 
 ## 1. Requirements
 
@@ -27,7 +27,7 @@ Connect to EC2 instances (or hybrid nodes) that have no public SSH port by tunne
 |--------|----------|
 | Default AWS CLI credentials | You already use the AWS CLI (environment variables, default profile). |
 | AWS CLI profile | A named profile, for example after `aws sso login --profile prod`. |
-| Signed in with sshs3 (SSO) | Enter start URL, region, account ID and role name and press **Sign in**. sshs3 uses the same IAM Identity Center sign-in as S3 profiles and writes only a small app-owned AWS config file. |
+| Signed in with sshs3 (SSO) | Enter start URL, SSO region, account ID and role name and press **Sign in**. The start URL is the access portal URL (`https://d-….awsapps.com/start`) or, for newer instances, the issuer URL (`https://identitycenter.amazonaws.com/ssoins-…`). The SSO region is where Identity Center lives; the instance region below can differ. The permission set needs the actions listed under IAM permissions. An instance that uses *account access manager* without permission sets cannot be used for this sign-in; use an AWS CLI profile instead. sshs3 uses the same IAM Identity Center sign-in as S3 profiles and writes only a small app-owned AWS config file. |
 
 4. Set the **Region** of the instance (required with SSO sign-in, because the Identity Center home region is often a different one; optional otherwise). The tool panel shows whether the AWS CLI and plugin were found and switches to **Ready** by itself once you install them.
 

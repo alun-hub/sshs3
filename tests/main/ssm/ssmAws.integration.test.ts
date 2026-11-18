@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { discoverInstances } from '../../../src/main/aws/AwsSsmDiscoveryService';
+import { AwsSsoAuthService } from '../../../src/main/aws/AwsSsoAuthService';
 import { suggestLoginName } from '../../../src/shared/ssm';
 
 /**
@@ -75,4 +76,42 @@ describe.skipIf(!instance || !key || !profile)('ssh through a real SSM session',
     const r = sshThroughSsm({ enabled: true, region }, { ...process.env, AWS_PROFILE: profile });
     expect(r.stdout).toContain('sshs3-ok');
   }, 150_000);
+});
+
+/**
+ * Opt-in, interactive: the real IAM Identity Center flow. Needs SSHS3_AWS_TEST_SSO_URL (start/issuer URL),
+ * SSHS3_AWS_TEST_SSO_REGION (Identity Center region), SSHS3_AWS_TEST_ACCOUNT, SSHS3_AWS_TEST_ROLE, plus the ssh
+ * variables above. The device-authorization prompt is written to SSHS3_AWS_TEST_PROMPT_FILE for a human to approve.
+ */
+const ssoUrl = process.env.SSHS3_AWS_TEST_SSO_URL;
+
+describe.skipIf(!ssoUrl || !instance || !key)('IAM Identity Center sign-in through sshs3', () => {
+  it('signs in, lists account/role, discovers the node and ssh-es through SSM with the app-owned config', async () => {
+    const ssoRegion = process.env.SSHS3_AWS_TEST_SSO_REGION ?? 'us-east-1';
+    const accountId = process.env.SSHS3_AWS_TEST_ACCOUNT!;
+    const roleName = process.env.SSHS3_AWS_TEST_ROLE!;
+    const svc = new AwsSsoAuthService();
+
+    const login = await svc.login(ssoUrl!, ssoRegion, {
+      onPrompt: (prompt) => {
+        if (process.env.SSHS3_AWS_TEST_PROMPT_FILE) fs.writeFileSync(process.env.SSHS3_AWS_TEST_PROMPT_FILE, JSON.stringify(prompt));
+      },
+    });
+    expect(login.accessToken.length).toBeGreaterThan(10);
+    expect(await svc.getTokenStatus(ssoUrl!)).toBe('valid');
+
+    const accounts = await svc.listAccounts(login.accessToken, ssoRegion);
+    expect(accounts.map((a) => a.accountId)).toContain(accountId);
+    const roles = await svc.listAccountRoles(login.accessToken, ssoRegion, accountId);
+    expect(roles.map((r) => r.roleName)).toContain(roleName);
+
+    const sso = { startUrl: ssoUrl!, region: ssoRegion, accountId, roleName };
+    // fromSSO + the token cache the sign-in just wrote
+    const found = await discoverInstances({ sso, region });
+    expect(found.instances.map((i) => i.instanceId)).toContain(instance);
+
+    // AWS CLI v2 reading the app-owned legacy SSO profile with the shared token cache, via the real ProxyCommand
+    const r = sshThroughSsm({ enabled: true, region, sso });
+    expect(r.stdout).toContain('sshs3-ok');
+  }, 600_000);
 });
