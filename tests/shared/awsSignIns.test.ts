@@ -63,14 +63,14 @@ describe('regions and network', () => {
   it('accepts only credential-free http(s) proxies', () => {
     expect(parseHttpsProxy('http://proxy.corp:3128')).toEqual({ host: 'proxy.corp', port: 3128, secure: false });
     expect(parseHttpsProxy('https://proxy.corp')).toEqual({ host: 'proxy.corp', port: 443, secure: true });
-    for (const bad of ['', 'socks5://p:1', 'http://user:pw@p:1', 'http://p:1/path', 'ftp://p', 'nonsense', 'http://p:99999']) expect(parseHttpsProxy(bad)).toBeUndefined();
+    for (const bad of ['', 'socks5://p:1', 'http://user:pw@p:1', 'http://p:1/path', 'ftp://p', 'nonsense', 'http://p:99999']) expect(parseHttpsProxy(bad)).toBeUndefined(); // pragma: allowlist secret
   });
   it('maps settings to sshs3 options and CLI environment without secrets', () => {
     const net = { httpsProxy: 'http://proxy.corp:3128', customCaPath: '/etc/corp-ca.pem', rejectUnauthorized: true };
     expect(awsNetworkToOptions(net)).toEqual({ customCaPath: '/etc/corp-ca.pem', rejectUnauthorized: true, proxy: { enabled: true, type: 'http', host: 'proxy.corp', port: 3128 } });
     expect(awsNetworkToOptions(undefined)).toEqual({ customCaPath: undefined, rejectUnauthorized: undefined, proxy: undefined });
     expect(awsNetworkEnv(net)).toEqual({ HTTPS_PROXY: 'http://proxy.corp:3128', AWS_CA_BUNDLE: '/etc/corp-ca.pem' });
-    expect(awsNetworkEnv({ httpsProxy: 'http://user:pw@p:1' })).toEqual({});
+    expect(awsNetworkEnv({ httpsProxy: 'http://user:pw@p:1' })).toEqual({}); // pragma: allowlist secret
     expect(awsNetworkEnv({ customCaPath: 'relative/ca.pem' })).toEqual({});
     expect(awsNetworkEnv({ customCaPath: 'C:\\certs\\ca.pem' })).toEqual({ AWS_CA_BUNDLE: 'C:\\certs\\ca.pem' });
     expect(awsNetworkEnv(undefined)).toEqual({});

@@ -184,7 +184,7 @@ describe('AWS network settings in the ssh environment', () => {
         expect(env.HTTPS_PROXY).toBe('http://proxy.corp:3128');
         expect(env.AWS_CA_BUNDLE).toBe('/etc/corp-ca.pem');
       }
-      setAwsNetworkSettings({ httpsProxy: 'http://user:secret@proxy.corp:3128' });
+      setAwsNetworkSettings({ httpsProxy: 'http://user:secret@proxy.corp:3128' }); // pragma: allowlist secret
       expect(SmartcardDetector.buildProxyEnv(base())).not.toHaveProperty('HTTPS_PROXY'); // credentials never go into the environment
     } finally { setAwsNetworkSettings(undefined); }
     expect(SmartcardDetector.buildProxyEnv(base())).not.toHaveProperty('HTTPS_PROXY');
