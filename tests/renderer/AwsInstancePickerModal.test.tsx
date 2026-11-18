@@ -123,6 +123,58 @@ describe('AwsInstancePickerModal (SSO sign-in)', () => {
   });
 });
 
+describe('AwsInstancePickerModal (choosing instances)', () => {
+  async function results(mode: 'single' | 'multi' = 'multi') {
+    open(mode);
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+  }
+  const box = (name: RegExp) => screen.getByRole('option', { name }).querySelector('input') as HTMLInputElement;
+
+  it('shows a checkbox on every row that follows the selection, with a running count', async () => {
+    await results();
+    expect(box(/web-1/).type).toBe('checkbox');
+    expect(box(/web-1/).checked).toBe(false);
+    expect(screen.getByText('0 selected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
+    expect(box(/web-1/).checked).toBe(true);
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
+    expect(box(/web-1/).checked).toBe(false);
+  });
+
+  it('selects everything shown (except nodes that already have a profile) and clears again', async () => {
+    profiles = [{ id: 'p', name: 'old', host: id(2), username: 'u', authType: 'agent', ssm: { enabled: true } }];
+    await results();
+    fireEvent.click(screen.getByRole('button', { name: 'Select all shown (1)' })); // db-1 is already added
+    expect(box(/web-1/).checked).toBe(true);
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    const instances = screen.getByRole('region', { name: 'Instances' });
+    fireEvent.click(within(instances).getByRole('button', { name: 'None' }));
+    expect(box(/web-1/).checked).toBe(false);
+    expect(screen.getByText('0 selected')).toBeInTheDocument();
+  });
+
+  it('only selects what the filter shows, and keeps earlier picks', async () => {
+    await results();
+    fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
+    fireEvent.change(screen.getByLabelText('Filter instances'), { target: { value: 'db' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Select all shown (1)' }));
+    fireEvent.change(screen.getByLabelText('Filter instances'), { target: { value: '' } });
+    expect(box(/web-1/).checked).toBe(true);
+    expect(box(/db-1/).checked).toBe(true);
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+  });
+
+  it('uses radio buttons and no bulk controls in single mode', async () => {
+    await results('single');
+    expect(box(/web-1/).type).toBe('radio');
+    expect(screen.queryByRole('button', { name: /Select all shown/ })).toBeNull();
+  });
+});
+
 describe('AwsInstancePickerModal (how the imported profiles connect)', () => {
   async function toResults(onPick = vi.fn()) {
     open('multi', onPick);

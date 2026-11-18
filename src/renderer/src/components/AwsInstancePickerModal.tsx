@@ -282,6 +282,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
           single={single}
           selected={selectedKeys}
           onToggle={(key) => setSelectedKeys((cur) => toggleSelection(cur, key, single))}
+          onSelectMany={(keys) => setSelectedKeys((cur) => (keys.length === 0 ? new Set() : new Set([...cur, ...keys])))}
           showLogin={single || connect.mode === 'ssh'}
           usernames={usernames}
           onUsername={(id, v) => setUsernames((u) => ({ ...u, [id]: v }))}

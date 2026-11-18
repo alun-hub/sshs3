@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { SshSsmFields } from '../../src/renderer/src/components/ConnectionModal/SshSsmFields';
 import { AwsEnabledContext } from '../../src/renderer/src/lib/awsEnabled';
@@ -39,6 +39,8 @@ describe('SshSsmFields (simplified)', () => {
   it('starts on the first saved sign-in when SSM is switched on and lists the others', async () => {
     render(<Harness />);
     await waitFor(() => expect(api.settingsGet).toHaveBeenCalled());
+    // the saved sign-ins arrive asynchronously; the switch reads them when it is clicked
+    await act(async () => { await api.settingsGet.mock.results[0].value; });
     fireEvent.click(screen.getByLabelText(/Connect via AWS Systems Manager/));
     expect(latest.ssm).toEqual({ enabled: true, sso: { startUrl: CORP, region: 'us-east-1' } });
     const select = await screen.findByTestId('ssm-saved-signin');

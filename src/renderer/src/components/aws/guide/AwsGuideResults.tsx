@@ -15,6 +15,8 @@ interface Props {
   single: boolean;
   selected: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  /** Select / clear several rows at once (multi mode). */
+  onSelectMany?: (keys: string[]) => void;
   /** false for a Session Manager shell: there is no SSH login to choose. */
   showLogin?: boolean;
   usernames: Readonly<Record<string, string>>;
@@ -25,7 +27,7 @@ interface Props {
 }
 
 /** Steps 4 and 5 of "Add from AWS": progress while searching, then the nodes found, grouped by account and region. */
-export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selected, onToggle, showLogin = true, usernames, onUsername, added, onCancel }) => {
+export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selected, onToggle, onSelectMany, showLogin = true, usernames, onUsername, added, onCancel }) => {
   const [query, setQuery] = useState('');
   const result = state.result;
   const groups = useMemo(() => {
@@ -33,6 +35,9 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
     const shown = filterInstances(result.instances, query) as ScannedInstance[];
     return groupInstances(shown);
   }, [result, query]);
+
+  // Rows a bulk selection may take: what the filter shows, minus nodes that already have a profile.
+  const selectable = groups.flatMap((g) => g.items).filter((i) => !added.has(i.instanceId));
 
   if (state.phase === 'idle') return null;
 
@@ -70,7 +75,16 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
             <p className="text-txt-muted">No online SSM-managed nodes were found. A node appears once it has the SSM Agent and an instance profile with SSM permissions.</p>
           ) : (
             <>
-              <input aria-label="Filter instances" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by name, ID, platform or IP" className={input} />
+              <div className="flex items-center gap-3">
+                <input aria-label="Filter instances" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by name, ID, platform or IP" className={`${input} flex-1`} />
+                {!single && onSelectMany && (
+                  <span className="flex shrink-0 items-center gap-3 text-xs">
+                    <button type="button" className="text-sky-400 hover:underline" onClick={() => onSelectMany(selectable.map(instanceKey))}>Select all shown ({selectable.length})</button>
+                    <button type="button" className="text-txt-muted hover:underline" onClick={() => onSelectMany([])}>None</button>
+                  </span>
+                )}
+              </div>
+              <p className="text-txt-muted" aria-live="polite">{selected.size} selected</p>
               <div role="listbox" aria-label="SSM-managed instances" aria-multiselectable={!single} className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-border-subtle bg-app-card p-1.5">
                 {groups.map((g) => {
                   const target = targets.get(g.targetId);
@@ -95,9 +109,18 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
                                 onToggle(key);
                               }
                             }}
-                            className={`grid cursor-pointer ${showLogin ? 'grid-cols-[1.3fr_1.2fr_0.9fr_0.9fr_7rem]' : 'grid-cols-[1.3fr_1.2fr_0.9fr_0.9fr]'} items-center gap-2 rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'} ${isAdded ? 'cursor-default opacity-60' : ''}`}
+                            className={`grid cursor-pointer ${showLogin ? 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr_7rem]' : 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr]'} items-center gap-2 rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'} ${isAdded ? 'cursor-default opacity-60' : ''}`}
                           >
-                            <span className="truncate font-medium text-txt-primary">{on ? '✓ ' : ''}{i.name}{isAdded && <span className="ml-1.5 rounded bg-emerald-500/20 px-1 text-[10px] text-emerald-300">Already added</span>}</span>
+                            <input
+                              type={single ? 'radio' : 'checkbox'}
+                              checked={on}
+                              readOnly
+                              tabIndex={-1}
+                              aria-hidden="true"
+                              disabled={isAdded}
+                              className="pointer-events-none h-3.5 w-3.5 text-sky-600"
+                            />
+                            <span className="truncate font-medium text-txt-primary">{i.name}{isAdded && <span className="ml-1.5 rounded bg-emerald-500/20 px-1 text-[10px] text-emerald-300">Already added</span>}</span>
                             <span className="truncate font-mono text-txt-muted">{i.instanceId}</span>
                             <span className="truncate text-txt-secondary">{i.platformName ?? i.platformType ?? ''}</span>
                             <span className="truncate text-txt-muted">{i.ipAddress ?? ''}</span>

@@ -19,7 +19,7 @@ You can type an instance ID, or sign in once and let sshs3 list what you have ac
 | AWS CLI v2 | Install it yourself; sshs3 finds it on `PATH` and in the standard install folders. |
 | Session Manager plugin | Version 1.1.23.0 or newer. sshs3 shows install steps and notices when it appears. |
 | On the instance | SSM Agent 2.3.672.0 or newer, an instance profile that lets it register with SSM, **and a running SSH daemon**. |
-| IAM permissions | `ssm:StartSession` on the instance and on the document `AWS-StartSSHSession`, plus `ssmmessages:OpenDataChannel`. Listing also needs `ssm:DescribeInstanceInformation`; names from the EC2 `Name` tag need `ec2:DescribeInstances` (optional). |
+| IAM permissions | `ssm:StartSession` on the instance and on the document `AWS-StartSSHSession` (SSH over SSM) or `SSM-SessionManagerRunShell` (Session Manager shell), plus `ssmmessages:OpenDataChannel`. Listing also needs `ssm:DescribeInstanceInformation`; names from the EC2 `Name` tag need `ec2:DescribeInstances` (optional). |
 
 > [!NOTE]
 > With **SSH over SSM**, SSM only carries the TCP connection: you still need SSH authentication (key, agent or password) as for any profile. A Permission denied (publickey…) error means the instance does not accept the key you offered; choose a key file that matches the instance's key pair, or use a Session Manager shell.
@@ -103,6 +103,7 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 | No AWS button, no **Add from AWS…** | AWS features are off | Enable them under **Settings → AWS** (or ask your administrator if the switch is locked). |
 | Tool panel says **Missing** | AWS CLI or plugin not installed, or not in a standard folder | Install both; the panel updates on its own, or press **Check again**. |
 | Panel says **Too old** | Session Manager plugin below 1.1.23.0 | Update the plugin. |
+| `AccessDeniedException … ssm:StartSession on …document/SSM-SessionManagerRunShell` | The role may start SSH sessions but not shell sessions | Allow `ssm:StartSession` on the document `arn:aws:ssm:*:*:document/SSM-SessionManagerRunShell` too (or the document your Session Manager preferences use). |
 | "Permission denied (publickey…)" | SSH over SSM reached the instance, but it does not accept the key | Pick a key file that matches the instance's key pair in the profile, load the key into your agent, or use a Session Manager shell. |
 | Connection closes immediately | Wrong region, instance not SSM-managed, no IAM permission, or no SSH daemon | Check the **Region of the instance**, that the instance appears in Systems Manager Fleet Manager, the permissions above, and that `sshd` runs. |
 | "Instance ID must look like i-…" | Hostname is a DNS name | Enter the instance ID, or disable SSM. |
