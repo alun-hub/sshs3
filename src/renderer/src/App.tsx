@@ -440,6 +440,7 @@ const AppContent: React.FC = () => {
             onOpenProfiles={handleOpenProfiles}
             onOpenGlobalSearch={globalSearchEnabled ? handleOpenGlobalSearch : undefined}
             onOpenSettings={handleOpenSettings}
+            onOpenAwsSettings={() => { setSettingsCategory('aws'); handleOpenSettings(); }}
             onOpenTunnels={handleOpenTunnels}
             onOpenDirSyncProfiles={() => openTopLevelModal(() => setDirSyncProfilesOpen(true))}
             showLockSmartcardButton={settings.smartcardAuthMode === 'agent-global'}
