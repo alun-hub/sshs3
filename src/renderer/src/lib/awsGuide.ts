@@ -111,3 +111,57 @@ export function parseAccountIds(text: string): AwsSsoAccount[] {
   }
   return out;
 }
+
+/** Roles known per account: the list AWS returned, or `loading` / `error` while it is not there. */
+export type AccountRoles = Readonly<Record<string, readonly string[] | 'loading' | 'error' | undefined>>;
+
+const isList = (v: AccountRoles[string]): v is readonly string[] => Array.isArray(v);
+
+/** One search target per chosen account with that account's own role; accounts without a role are left out. */
+export function ssoTargetsByRole(
+  sso: { startUrl: string; region: string },
+  accounts: readonly AwsSsoAccount[],
+  selected: ReadonlySet<string>,
+  roles: Readonly<Record<string, string | undefined>>
+): AwsScanTarget[] {
+  return accounts.flatMap((a) => (selected.has(a.accountId) && roles[a.accountId] ? ssoTargets(sso, [a], selected, roles[a.accountId]!) : []));
+}
+
+/** The role to preselect for an account: its only role, else the first preferred name it has. */
+export function defaultRole(roles: readonly string[], preferred: ReadonlyArray<string | undefined>): string | undefined {
+  if (roles.length === 1) return roles[0];
+  return preferred.find((p): p is string => !!p && roles.includes(p));
+}
+
+/** Roles to offer for "Same role everywhere": every role found in the selected accounts with how many have it. */
+export function commonRoleOptions(selected: ReadonlySet<string>, roles: AccountRoles): Array<{ role: string; count: number; total: number }> {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const id of selected) {
+    const list = roles[id];
+    if (!isList(list)) continue;
+    total++;
+    for (const r of list) counts.set(r, (counts.get(r) ?? 0) + 1);
+  }
+  return [...counts].map(([role, count]) => ({ role, count, total })).sort((a, b) => b.count - a.count || a.role.localeCompare(b.role));
+}
+
+/** Sets `role` for every selected account that has it; other accounts keep what they had. */
+export function applyCommonRole(
+  role: string,
+  selected: ReadonlySet<string>,
+  roles: AccountRoles,
+  current: Readonly<Record<string, string | undefined>>
+): Record<string, string | undefined> {
+  const next = { ...current };
+  for (const id of selected) {
+    const list = roles[id];
+    if (isList(list) && list.includes(role)) next[id] = role;
+  }
+  return next;
+}
+
+/** Selected accounts that still have no role (or whose roles are still loading). */
+export function accountsWithoutRole(selected: ReadonlySet<string>, roleByAccount: Readonly<Record<string, string | undefined>>): string[] {
+  return [...selected].filter((id) => !roleByAccount[id]);
+}

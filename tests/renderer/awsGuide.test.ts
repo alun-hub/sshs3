@@ -92,3 +92,39 @@ describe('parseAccountIds', () => {
     expect(parseAccountIds('')).toEqual([]);
   });
 });
+
+import { ssoTargetsByRole, defaultRole, commonRoleOptions, applyCommonRole, accountsWithoutRole } from '../../src/renderer/src/lib/awsGuide';
+
+describe('per-account roles', () => {
+  const sso = { startUrl: 'https://corp.awsapps.com/start', region: 'us-east-1' };
+  const accts = [{ accountId: '111111111111', accountName: 'Prod' }, { accountId: '222222222222', accountName: 'Dev' }, { accountId: '333333333333' }];
+  const roles = { '111111111111': ['Admin', 'ReadOnly'], '222222222222': ['ReadOnly'], '333333333333': 'loading' as const };
+
+  it('builds a target per selected account with its own role and skips accounts without one', () => {
+    const t = ssoTargetsByRole(sso, accts, new Set(['111111111111', '222222222222', '333333333333']), { '111111111111': 'Admin', '222222222222': 'ReadOnly' });
+    expect(t.map((x) => [x.id, x.source.kind === 'sso' ? x.source.sso.roleName : ''])).toEqual([['acct-111111111111', 'Admin'], ['acct-222222222222', 'ReadOnly']]);
+    expect(ssoTargetsByRole(sso, accts, new Set(), { '111111111111': 'Admin' })).toEqual([]);
+  });
+
+  it('preselects the only role, else the first preferred one the account has', () => {
+    expect(defaultRole(['Solo'], [])).toBe('Solo');
+    expect(defaultRole(['Admin', 'ReadOnly'], [undefined, 'Nope', 'ReadOnly', 'Admin'])).toBe('ReadOnly');
+    expect(defaultRole(['Admin', 'ReadOnly'], [undefined])).toBeUndefined();
+  });
+
+  it('lists every role found with how many selected accounts have it, ignoring accounts still loading', () => {
+    const opts = commonRoleOptions(new Set(['111111111111', '222222222222', '333333333333']), roles);
+    expect(opts).toEqual([{ role: 'ReadOnly', count: 2, total: 2 }, { role: 'Admin', count: 1, total: 2 }]);
+    expect(commonRoleOptions(new Set(), roles)).toEqual([]);
+  });
+
+  it('applies one role to every selected account that has it and leaves the others alone', () => {
+    const next = applyCommonRole('ReadOnly', new Set(['111111111111', '222222222222', '333333333333']), roles, { '111111111111': 'Admin', '333333333333': 'Custom' });
+    expect(next).toEqual({ '111111111111': 'ReadOnly', '222222222222': 'ReadOnly', '333333333333': 'Custom' });
+    expect(applyCommonRole('Admin', new Set(['222222222222']), roles, { '222222222222': 'ReadOnly' })).toEqual({ '222222222222': 'ReadOnly' });
+  });
+
+  it('names the selected accounts that still need a role', () => {
+    expect(accountsWithoutRole(new Set(['111111111111', '222222222222']), { '111111111111': 'Admin' })).toEqual(['222222222222']);
+  });
+});
