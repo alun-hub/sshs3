@@ -183,7 +183,7 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
    | Connection tests | `ipc/connectionTestHandlers.ts` |
    | Git | `ipc/gitHandlers.ts` |
    | AWS SSO | `ipc/awsSsoHandlers.ts` |
-   | AWS SSM (SSH over Session Manager) | `ipc/awsSsmHandlers.ts`; ProxyCommand/env in `ssh/ssmProxy.ts`, validators in `shared/ssm.ts` |
+   | AWS SSM (SSH over Session Manager) | `ipc/awsSsmHandlers.ts` (registers `awsScanHandlers.ts`: scan, CLI profiles, profile sign-in; `awsSsoCachedHandlers.ts`: sign-in status and account/role lists from the main-process token cache); ProxyCommand/env in `ssh/ssmProxy.ts`, validators in `shared/ssm.ts`, scan logic in `aws/awsScanService.ts`, credential sources in `aws/awsCredentials.ts`; channel names and renderer API in `shared/types/awsScanIpc.ts` and `preload/awsScanApi.ts` |
    | File editor / tail | `ipc/fileEditorHandlers.ts` |
    | Search | `ipc/searchHandlers.ts` |
    | Kubernetes, perf, tunnels | `ipc/k8sHandlers.ts` |

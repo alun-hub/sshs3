@@ -45,6 +45,7 @@ sshs3 connects only to servers and services that **you** configure or ask it to 
 | :--- | :--- |
 | SSH, SFTP, tunnels | The hosts and jump hosts in your profiles, through your system's OpenSSH client. |
 | S3 storage | The S3-compatible endpoint in your profile (for example AWS S3 or a self-hosted service). |
+| AWS features (optional, off by default) | AWS sign-in and API endpoints (IAM Identity Center, Systems Manager, and EC2 for instance names) for the accounts and regions you choose, plus the endpoints your proxy points to. Sign-in tokens stay on your device. |
 | Kubernetes and OpenShift | The API servers in your kubeconfig. |
 | SSH certificate authority | Your own Step-CA, Vault or OpenBao server and your OIDC identity provider. |
 | Profile sync and Team Vault (optional, off by default) | The S3 or SFTP location you choose. Data is encrypted on your device before upload, and the storage provider cannot read it. |
