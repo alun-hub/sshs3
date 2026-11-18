@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import type { SshSsmConfig } from '@shared/types/ssm';
-import { normalizeStartUrl } from '@shared/ssm';
 import { ssmProblem } from '../../lib/ssmProfile';
-import { describeIpcError } from '../../lib/format';
 import { AwsInstancePickerModal } from '../AwsInstancePickerModal';
+import { AwsSsoSignInPanel } from '../AwsSsoSignInPanel';
 import { useAwsSsmTools } from '../../lib/useAwsSsmTools';
 import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
 import { FeatureBlockedNotice } from '../SettingsModal/Managed';
@@ -46,8 +45,6 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
   const enabled = Boolean(ssm?.enabled);
   const { tools, readiness, refresh } = useAwsSsmTools(enabled);
   const [picking, setPicking] = useState(false);
-  const [signingIn, setSigningIn] = useState(false);
-  const [signInMsg, setSignInMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const source: CredentialSource = ssm ? sourceOf(ssm) : 'default';
   const patch = (p: Partial<SshSsmConfig>) => onChange({ enabled: true, ...ssm, ...p });
@@ -57,20 +54,6 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
     if (next === 'profile') onChange({ ...base, awsProfile: '' });
     else if (next === 'sso') onChange({ ...base, sso: { startUrl: '', region: ssm?.region ?? 'us-east-1' } });
     else onChange(base);
-  };
-
-  const signIn = async () => {
-    if (!ssm?.sso?.startUrl) return;
-    setSigningIn(true);
-    setSignInMsg(null);
-    try {
-      await window.multissh.awsSsoLogin(ssm.sso.startUrl, ssm.sso.region);
-      setSignInMsg({ ok: true, text: 'Signed in.' });
-    } catch (err) {
-      setSignInMsg({ ok: false, text: describeIpcError(err, 'AWS SSO login failed') });
-    } finally {
-      setSigningIn(false);
-    }
   };
 
   return (
@@ -155,57 +138,11 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
           )}
 
           {source === 'sso' && ssm.sso && (
-            <div className="grid grid-cols-2 gap-2.5">
-              <label className="col-span-2 flex flex-col gap-1 text-txt-secondary">
-                SSO start URL
-                <input
-                  value={ssm.sso.startUrl}
-                  onChange={(e) => patch({ sso: { ...ssm.sso!, startUrl: normalizeStartUrl(e.target.value) } })}
-                  className={inputCls}
-                  placeholder="https://d-xxxxxxxxxx.awsapps.com/start"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                SSO region
-                <input
-                  value={ssm.sso.region}
-                  onChange={(e) => patch({ sso: { ...ssm.sso!, region: e.target.value.trim() } })}
-                  className={inputCls}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Account ID
-                <input
-                  value={ssm.sso.accountId ?? ''}
-                  onChange={(e) => patch({ sso: { ...ssm.sso!, accountId: e.target.value.trim() || undefined } })}
-                  className={inputCls}
-                  placeholder="123456789012"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Role name
-                <input
-                  value={ssm.sso.roleName ?? ''}
-                  onChange={(e) => patch({ sso: { ...ssm.sso!, roleName: e.target.value.trim() || undefined } })}
-                  className={inputCls}
-                />
-              </label>
-              <div className="flex items-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => void signIn()}
-                  disabled={signingIn || !ssm.sso.startUrl}
-                  className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-txt-primary hover:bg-app-hover disabled:opacity-50"
-                >
-                  {signingIn ? 'Signing in…' : 'Sign in'}
-                </button>
-                {signInMsg && (
-                  <span role="status" className={`text-xs ${signInMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {signInMsg.text}
-                  </span>
-                )}
-              </div>
-            </div>
+            <AwsSsoSignInPanel
+              idPrefix="ssm-sso"
+              value={ssm.sso}
+              onChange={(p) => patch({ sso: { ...ssm.sso!, ...p } })}
+            />
           )}
 
           <div className="rounded-lg border border-border-subtle p-2" aria-label="Required tools">

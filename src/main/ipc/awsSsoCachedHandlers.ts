@@ -1,6 +1,6 @@
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import { isValidRegion, isValidSsoConfig } from '../../shared/ssm';
-import type { AwsSsoAccount, AwsSsoAccountRole } from '../../shared/types/aws';
+import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoNetworkOptions } from '../../shared/types/aws';
 import type { AwsSsoCachedRequest, AwsSsoStatusInfo } from '../../shared/types/awsScan';
 import { isFeatureAllowed } from '../policy/policyApply';
 import type { IpcBridge } from '../IpcBridge';
@@ -12,6 +12,16 @@ const START_ONLY = { region: 'us-east-1' } as const;
 
 function checkPolicy(bridge: AwsSsoCachedHost): void {
   if (!isFeatureAllowed(bridge.policy.policy, 'awsSsm')) throw new Error('AWS features are disabled by your administrator');
+}
+
+/** Only the known network fields, with their types checked; anything else the renderer sends is dropped. */
+function checkNetwork(network: unknown): AwsSsoNetworkOptions | undefined {
+  if (network === undefined) return undefined;
+  if (typeof network !== 'object' || network === null) throw new Error('Invalid network options');
+  const n = network as AwsSsoNetworkOptions;
+  if (n.customCaPath !== undefined && typeof n.customCaPath !== 'string') throw new Error('Invalid network options');
+  if (n.rejectUnauthorized !== undefined && typeof n.rejectUnauthorized !== 'boolean') throw new Error('Invalid network options');
+  return { customCaPath: n.customCaPath, rejectUnauthorized: n.rejectUnauthorized, proxy: n.proxy };
 }
 
 function checkRequest(req: unknown, needsAccount: boolean): AwsSsoCachedRequest {
@@ -37,7 +47,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
     async (_event, req: AwsSsoCachedRequest): Promise<AwsSsoAccount[]> => {
       checkPolicy(bridge);
       const r = checkRequest(req, false);
-      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region);
+      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, checkNetwork(r.network));
     }
   );
 
@@ -46,7 +56,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
     async (_event, req: AwsSsoCachedRequest): Promise<AwsSsoAccountRole[]> => {
       checkPolicy(bridge);
       const r = checkRequest(req, true);
-      return await bridge.awsSsoAuthService.listAccountRolesCached(r.startUrl, r.region, r.accountId!);
+      return await bridge.awsSsoAuthService.listAccountRolesCached(r.startUrl, r.region, r.accountId!, checkNetwork(r.network));
     }
   );
 }

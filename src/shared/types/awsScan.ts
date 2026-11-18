@@ -1,4 +1,4 @@
-import type { AwsSsoConfig } from './aws';
+import type { AwsSsoConfig, AwsSsoNetworkOptions } from './aws';
 import type { SsmInstance } from './ssm';
 
 /** Where AWS credentials for a scan come from. */
@@ -77,6 +77,8 @@ export interface AwsSsoCachedRequest {
   startUrl: string;
   region: string;
   accountId?: string;
+  /** Proxy / CA of the profile the sign-in belongs to (S3 profiles carry their own). */
+  network?: AwsSsoNetworkOptions;
 }
 
 export interface AwsScanIpcRequest {

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Cloud, FolderOpen, KeyRound, Loader2 } from 'lucide-react';
 import type { S3Config } from '@shared/types/storage';
-import type { AwsSsoAccount, AwsSsoAccountRole } from '@shared/types/aws';
 import { describeIpcError } from '../../lib/format';
+import { AwsSsoSignInPanel } from '../AwsSsoSignInPanel';
 import { ProfileOrganizationFields } from './ProfileOrganizationFields';
 
 interface S3ProfileFormProps {
@@ -46,18 +46,6 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
   const selfSigned = config.rejectUnauthorized === false;
   const authMode = config.authMode ?? 'static';
 
-  // AWS SSO sign-in state. The access token only lives here in memory (to
-  // fetch the account/role pickers) and is never stored on the profile —
-  // S3StorageProvider re-derives credentials from the on-disk SSO token
-  // cache via fromSSO() at connect time.
-  const [ssoLoggingIn, setSsoLoggingIn] = useState(false);
-  const [ssoAccessToken, setSsoAccessToken] = useState<string | null>(null);
-  const [ssoAccounts, setSsoAccounts] = useState<AwsSsoAccount[]>([]);
-  const [ssoRoles, setSsoRoles] = useState<AwsSsoAccountRole[]>([]);
-  const [loadingRoles, setLoadingRoles] = useState(false);
-  const [ssoError, setSsoError] = useState<string | null>(null);
-  const [ssoManualEntry, setSsoManualEntry] = useState(false);
-
   const update = <K extends keyof S3Config>(key: K, value: S3Config[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
     if (testResult) setTestResult(null);
@@ -84,51 +72,6 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
     rejectUnauthorized: config.rejectUnauthorized,
     proxy: config.proxy,
   });
-
-  const handleAwsSsoLogin = async () => {
-    const startUrl = config.sso?.startUrl?.trim();
-    const region = config.sso?.region?.trim() || config.region || 'us-east-1';
-    if (!startUrl) return;
-
-    setSsoError(null);
-    setSsoAccounts([]);
-    setSsoRoles([]);
-    setSsoAccessToken(null);
-    setSsoManualEntry(false);
-    setSsoLoggingIn(true);
-    try {
-      const { accessToken } = await window.multissh.awsSsoLogin(startUrl, region, ssoNetworkOptions());
-      setSsoAccessToken(accessToken);
-      try {
-        const accounts = await window.multissh.awsSsoListAccounts(accessToken, region, ssoNetworkOptions());
-        setSsoAccounts(accounts);
-      } catch {
-        // Some IAM Identity Center permission sets can't list accounts/roles
-        // via the portal API — fall back to manual entry rather than failing.
-        setSsoManualEntry(true);
-      }
-    } catch (err) {
-      setSsoError(describeIpcError(err, 'AWS SSO login failed'));
-    } finally {
-      setSsoLoggingIn(false);
-    }
-  };
-
-  const handleSelectAccount = async (accountId: string) => {
-    updateSso({ accountId, roleName: undefined });
-    setSsoRoles([]);
-    if (!ssoAccessToken || !accountId) return;
-    const region = config.sso?.region?.trim() || config.region || 'us-east-1';
-    setLoadingRoles(true);
-    try {
-      const roles = await window.multissh.awsSsoListRoles(ssoAccessToken, region, accountId, ssoNetworkOptions());
-      setSsoRoles(roles);
-    } catch (err) {
-      setSsoError(describeIpcError(err, 'Failed to list roles for this account'));
-    } finally {
-      setLoadingRoles(false);
-    }
-  };
 
   const handleTestConnection = async () => {
     setTesting(true);
@@ -301,97 +244,17 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
         </>
       ) : (
         <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1 text-txt-secondary">
-              SSO Start URL
-              <input
-                value={config.sso?.startUrl ?? ''}
-                onChange={(e) => updateSso({ startUrl: e.target.value })}
-                placeholder="https://my-sso.awsapps.com/start"
-                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-txt-secondary">
-              SSO Region
-              <input
-                value={config.sso?.region ?? config.region}
-                onChange={(e) => updateSso({ region: e.target.value })}
-                placeholder="us-east-1"
-                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
-              />
-            </label>
-          </div>
-
-          <button
-            type="button"
-            disabled={!config.sso?.startUrl?.trim() || ssoLoggingIn}
-            onClick={() => void handleAwsSsoLogin()}
-            className="flex items-center justify-center gap-1.5 self-start rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
-          >
-            {ssoLoggingIn && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {ssoLoggingIn ? 'Signing in…' : ssoAccessToken ? 'Sign in again' : 'Sign in with AWS SSO'}
-          </button>
-
-          {ssoError && (
-            <p role="alert" className="rounded-lg border border-red-800/60 bg-red-950/40 px-3 py-2 text-red-300">{ssoError}</p>
-          )}
-
-          {ssoAccessToken && !ssoManualEntry && (
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Account
-                <select
-                  value={config.sso?.accountId ?? ''}
-                  onChange={(e) => void handleSelectAccount(e.target.value)}
-                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
-                >
-                  <option value="">Select an account…</option>
-                  {ssoAccounts.map((a) => (
-                    <option key={a.accountId} value={a.accountId}>
-                      {a.accountName ? `${a.accountName} (${a.accountId})` : a.accountId}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Role
-                <select
-                  value={config.sso?.roleName ?? ''}
-                  onChange={(e) => updateSso({ roleName: e.target.value })}
-                  disabled={!config.sso?.accountId || loadingRoles}
-                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 disabled:opacity-40"
-                >
-                  <option value="">{loadingRoles ? 'Loading…' : 'Select a role…'}</option>
-                  {ssoRoles.map((r) => (
-                    <option key={r.roleName} value={r.roleName}>
-                      {r.roleName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-
-          {(ssoManualEntry || (!ssoAccessToken && (config.sso?.accountId || config.sso?.roleName))) && (
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Account ID
-                <input
-                  value={config.sso?.accountId ?? ''}
-                  onChange={(e) => updateSso({ accountId: e.target.value })}
-                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Role Name
-                <input
-                  value={config.sso?.roleName ?? ''}
-                  onChange={(e) => updateSso({ roleName: e.target.value })}
-                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 font-mono"
-                />
-              </label>
-            </div>
-          )}
+          <AwsSsoSignInPanel
+            idPrefix="s3-sso"
+            value={{
+              startUrl: config.sso?.startUrl ?? '',
+              region: config.sso?.region ?? config.region,
+              accountId: config.sso?.accountId,
+              roleName: config.sso?.roleName,
+            }}
+            onChange={updateSso}
+            network={ssoNetworkOptions()}
+          />
         </div>
       )}
 

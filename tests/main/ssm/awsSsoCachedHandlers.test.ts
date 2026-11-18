@@ -48,6 +48,14 @@ describe('cached SSO handlers', () => {
     expect(r).toEqual([{ roleName: 'Dev' }]);
   });
 
+  it('passes only well-formed network options (a profile proxy / CA) through', async () => {
+    writeToken(new Date(Date.now() + 3600_000).toISOString());
+    await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: { customCaPath: '/ca.pem', rejectUnauthorized: false, extra: 'dropped' } });
+    expect(accounts).toHaveBeenLastCalledWith(TOKEN, 'us-east-1', { customCaPath: '/ca.pem', rejectUnauthorized: false, proxy: undefined });
+    await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: 'x' })).rejects.toThrow(/Invalid network/);
+    await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: { rejectUnauthorized: 'no' } })).rejects.toThrow(/Invalid network/);
+  });
+
   it('asks for a sign-in when the token is missing or expired', async () => {
     await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1' })).rejects.toThrow(/^AWS SSO session expired/);
     writeToken(new Date(Date.now() - 1000).toISOString());
