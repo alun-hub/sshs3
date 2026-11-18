@@ -52,6 +52,7 @@ import type {
   SshCaVaultDetectResult,
 } from '../shared/types/sshCa';
 import type { AwsSsmTools, SsmDiscoveryRequest, SsmDiscoveryResult } from '../shared/types/ssm';
+import { awsScanApi } from './awsScanApi';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
@@ -733,6 +734,7 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, accessToken, region, accountId, network),
 
   awsSsmCheckTools: (): Promise<AwsSsmTools> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSM_CHECK_TOOLS),
+  ...awsScanApi,
   awsSsmDiscoverInstances: (request: SsmDiscoveryRequest): Promise<SsmDiscoveryResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSM_DISCOVER_INSTANCES, request),
 

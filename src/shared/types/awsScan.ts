@@ -65,3 +65,38 @@ export interface AwsCliProfile {
   kind: 'sso' | 'assume-role' | 'process' | 'login' | 'keys' | 'other';
   region?: string;
 }
+
+/** Cached IAM Identity Center sign-in state for a start URL; the token itself never leaves the main process. */
+export interface AwsSsoStatusInfo {
+  status: 'valid' | 'expired' | 'missing';
+  expiresAt?: string;
+}
+
+/** Account/role listing that reads the token from the main process' cache. */
+export interface AwsSsoCachedRequest {
+  startUrl: string;
+  region: string;
+  accountId?: string;
+}
+
+export interface AwsScanIpcRequest {
+  /** Chosen by the renderer so progress events and a cancel can be matched to this scan. */
+  scanId: string;
+  request: AwsScanRequest;
+}
+
+export interface AwsScanProgressEvent extends AwsScanProgress {
+  scanId: string;
+}
+
+/** Whether an AWS CLI profile can produce credentials right now (resolved without prompting). */
+export interface AwsProfileStatus {
+  ok: boolean;
+  expiresAt?: string;
+  message?: string;
+}
+
+export interface AwsProfileLoginResult {
+  ok: boolean;
+  message?: string;
+}

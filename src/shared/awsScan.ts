@@ -1,5 +1,5 @@
-import { isValidInstanceId, sanitizeAwsText } from './ssm';
-import type { AwsScanSkip, AwsScanSkipReason, ScannedInstance } from './types/awsScan';
+import { isValidAwsProfile, isValidInstanceId, isValidRegion, isValidSsoConfig, sanitizeAwsText } from './ssm';
+import type { AwsCredentialSource, AwsScanRequest, AwsScanSkip, AwsScanSkipReason, AwsScanTarget, ScannedInstance } from './types/awsScan';
 
 /**
  * Regions searched by default for "all regions": the commercial regions enabled in every account. Opt-in
@@ -93,4 +93,62 @@ export function summarizeScan(searched: number, skipped: readonly AwsScanSkip[])
   for (const s of skipped) counts.set(s.reason, (counts.get(s.reason) ?? 0) + 1);
   const parts = [...counts].map(([reason, n]) => `${REASON_TEXT[reason]} ×${n}`);
   return `Searched ${searched}, skipped ${skipped.length}: ${parts.join(', ')}.`;
+}
+
+const TARGET_ID = /^[\w.:-]{1,64}$/;
+const SCAN_ID = /^[\w-]{8,64}$/;
+const MAX_TARGETS = 200;
+const MAX_REGIONS = 30;
+
+export function isValidScanId(value: unknown): value is string {
+  return typeof value === 'string' && SCAN_ID.test(value);
+}
+
+function validSource(source: unknown): source is AwsCredentialSource {
+  if (typeof source !== 'object' || source === null) return false;
+  const s = source as Record<string, unknown>;
+  if (s.kind === 'default') return true;
+  if (s.kind === 'profile') return isValidAwsProfile(s.name);
+  if (s.kind === 'sso') return isValidSsoConfig(s.sso) && Boolean((s.sso as { accountId?: string }).accountId) && Boolean((s.sso as { roleName?: string }).roleName);
+  return false;
+}
+
+/** First problem with a scan request coming over IPC, or undefined. The renderer is not trusted to send well-formed values. */
+export function validateScanRequest(req: unknown): string | undefined {
+  if (typeof req !== 'object' || req === null) return 'Invalid scan request';
+  const r = req as Record<string, unknown>;
+  if (!Array.isArray(r.targets) || r.targets.length === 0) return 'Choose at least one account or profile';
+  if (r.targets.length > MAX_TARGETS) return `Too many accounts (limit ${MAX_TARGETS})`;
+  if (!Array.isArray(r.regions) || r.regions.length === 0) return 'Choose at least one region';
+  if (r.regions.length > MAX_REGIONS || !r.regions.every(isValidRegion)) return 'Invalid AWS region';
+  const ids = new Set<string>();
+  for (const t of r.targets) {
+    if (typeof t !== 'object' || t === null) return 'Invalid scan target';
+    const o = t as Record<string, unknown>;
+    if (typeof o.id !== 'string' || !TARGET_ID.test(o.id) || ids.has(o.id)) return 'Invalid scan target id';
+    ids.add(o.id);
+    if (typeof o.label !== 'string' || o.label.length > 200) return 'Invalid scan target label';
+    if (o.accountId !== undefined && !(typeof o.accountId === 'string' && /^\d{12}$/.test(o.accountId))) return 'Invalid account id';
+    if (o.accountName !== undefined && typeof o.accountName !== 'string') return 'Invalid account name';
+    if (!validSource(o.source)) return 'Invalid credential source';
+  }
+  if (r.includeWindows !== undefined && typeof r.includeWindows !== 'boolean') return 'Invalid scan request';
+  return undefined;
+}
+
+/** Rebuilds a validated request from known fields only, with AWS-facing text sanitised. */
+export function normalizeScanRequest(req: AwsScanRequest): AwsScanRequest {
+  const targets: AwsScanTarget[] = req.targets.map((t) => ({
+    id: t.id,
+    label: sanitizeAwsText(t.label, 100) || t.id,
+    accountId: t.accountId,
+    accountName: t.accountName ? sanitizeAwsText(t.accountName, 100) || undefined : undefined,
+    source:
+      t.source.kind === 'sso'
+        ? { kind: 'sso', sso: { startUrl: t.source.sso.startUrl, region: t.source.sso.region, accountId: t.source.sso.accountId, roleName: t.source.sso.roleName } }
+        : t.source.kind === 'profile'
+          ? { kind: 'profile', name: t.source.name }
+          : { kind: 'default' },
+  }));
+  return { targets, regions: [...new Set(req.regions)], includeWindows: req.includeWindows === true };
 }

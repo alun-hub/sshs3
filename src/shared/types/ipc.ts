@@ -1,4 +1,5 @@
 import type { AwsSsmTools, SsmDiscoveryRequest, SsmDiscoveryResult } from './ssm';
+import { AWS_SCAN_CHANNELS, type AwsScanElectronApi } from './awsScanIpc';
 import type { UpdateState } from './update';
 import type {
   SshCaConfig,
@@ -316,6 +317,7 @@ export const IPC_CHANNELS = {
   // SSH over AWS Systems Manager
   AWS_SSM_CHECK_TOOLS: 'aws-ssm:check-tools',
   AWS_SSM_DISCOVER_INSTANCES: 'aws-ssm:discover-instances',
+  ...AWS_SCAN_CHANNELS,
 
   // Git & Git Provider Integration
   GIT_FETCH_PUBLIC_KEYS: 'git:fetch-public-keys',
@@ -611,7 +613,7 @@ export interface StorageConnectConfig {
   terminalSessionId?: string;
 }
 
-export interface MultiSSHApi {
+export interface MultiSSHApi extends AwsScanElectronApi {
   // Terminal
   terminalCreate(options: {
     config?: SSHConnectionConfig;

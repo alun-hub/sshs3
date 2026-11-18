@@ -20,7 +20,7 @@ import type {
   AwsSsoLoginResult,
   AwsSsoNetworkOptions,
 } from '../../shared/types/aws';
-import { parseSsoTokenCache, type AwsSsoTokenStatus } from '../../shared/types/aws';
+import { AWS_SSO_EXPIRED_PREFIX, parseSsoTokenCache, type AwsSsoTokenStatus } from '../../shared/types/aws';
 import { encryptSecretValue, decryptSecretValue } from '../crypto/SecretFieldCrypto';
 import { buildAwsNodeHttpHandler } from './buildAwsNodeHttpHandler';
 
@@ -306,15 +306,52 @@ export class AwsSsoAuthService extends EventEmitter {
     }
   }
 
-  /** Offline status of the cached token for this start URL (see parseSsoTokenCache). */
-  public async getTokenStatus(startUrl: string): Promise<AwsSsoTokenStatus> {
+  /**
+   * Reads the cached SSO token for a start URL (`~/.aws/sso/cache/<sha1(startUrl)>.json`). The access token is returned
+   * only to callers inside the main process; IPC handlers must expose just `status` and `expiresAt`.
+   */
+  private async readCachedToken(startUrl: string): Promise<{ status: AwsSsoTokenStatus; expiresAt?: string; accessToken?: string }> {
     const key = crypto.createHash('sha1').update(startUrl).digest('hex');
     try {
       const raw = await fs.readFile(path.join(this.ssoCacheDir(), `${key}.json`), 'utf-8');
-      return parseSsoTokenCache(JSON.parse(raw) as unknown, Date.now());
+      const data = JSON.parse(raw) as { accessToken?: unknown; expiresAt?: unknown };
+      const status = parseSsoTokenCache(data, Date.now());
+      if (status === 'missing') return { status };
+      return { status, expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : undefined, accessToken: String(data.accessToken) };
     } catch {
-      return 'missing';
+      return { status: 'missing' };
     }
+  }
+
+  /** Offline status of the cached token for this start URL (see parseSsoTokenCache). */
+  public async getTokenStatus(startUrl: string): Promise<AwsSsoTokenStatus> {
+    return (await this.readCachedToken(startUrl)).status;
+  }
+
+  /** Status plus expiry for the UI; never the token. */
+  public async getTokenInfo(startUrl: string): Promise<{ status: AwsSsoTokenStatus; expiresAt?: string }> {
+    const { status, expiresAt } = await this.readCachedToken(startUrl);
+    return { status, expiresAt };
+  }
+
+  private async requireCachedToken(startUrl: string): Promise<string> {
+    const { status, accessToken } = await this.readCachedToken(startUrl);
+    if (status !== 'valid' || !accessToken) throw new Error(`${AWS_SSO_EXPIRED_PREFIX}: sign in again to continue.`);
+    return accessToken;
+  }
+
+  /** Accounts the signed-in user can access, using the cached token (which stays in this process). */
+  public async listAccountsCached(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoAccount[]> {
+    return this.listAccounts(await this.requireCachedToken(startUrl), region, network);
+  }
+
+  public async listAccountRolesCached(
+    startUrl: string,
+    region: string,
+    accountId: string,
+    network?: AwsSsoNetworkOptions
+  ): Promise<AwsSsoAccountRole[]> {
+    return this.listAccountRoles(await this.requireCachedToken(startUrl), region, accountId, network);
   }
 
   /**
