@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { buildProfilesFromInstances } from '@shared/ssmProfileFactory';
+import { buildProfilesFromPicks } from '@shared/ssmProfileFactory';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { AwsInstancePickerModal, type AwsPickResult } from '../AwsInstancePickerModal';
 
@@ -20,8 +20,10 @@ export const AwsImportFlow: React.FC<Props> = ({ profiles, onDone }) => {
 
   const save = async (r: AwsPickResult) => {
     const existing = new Set([...profiles.filter((p) => p.ssm?.enabled).map((p) => p.host), ...savedIds.current]);
-    const created = buildProfilesFromInstances(r.instances, { sso: r.sso, region: r.region, username: r.username, existing }).map((p) => ({ ...p, group: r.folder }));
-    if (r.folder) await window.multissh.profilesSaveFolder(r.folder).catch(() => {});
+    const created = buildProfilesFromPicks(r.items, { existing });
+    for (const folder of new Set(created.map((p) => p.group).filter((g): g is string => !!g))) {
+      await window.multissh.profilesSaveFolder(folder).catch(() => {});
+    }
     for (const p of created) {
       await window.multissh.profilesSaveSSH(p);
       savedIds.current.add(p.host);

@@ -14,6 +14,11 @@ const api = {
   settingsGet: vi.fn(async () => settings),
   profilesGet: vi.fn(async () => ({ ssh: profiles, s3: [] })),
   awsSsoStatus: vi.fn(async (url: string) => status[url] ?? { status: 'missing' }),
+  awsSsmListProfiles: vi.fn(async () => []),
+  awsSsoListAccountsCached: vi.fn(async () => []),
+  awsSsoListRolesCached: vi.fn(async () => []),
+  awsSsmScanCancel: vi.fn(async () => undefined),
+  onAwsSsmScanProgress: vi.fn(() => () => {}),
   awsSsoLogin: vi.fn(async (url: string) => { status[url] = { status: 'valid', expiresAt: '2030-05-06T07:08:00' }; return { accessToken: 'x', expiresAt: 'y' }; }),
 };
 

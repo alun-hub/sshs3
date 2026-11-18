@@ -1,115 +1,207 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { AwsInstancePickerModal } from '../../src/renderer/src/components/AwsInstancePickerModal';
 import { AwsImportMenuItem } from '../../src/renderer/src/components/ConnectionModal/AwsImportMenuItem';
 import { AwsEnabledContext } from '../../src/renderer/src/lib/awsEnabled';
 
-const instances = [
-  { instanceId: 'i-0123456789abcdef0', name: 'web-1', platformName: 'Ubuntu', platformType: 'Linux', ipAddress: '10.0.0.5' },
-  { instanceId: 'i-0123456789abcdef1', name: 'db-1', platformName: 'Amazon Linux', platformType: 'Linux' },
-];
+const CORP = 'https://corp.awsapps.com/start';
+const id = (n: number) => `i-${n.toString(16).padStart(17, '0')}`;
+const found = (n: number, extra: Record<string, unknown> = {}) => ({
+  instanceId: id(n), name: `web-${n}`, platformName: 'Ubuntu', platformType: 'Linux', ipAddress: `10.0.0.${n}`, region: 'eu-north-1', targetId: 'acct-111111111111', accountId: '111111111111', accountName: 'Prod', ...extra,
+});
 
-function mockApi(extra: Record<string, unknown> = {}) {
-  window.multissh = {
-    awsSsoLogin: vi.fn().mockResolvedValue({ accessToken: 'tok', expiresAt: 'x' }),
-    awsSsoListAccounts: vi.fn().mockResolvedValue([{ accountId: '123456789012', accountName: 'prod' }]),
-    awsSsoListRoles: vi.fn().mockResolvedValue([{ roleName: 'Admin' }]),
-    awsSsmDiscoverInstances: vi.fn().mockResolvedValue({ instances, truncated: false }),
-    profilesSaveFolder: vi.fn().mockResolvedValue(undefined),
-    profilesSaveSSH: vi.fn().mockResolvedValue(undefined),
-    ...extra,
-  } as never;
+let settings: Record<string, unknown>;
+let profiles: unknown[];
+let scanResult: unknown;
+const api = {
+  settingsGet: vi.fn(async () => settings),
+  profilesGet: vi.fn(async () => ({ ssh: profiles, s3: [] })),
+  awsSsmListProfiles: vi.fn(async () => [{ name: 'keys', kind: 'keys' }, { name: 'corp-sso', kind: 'sso', region: 'eu-west-1' }]),
+  awsSsoStatus: vi.fn(async () => ({ status: 'valid', expiresAt: '2030-05-06T07:08:00' })),
+  awsSsoLogin: vi.fn(async () => ({ accessToken: 'x', expiresAt: 'y' })),
+  awsSsoListAccountsCached: vi.fn(async () => [{ accountId: '111111111111', accountName: 'Prod' }, { accountId: '222222222222', accountName: 'Dev' }]),
+  awsSsoListRolesCached: vi.fn(async () => [{ roleName: 'Dev' }, { roleName: 'Admin' }]),
+  awsSsmScan: vi.fn(async () => scanResult),
+  awsSsmScanCancel: vi.fn(async () => undefined),
+  onAwsSsmScanProgress: vi.fn(() => () => {}),
+  awsSsmProfileStatus: vi.fn(async () => ({ ok: true })),
+  awsSsmProfileLogin: vi.fn(async () => ({ ok: true })),
+  profilesSaveFolder: vi.fn(async () => undefined),
+  profilesSaveSSH: vi.fn(async () => undefined),
+};
+
+beforeEach(() => {
+  settings = { awsSignIns: [{ id: 's1', name: 'Corp', startUrl: CORP, region: 'us-east-1', lastRoleName: 'Dev' }], awsRegions: 'eu-north-1' };
+  profiles = [];
+  scanResult = { instances: [found(1), found(2, { name: 'db-1', platformName: 'Amazon Linux' })], skipped: [], truncated: false, searched: 1 };
+  Object.values(api).forEach((f) => f.mockClear());
+  window.multissh = { ...api } as never;
+});
+afterEach(() => cleanup());
+
+const open = (mode: 'single' | 'multi' = 'multi', onPick = vi.fn()) => {
+  render(<AwsInstancePickerModal mode={mode} onClose={vi.fn()} onPick={onPick} />);
+  return onPick;
+};
+
+async function chooseAccount() {
+  const list = await screen.findByRole('list', { name: 'Accounts' });
+  fireEvent.click(await within(list).findByLabelText(/Prod/));
 }
 
-async function walkToInstances() {
-  fireEvent.change(screen.getByPlaceholderText(/awsapps/), { target: { value: 'https://d-1.awsapps.com/start' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-  await screen.findByLabelText('Account');
-  fireEvent.change(screen.getByLabelText('Account'), { target: { value: '123456789012' } });
-  await waitFor(() => expect(screen.getByLabelText('Role')).toHaveValue('Admin'));
-  fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'eu-north-1' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Find instances' }));
-  await screen.findByRole('listbox', { name: 'SSM-managed instances' });
-}
+describe('AwsInstancePickerModal (SSO sign-in)', () => {
+  it('starts from the saved sign-in, role and regions, searches the chosen accounts and imports with folder, name and login', async () => {
+    const onPick = open();
+    await waitFor(() => expect(screen.getByTestId('guide-sso-status')).toHaveTextContent('Signed in until 2030-05-06 07:08'));
+    expect(screen.getByTestId('guide-saved-signin')).toHaveValue('s1');
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-role')).toHaveValue('Dev'));
+    expect(screen.getByLabelText('eu-north-1')).toBeChecked();
+    fireEvent.click(screen.getByTestId('guide-search'));
+    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    expect(api.awsSsmScan).toHaveBeenCalledTimes(1);
+    const { request } = (api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: Array<{ id: string; source: unknown }>; regions: string[] } }])[0];
+    expect(request.regions).toEqual(['eu-north-1']);
+    expect(request.targets).toEqual([expect.objectContaining({ id: 'acct-111111111111', source: { kind: 'sso', sso: { startUrl: CORP, region: 'us-east-1', accountId: '111111111111', roleName: 'Dev' } } })]);
 
-describe('AwsInstancePickerModal', () => {
-  beforeEach(() => mockApi());
-  afterEach(() => cleanup());
-
-  it('walks sign-in, account/role, region and instance discovery, then returns the picked instance with a suggested login', async () => {
-    const onPick = vi.fn();
-    render(<AwsInstancePickerModal mode="single" onClose={vi.fn()} onPick={onPick} />);
-    await walkToInstances();
-    expect(window.multissh.awsSsmDiscoverInstances).toHaveBeenCalledWith({
-      sso: { startUrl: 'https://d-1.awsapps.com/start', region: 'us-east-1', accountId: '123456789012', roleName: 'Admin' },
-      region: 'eu-north-1',
-    });
     fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
-    await waitFor(() => expect(screen.getByLabelText('SSH login name')).toHaveValue('ubuntu'));
-    fireEvent.click(screen.getByRole('button', { name: 'Use selected' }));
+    fireEvent.change(screen.getByLabelText('SSH login for web-1'), { target: { value: 'deploy' } });
+    fireEvent.click(screen.getByRole('option', { name: /db-1/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import selected (2)' }));
     await waitFor(() => expect(onPick).toHaveBeenCalled());
-    expect(onPick.mock.calls[0][0]).toMatchObject({ region: 'eu-north-1', username: 'ubuntu', instances: [{ instanceId: 'i-0123456789abcdef0' }] });
+    const items = onPick.mock.calls[0][0].items;
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ name: 'web-1', username: 'deploy', folder: 'AWS/Prod/eu-north-1' });
+    expect(items[1]).toMatchObject({ name: 'db-1', username: 'ec2-user' });
+    expect(items[0].source).toMatchObject({ kind: 'sso' });
   });
 
-  it('selects with Enter, filters, and keeps a single selection in single mode', async () => {
-    render(<AwsInstancePickerModal mode="single" onClose={vi.fn()} onPick={vi.fn()} />);
-    await walkToInstances();
-    const web = screen.getByRole('option', { name: /web-1/ });
-    fireEvent.keyDown(web, { key: 'Enter' });
-    expect(web).toHaveAttribute('aria-selected', 'true');
+  it('keeps the search disabled with a reason until accounts, role and regions are chosen', async () => {
+    open();
+    await waitFor(() => expect(screen.getByTestId('guide-sso-status')).toHaveTextContent('Signed in'));
+    expect(screen.getByTestId('guide-search')).toBeDisabled();
+    expect(screen.getByText('Select at least one account.')).toBeInTheDocument();
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(within(screen.getByRole('region', { name: 'Regions' })).getByRole('button', { name: 'None' }));
+    expect(screen.getByTestId('guide-search')).toBeDisabled();
+    expect(screen.getByText('Select at least one region.')).toBeInTheDocument();
+  });
+
+  it('marks nodes that already have a profile and does not let them be picked', async () => {
+    profiles = [{ id: 'p', name: 'old', host: id(1), username: 'u', authType: 'agent', ssm: { enabled: true } }];
+    open();
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    const row = await screen.findByRole('option', { name: /web-1/ });
+    expect(row).toHaveTextContent('Already added');
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(row);
+    expect(screen.getByRole('button', { name: 'Import selected' })).toBeDisabled();
+  });
+
+  it('summarises skipped searches and offers a sign-in when the session has expired', async () => {
+    scanResult = { instances: [found(1)], skipped: [{ targetId: 'acct-111111111111', label: 'Prod', region: 'us-west-2', reason: 'access-denied', message: 'Not allowed to call ssm:DescribeInstanceInformation.' }], truncated: false, searched: 2 };
+    open();
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    expect(await screen.findByTestId('guide-summary')).toHaveTextContent('Searched 2, skipped 1: access denied ×1.');
+    fireEvent.click(screen.getByText('Why were some skipped?'));
+    expect(screen.getByText(/Prod · us-west-2: Not allowed/)).toBeInTheDocument();
+    cleanup();
+
+    api.awsSsmScan.mockRejectedValueOnce(new Error('AWS SSO session expired: sign in again to continue.'));
+    open();
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sign in again above.');
+  });
+});
+
+describe('AwsInstancePickerModal (AWS CLI profiles and default credentials)', () => {
+  it('searches the chosen CLI profile with the profile as credential source', async () => {
+    settings = { awsRegions: 'eu-north-1' }; // no saved sign-in: the profile source is offered first
+    const onPick = open();
+    await screen.findByRole('list', { name: 'AWS CLI profiles' });
+    fireEvent.click(screen.getByLabelText(/keys/));
+    await waitFor(() => expect(api.awsSsmProfileStatus).toHaveBeenCalledWith('keys'));
+    expect(await screen.findByText('Ready')).toBeInTheDocument();
+    scanResult = { instances: [found(3, { targetId: 'profile-keys', accountName: undefined })], skipped: [], truncated: false, searched: 1 };
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    fireEvent.click(await screen.findByRole('option', { name: /web-3/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
+    await waitFor(() => expect(onPick).toHaveBeenCalled());
+    expect(onPick.mock.calls[0][0].items[0]).toMatchObject({ folder: 'AWS/keys/eu-north-1', source: { kind: 'profile', name: 'keys' } });
+    const req = (api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: unknown[] } }])[0].request;
+    expect(req.targets).toEqual([expect.objectContaining({ id: 'profile-keys', source: { kind: 'profile', name: 'keys' } })]);
+  });
+
+  it('lets an expired SSO profile sign in through the AWS CLI and re-checks it', async () => {
+    settings = { awsRegions: 'eu-north-1' };
+    api.awsSsmProfileStatus.mockResolvedValueOnce({ ok: false, message: 'The sign-in for this profile has expired. Sign in again.' } as never);
+    open();
+    await screen.findByRole('list', { name: 'AWS CLI profiles' });
+    fireEvent.click(screen.getByLabelText(/corp-sso/));
+    const item = (await screen.findByText(/has expired/)).closest('li')!;
+    fireEvent.click(within(item).getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(api.awsSsmProfileLogin).toHaveBeenCalledWith('corp-sso'));
+    await waitFor(() => expect(within(item).getByText('Ready')).toBeInTheDocument());
+  });
+
+  it('can search with the default credential chain', async () => {
+    settings = { awsRegions: 'eu-north-1' };
+    open();
+    fireEvent.click(await screen.findByRole('radio', { name: 'Default credentials' }));
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    expect((api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: Array<{ source: unknown }> } }])[0].request.targets[0].source).toEqual({ kind: 'default' });
+  });
+});
+
+describe('AwsInstancePickerModal (single mode)', () => {
+  it('keeps one selection and returns one item', async () => {
+    const onPick = open('single');
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    fireEvent.click(await screen.findByRole('option', { name: /web-1/ }));
     fireEvent.click(screen.getByRole('option', { name: /db-1/ }));
     expect(screen.getByRole('option', { name: /web-1/ })).toHaveAttribute('aria-selected', 'false');
-    fireEvent.change(screen.getByLabelText('Filter instances'), { target: { value: 'db' } });
-    expect(screen.queryByRole('option', { name: /web-1/ })).toBeNull();
-  });
-
-  it('drops the sign-in, accounts and instances when the start URL is edited, and strips #/ from it', async () => {
-    render(<AwsInstancePickerModal mode="single" onClose={vi.fn()} onPick={vi.fn()} />);
-    fireEvent.change(screen.getByPlaceholderText(/awsapps/), { target: { value: 'https://d-1.awsapps.com/start#/' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await screen.findByLabelText('Account');
-    expect(window.multissh.awsSsoLogin).toHaveBeenCalledWith('https://d-1.awsapps.com/start', 'us-east-1');
-    fireEvent.change(screen.getByPlaceholderText(/awsapps/), { target: { value: 'https://d-2.awsapps.com/start' } });
-    expect(screen.queryByLabelText('Account')).toBeNull();
-  });
-
-  it('shows a helpful empty state and the error with a sign-in hint', async () => {
-    mockApi({ awsSsmDiscoverInstances: vi.fn().mockResolvedValue({ instances: [], truncated: false }) });
-    render(<AwsInstancePickerModal mode="multi" onClose={vi.fn()} onPick={vi.fn()} />);
-    fireEvent.change(screen.getByPlaceholderText(/awsapps/), { target: { value: 'https://d-1.awsapps.com/start' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await screen.findByLabelText('Account');
-    fireEvent.change(screen.getByLabelText('Account'), { target: { value: '123456789012' } });
-    await waitFor(() => expect(screen.getByLabelText('Role')).toHaveValue('Admin'));
-    fireEvent.click(screen.getByRole('button', { name: 'Find instances' }));
-    expect(await screen.findByText(/No online SSM-managed instances/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected' }));
+    await waitFor(() => expect(onPick).toHaveBeenCalled());
+    expect(onPick.mock.calls[0][0].items).toHaveLength(1);
+    expect(onPick.mock.calls[0][0].items[0].instance.name).toBe('db-1');
   });
 });
 
 describe('AwsImportMenuItem', () => {
   it('is not shown while AWS features are off', () => {
-    mockApi();
     render(<AwsImportMenuItem profiles={[]} onDone={vi.fn()} />);
     expect(screen.queryByRole('button', { name: /Import from AWS/ })).toBeNull();
   });
 
-  beforeEach(() => mockApi());
-  afterEach(() => cleanup());
-
-  it('saves one SSM profile per picked instance and skips instances that already have one', async () => {
+  it('saves one SSM profile per picked instance in its folder and skips nodes that already have one', async () => {
     const onDone = vi.fn();
-    const existing = [{ id: 'old', name: 'old', host: 'i-0123456789abcdef1', username: 'u', authType: 'agent', ssm: { enabled: true } }] as never;
+    const existing = [{ id: 'old', name: 'old', host: id(2), username: 'u', authType: 'agent', ssm: { enabled: true } }] as never;
+    profiles = existing;
     render(<AwsEnabledContext.Provider value={true}><AwsImportMenuItem profiles={existing} onDone={onDone} /></AwsEnabledContext.Provider>);
     fireEvent.click(screen.getByRole('button', { name: /Import from AWS/ }));
-    await walkToInstances();
-    fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
-    fireEvent.click(screen.getByRole('option', { name: /db-1/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Import selected/ }));
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    fireEvent.click(await screen.findByRole('option', { name: /web-1/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(1));
-    const saved = (window.multissh.profilesSaveSSH as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    const saved = api.profilesSaveSSH.mock.calls.map((c) => (c as unknown as [Record<string, unknown>])[0]);
     expect(saved).toHaveLength(1);
-    expect(saved[0]).toMatchObject({ host: 'i-0123456789abcdef0', name: 'web-1', group: 'AWS/123456789012/eu-north-1', ssm: { enabled: true, region: 'eu-north-1' } });
+    expect(saved[0]).toMatchObject({ host: id(1), name: 'web-1', group: 'AWS/Prod/eu-north-1', authType: 'agent', ssm: { enabled: true, region: 'eu-north-1', sso: { startUrl: CORP, accountId: '111111111111', roleName: 'Dev' } } });
+    expect(api.profilesSaveFolder).toHaveBeenCalledWith('AWS/Prod/eu-north-1');
   });
 });

@@ -1,22 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Cloud, Loader2, X } from 'lucide-react';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoConfig } from '@shared/types/aws';
-import { offersAwsSsoSignIn } from '@shared/types/aws';
-import type { SsmInstance } from '@shared/types/ssm';
+import { Cloud, Search, X } from 'lucide-react';
+import { allSignIns } from '@shared/awsSignIns';
 import { normalizeStartUrl } from '@shared/ssm';
-import { ssmFolder } from '@shared/ssmProfileFactory';
+import { offersAwsSsoSignIn } from '@shared/types/aws';
+import type { AwsCliProfile, AwsPickItem, AwsProfileStatus, AwsScanTarget } from '@shared/types/awsScan';
+import type { AppSettings } from '@shared/types/settings';
+import type { SSHConnectionConfig } from '@shared/types/ssh';
+import { alreadyAdded, buildPickItems, defaultTargets, initialRegions, instanceKey, profileTargets, ssoTargets, takenNamesByFolder } from '../lib/awsGuide';
+import { describeIpcError } from '../lib/format';
+import { toggleSelection } from '../lib/ssmInstancePicker';
+import { useAwsScan } from '../lib/useAwsScan';
+import { useAwsSsoSignIn } from '../lib/useAwsSsoSignIn';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { useModalDismiss } from '../lib/useModalDismiss';
-import { describeIpcError } from '../lib/format';
-import { filterInstances, suggestLogin, toggleSelection } from '../lib/ssmInstancePicker';
+import { AwsGuideResults } from './aws/guide/AwsGuideResults';
+import { AwsGuideScope } from './aws/guide/AwsGuideScope';
+import { AwsGuideSource, type SourceKind } from './aws/guide/AwsGuideSource';
 
 export interface AwsPickResult {
-  instances: SsmInstance[];
-  sso: AwsSsoConfig;
-  region: string;
-  username: string;
-  folder: string;
+  items: AwsPickItem[];
 }
 
 interface Props {
@@ -27,13 +30,11 @@ interface Props {
   onPick: (result: AwsPickResult) => void | Promise<void>;
 }
 
-const field =
-  'rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted';
-
 /**
- * Sign in with IAM Identity Center, choose account/role and region, then pick instances that SSM manages.
- * Instances are listed from `ssm:DescribeInstanceInformation`, so only nodes with a running SSM Agent appear.
- * The access token stays in this component's memory; only account/role/region reach the profile.
+ * "Add from AWS": choose where the credentials come from (an IAM Identity Center sign-in, AWS CLI profiles or the
+ * default chain), pick accounts and regions, search for SSM-managed nodes and choose the ones to add as profiles.
+ * Instances come from `ssm:DescribeInstanceInformation`, so only nodes with a running SSM Agent appear.
+ * Credentials and tokens stay in the main process; this dialog only sees status, lists and the nodes found.
  */
 export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onClose, onPick }) => {
   const single = mode === 'single';
@@ -41,98 +42,157 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
   useDialogFocus(dialogRef, true);
   const onBackdrop = useModalDismiss(onClose, true);
 
-  const [startUrl, setStartUrl] = useState(initialSso?.startUrl ?? '');
-  const [ssoRegion, setSsoRegion] = useState(initialSso?.region ?? 'us-east-1');
-  const [token, setToken] = useState<string | null>(null);
-  const [accounts, setAccounts] = useState<AwsSsoAccount[]>([]);
-  const [accountId, setAccountId] = useState('');
-  const [roles, setRoles] = useState<AwsSsoAccountRole[]>([]);
-  const [roleName, setRoleName] = useState('');
-  const [region, setRegion] = useState(initialSso?.region ?? 'us-east-1');
-  const [instances, setInstances] = useState<SsmInstance[] | null>(null);
-  const [truncated, setTruncated] = useState(false);
-  const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [username, setUsername] = useState('ec2-user');
-  const [folder, setFolder] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Data the guide starts from.
+  const [settings, setSettings] = useState<AppSettings | undefined>();
+  const [profiles, setProfiles] = useState<SSHConnectionConfig[]>([]);
+  const [cliProfiles, setCliProfiles] = useState<AwsCliProfile[] | null>(null);
+  const loaded = useRef(false);
+
+  // Step 1: credentials.
+  const [kind, setKind] = useState<SourceKind>('sso');
+  const userChoseKind = useRef(false);
+  const [savedId, setSavedId] = useState('');
+  const [sso, setSso] = useState({ startUrl: initialSso?.startUrl ?? '', region: initialSso?.region ?? 'us-east-1' });
+  const [chosenProfiles, setChosenProfiles] = useState<Set<string>>(new Set());
+  const [profileStatus, setProfileStatus] = useState<Record<string, AwsProfileStatus | 'checking' | undefined>>({});
+
+  // Steps 2-3: scope.
+  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
+  const [role, setRole] = useState('');
+  const [roleOptions, setRoleOptions] = useState<string[]>([]);
+  const [regions, setRegions] = useState<string[]>([]);
+  const regionsTouched = useRef(false);
+
+  // Steps 4-5: search and choice.
+  const scan = useAwsScan();
+  const lastTargets = useRef<Map<string, AwsScanTarget>>(new Map());
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [usernames, setUsernames] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const sso: AwsSsoConfig = { startUrl: normalizeStartUrl(startUrl), region: ssoRegion.trim(), accountId, roleName };
+  const signIns = useMemo(() => allSignIns(settings?.awsSignIns, settings?.awsManagedSignIns), [settings]);
 
-  // The access token belongs to one start URL + region: editing either invalidates everything derived from it.
-  const resetSignIn = () => {
-    setToken(null);
-    setAccounts([]);
-    setAccountId('');
-    setRoles([]);
-    setRoleName('');
-    setInstances(null);
-    setSelected(new Set());
+  const signInState = useAwsSsoSignIn({
+    value: { startUrl: kind === 'sso' ? sso.startUrl : '', region: sso.region },
+    onChange: (patch) => setSso((s) => ({ ...s, ...(patch.startUrl !== undefined ? { startUrl: patch.startUrl } : {}), ...(patch.region !== undefined ? { region: patch.region } : {}) })),
+    pickAccountRole: kind === 'sso',
+  });
+  const signedIn = signInState.status?.status === 'valid';
+
+  // Load settings, saved profiles and AWS CLI profiles once.
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([
+      window.multissh.settingsGet().catch(() => undefined),
+      window.multissh.profilesGet().catch(() => ({ ssh: [] as SSHConnectionConfig[] })),
+      window.multissh.awsSsmListProfiles().catch(() => [] as AwsCliProfile[]),
+    ]).then(([s, p, cli]) => {
+      if (!alive) return;
+      setSettings(s);
+      setProfiles(p.ssh ?? []);
+      setCliProfiles(cli);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Pick sensible starting values once the data is there: the first saved sign-in, the configured regions, a source.
+  useEffect(() => {
+    if (loaded.current || !settings || cliProfiles === null) return;
+    loaded.current = true;
+    const first = signIns[0];
+    if (!initialSso && first) {
+      setSavedId(first.id);
+      setSso({ startUrl: first.startUrl, region: first.region });
+      if (first.lastRoleName) setRole(first.lastRoleName);
+    }
+    if (!userChoseKind.current) setKind(first || initialSso || cliProfiles.length === 0 ? 'sso' : 'profile');
+    if (!regionsTouched.current) setRegions(initialRegions(settings.awsRegions, initialSso?.region ?? first?.region));
+  }, [settings, cliProfiles, signIns, initialSso]);
+
+  const chooseSaved = (id: string) => {
+    setSavedId(id);
+    const s = signIns.find((x) => x.id === id);
+    if (s) {
+      setSso({ startUrl: s.startUrl, region: s.region });
+      if (s.lastRoleName) setRole(s.lastRoleName);
+    }
+    setSelectedAccounts(new Set());
   };
-  const visible = useMemo(() => filterInstances(instances ?? [], query), [instances, query]);
-  const chosen = useMemo(() => (instances ?? []).filter((i) => selected.has(i.instanceId)), [instances, selected]);
 
-  const run = async (label: string, fn: () => Promise<void>) => {
-    setBusy(label);
-    setError(null);
+  // Role suggestions come from the first selected account.
+  const firstAccount = [...selectedAccounts][0];
+  useEffect(() => {
+    if (kind !== 'sso' || !signedIn || !firstAccount) return;
+    let alive = true;
+    window.multissh
+      .awsSsoListRolesCached({ startUrl: normalizeStartUrl(sso.startUrl), region: sso.region.trim(), accountId: firstAccount })
+      .then((roles) => {
+        if (!alive) return;
+        const names = roles.map((r) => r.roleName);
+        setRoleOptions(names);
+        setRole((current) => current || (names.length === 1 ? names[0] : ''));
+      })
+      .catch(() => alive && setRoleOptions([]));
+    return () => {
+      alive = false;
+    };
+  }, [kind, signedIn, firstAccount, sso.startUrl, sso.region]);
+
+  const checkProfile = async (name: string) => {
+    setProfileStatus((s) => ({ ...s, [name]: 'checking' }));
     try {
-      await fn();
+      const st = await window.multissh.awsSsmProfileStatus(name);
+      setProfileStatus((s) => ({ ...s, [name]: st }));
     } catch (err) {
-      setError(describeIpcError(err, 'AWS request failed').replace(/^Error:\s*/, ''));
-    } finally {
-      setBusy(null);
+      setProfileStatus((s) => ({ ...s, [name]: { ok: false, message: describeIpcError(err, 'Could not check this profile').replace(/^Error:\s*/, '') } }));
     }
   };
-
-  const signIn = () =>
-    run('Waiting for browser sign-in…', async () => {
-      const { accessToken } = await window.multissh.awsSsoLogin(sso.startUrl, sso.region);
-      setToken(accessToken);
-      setAccounts(await window.multissh.awsSsoListAccounts(accessToken, sso.region));
-    });
-
-  const pickAccount = (id: string) => {
-    setAccountId(id);
-    setRoleName('');
-    setRoles([]);
-    setInstances(null);
-    if (!id || !token) return;
-    void run('Loading roles…', async () => {
-      const list = await window.multissh.awsSsoListRoles(token, sso.region, id);
-      setRoles(list);
-      if (list.length === 1) setRoleName(list[0].roleName);
-    });
+  const loginProfile = async (name: string) => {
+    setProfileStatus((s) => ({ ...s, [name]: 'checking' }));
+    const r = await window.multissh.awsSsmProfileLogin(name).catch((err) => ({ ok: false, message: describeIpcError(err, 'Sign-in failed') }));
+    if (r.ok) await checkProfile(name);
+    else setProfileStatus((s) => ({ ...s, [name]: { ok: false, message: r.message } }));
+  };
+  const toggleProfile = (name: string) => {
+    setChosenProfiles((cur) => toggleSelection(cur, name, single));
+    if (!profileStatus[name]) void checkProfile(name);
   };
 
-  const find = () =>
-    run('Finding instances…', async () => {
-      const r = await window.multissh.awsSsmDiscoverInstances({ sso: { ...sso }, region: region.trim() });
-      setInstances(r.instances);
-      setTruncated(r.truncated);
-      setSelected(new Set());
-    });
+  // What a search would look at right now.
+  const targets: AwsScanTarget[] = useMemo(() => {
+    if (kind === 'sso') return ssoTargets({ startUrl: normalizeStartUrl(sso.startUrl), region: sso.region.trim() }, signInState.accounts, selectedAccounts, role);
+    if (kind === 'profile') return profileTargets([...chosenProfiles]);
+    return defaultTargets();
+  }, [kind, sso, signInState.accounts, selectedAccounts, role, chosenProfiles]);
+  const canSearch = regions.length > 0 && targets.length > 0 && (kind !== 'sso' || (signedIn && role.trim() !== '')) && scan.state.phase !== 'running';
 
-  useEffect(() => {
-    if (chosen.length > 0) setUsername(suggestLogin(chosen));
-    // Only follows the platform of the selection; later edits by the user are kept until the selection changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chosen[0]?.instanceId]);
+  const search = () => {
+    lastTargets.current = new Map(targets.map((t) => [t.id, t]));
+    setSelectedKeys(new Set());
+    setError(null);
+    void scan.start({ targets, regions, includeWindows: false });
+  };
+
+  const result = scan.state.result;
+  const added = useMemo(() => alreadyAdded(profiles), [profiles]);
+  const chosen = (result?.instances ?? []).filter((i) => selectedKeys.has(instanceKey(i)));
 
   const submit = async () => {
-    if (chosen.length === 0 || !username.trim()) return;
+    if (chosen.length === 0) return;
     setSaving(true);
     setError(null);
     try {
-      await onPick({ instances: chosen, sso, region: region.trim(), username: username.trim(), folder: folder.trim() || ssmFolder(sso, region.trim()) });
+      await onPick({ items: buildPickItems(chosen, lastTargets.current, usernames, takenNamesByFolder(profiles)) });
     } catch (err) {
       setError(describeIpcError(err, 'Could not import the selected instances'));
       setSaving(false);
     }
   };
 
-  const ready = !!accountId && !!roleName;
+  const scanError = scan.state.error;
 
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4" onClick={onBackdrop}>
@@ -141,139 +201,94 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
         role="dialog"
         aria-modal="true"
         aria-label={single ? 'Pick an AWS instance' : 'Import instances from AWS'}
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-3 overflow-y-auto rounded-xl border border-border-subtle bg-app-surface p-4 text-xs shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col gap-4 overflow-y-auto rounded-xl border border-border-subtle bg-app-surface p-4 text-xs shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-divider pb-2">
           <div className="flex items-center gap-2 text-sm font-semibold text-sky-400">
             <Cloud className="h-4 w-4" aria-hidden="true" />
-            <span>{single ? 'Pick an AWS instance' : 'Import instances from AWS'}</span>
+            <span>{single ? 'Pick an AWS instance' : 'Add instances from AWS'}</span>
           </div>
           <button type="button" aria-label="Close" title="Close" onClick={onClose} className="rounded p-1 text-txt-muted hover:text-txt-primary">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <section className="grid grid-cols-[1fr_140px_auto] items-end gap-2" aria-label="Sign in">
-          <label className="flex flex-col gap-1 text-txt-secondary">
-            SSO start URL
-            <input value={startUrl} onChange={(e) => { setStartUrl(e.target.value); resetSignIn(); }} className={field} placeholder="https://d-xxxxxxxxxx.awsapps.com/start" autoFocus />
-          </label>
-          <label className="flex flex-col gap-1 text-txt-secondary">
-            SSO region
-            <input value={ssoRegion} onChange={(e) => { setSsoRegion(e.target.value); resetSignIn(); }} className={field} />
-          </label>
-          <button type="button" onClick={() => void signIn()} disabled={!!busy || !startUrl.trim()} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50">
-            {token ? 'Sign in again' : 'Sign in'}
+        <AwsGuideSource
+          kind={kind}
+          onKind={(k) => { userChoseKind.current = true; setKind(k); scan.reset(); }}
+          single={single}
+          signIns={signIns}
+          savedId={savedId}
+          onSaved={chooseSaved}
+          sso={sso}
+          onSso={(patch) => { setSavedId(''); setSso((s) => ({ ...s, ...(patch.startUrl !== undefined ? { startUrl: patch.startUrl } : {}), ...(patch.region !== undefined ? { region: patch.region } : {}) })); }}
+          signInState={signInState}
+          profiles={cliProfiles}
+          chosenProfiles={chosenProfiles}
+          onToggleProfile={toggleProfile}
+          profileStatus={profileStatus}
+          onCheckProfile={(n) => void checkProfile(n)}
+          onLoginProfile={(n) => void loginProfile(n)}
+        />
+
+        {(kind !== 'sso' || signedIn) && (
+          <AwsGuideScope
+            accounts={kind === 'sso' ? signInState.accounts : undefined}
+            selectedAccounts={selectedAccounts}
+            onToggleAccount={(id) => setSelectedAccounts((cur) => toggleSelection(cur, id, false))}
+            onSelectAccounts={(ids) => setSelectedAccounts(new Set(ids))}
+            role={role}
+            onRole={setRole}
+            roleOptions={roleOptions}
+            regions={regions}
+            onRegions={(r) => { regionsTouched.current = true; setRegions(r); }}
+          />
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            data-testid="guide-search"
+            disabled={!canSearch}
+            onClick={search}
+            className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs font-medium text-txt-primary hover:bg-app-surface-hover disabled:opacity-40"
+          >
+            <Search className="h-3.5 w-3.5" aria-hidden="true" /> Find instances
           </button>
-        </section>
+          {!canSearch && scan.state.phase !== 'running' && (
+            <span className="text-txt-muted">
+              {kind === 'sso' && !signedIn ? 'Sign in first.' : targets.length === 0 ? (kind === 'sso' ? 'Select at least one account.' : 'Choose a profile.') : kind === 'sso' && !role.trim() ? 'Enter the role name.' : 'Select at least one region.'}
+            </span>
+          )}
+        </div>
 
-        {token && (
-          <section className="grid grid-cols-3 items-end gap-2" aria-label="Account, role and region">
-            <label className="flex flex-col gap-1 text-txt-secondary">
-              Account
-              <select value={accountId} onChange={(e) => pickAccount(e.target.value)} className={field}>
-                <option value="">Select account…</option>
-                {accounts.map((a) => (
-                  <option key={a.accountId} value={a.accountId}>
-                    {a.accountName ? `${a.accountName} (${a.accountId})` : a.accountId}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-txt-secondary">
-              Role
-              <select value={roleName} onChange={(e) => { setRoleName(e.target.value); setInstances(null); }} disabled={roles.length === 0} className={field}>
-                <option value="">Select role…</option>
-                {roles.map((r) => (
-                  <option key={r.roleName} value={r.roleName}>{r.roleName}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-txt-secondary">
-              Region
-              <input value={region} onChange={(e) => { setRegion(e.target.value); setInstances(null); }} className={field} placeholder="eu-north-1" />
-            </label>
-          </section>
-        )}
+        <AwsGuideResults
+          state={scan.state}
+          targets={lastTargets.current}
+          single={single}
+          selected={selectedKeys}
+          onToggle={(key) => setSelectedKeys((cur) => toggleSelection(cur, key, single))}
+          usernames={usernames}
+          onUsername={(id, v) => setUsernames((u) => ({ ...u, [id]: v }))}
+          added={added}
+          onCancel={scan.cancel}
+        />
 
-        {ready && (
-          <div>
-            <button type="button" onClick={() => void find()} disabled={!!busy || !region.trim()} className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-txt-primary hover:bg-app-hover disabled:opacity-50">
-              Find instances
-            </button>
-          </div>
-        )}
-
-        {busy && (
-          <p role="status" className="flex items-center gap-1.5 text-txt-muted">
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> {busy}
-          </p>
-        )}
-        {error && (
+        {(error || scanError) && (
           <p role="alert" className="text-red-400">
-            {error}
-            {offersAwsSsoSignIn(error) ? ' Press Sign in again above.' : ''}
+            {error ?? scanError}
+            {offersAwsSsoSignIn(error ?? scanError ?? '') ? ' Sign in again above.' : ''}
           </p>
-        )}
-
-        {instances && (
-          <section className="flex flex-col gap-2" aria-label="Instances">
-            {instances.length === 0 ? (
-              <p className="text-txt-muted">
-                No online SSM-managed instances in this account and region. An instance appears here once it has the SSM Agent and an instance profile
-                with SSM permissions.
-              </p>
-            ) : (
-              <>
-                <input aria-label="Filter instances" value={query} onChange={(e) => setQuery(e.target.value)} className={field} placeholder="Filter by name, ID, platform or IP" />
-                {truncated && <p className="text-amber-300">Only the first instances are shown. Pick another account or region, or narrow the list with the filter.</p>}
-                <div role="listbox" aria-label="SSM-managed instances" aria-multiselectable={!single} className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle bg-app-card p-1">
-                  {visible.map((i) => {
-                    const on = selected.has(i.instanceId);
-                    return (
-                      <div
-                        key={i.instanceId}
-                        role="option"
-                        aria-selected={on}
-                        tabIndex={0}
-                        onClick={() => setSelected((s) => toggleSelection(s, i.instanceId, single))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setSelected((s) => toggleSelection(s, i.instanceId, single));
-                          }
-                        }}
-                        className={`grid cursor-pointer grid-cols-[1.2fr_1.2fr_1fr_1fr] gap-2 rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'}`}
-                      >
-                        <span className="truncate font-medium text-txt-primary">{on ? '✓ ' : ''}{i.name}</span>
-                        <span className="truncate font-mono text-txt-muted">{i.instanceId}</span>
-                        <span className="truncate text-txt-secondary">{i.platformName ?? i.platformType ?? ''}</span>
-                        <span className="truncate text-txt-muted">{i.ipAddress ?? ''}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="flex flex-col gap-1 text-txt-secondary">
-                    SSH login name
-                    <input value={username} onChange={(e) => setUsername(e.target.value)} className={field} />
-                  </label>
-                  {!single && (
-                    <label className="flex flex-col gap-1 text-txt-secondary">
-                      Folder
-                      <input value={folder} onChange={(e) => setFolder(e.target.value)} className={field} placeholder={ssmFolder(sso, region.trim() || 'region')} />
-                    </label>
-                  )}
-                </div>
-                <p className="text-txt-muted">The login name is a suggestion for the platform; the instance may use another. SSH authentication is still required.</p>
-              </>
-            )}
-          </section>
         )}
 
         <div className="flex justify-end gap-2 border-t border-divider pt-2">
           <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-txt-secondary hover:bg-app-hover">Cancel</button>
-          <button type="button" onClick={() => void submit()} disabled={saving || chosen.length === 0 || !username.trim()} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50">
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={saving || chosen.length === 0}
+            className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+          >
             {single ? 'Use selected' : `Import selected${chosen.length ? ` (${chosen.length})` : ''}`}
           </button>
         </div>

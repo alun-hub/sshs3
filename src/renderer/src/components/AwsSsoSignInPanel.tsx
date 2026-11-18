@@ -5,6 +5,8 @@ import type { AwsSsoNetworkOptions } from '@shared/types/aws';
 import { describeSsoStatus } from '../lib/awsSsoStatus';
 import { useAwsSsoSignIn, type AwsSsoValue } from '../lib/useAwsSsoSignIn';
 
+type SignInState = ReturnType<typeof useAwsSsoSignIn>;
+
 interface Props {
   value: AwsSsoValue;
   onChange: (patch: Partial<AwsSsoValue>) => void;
@@ -18,13 +20,14 @@ interface Props {
 const input =
   'rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500';
 
-/**
- * AWS IAM Identity Center sign-in: start URL, region, a clear **Sign in** button, the sign-in status and, once signed
- * in, account and role pickers. Shared by the S3 profile form, the AWS sign-in list, the SSM profile form and the
- * instance import dialog so that signing in looks and behaves the same everywhere.
- */
-export const AwsSsoSignInPanel: React.FC<Props> = ({ value, onChange, network, pickAccountRole = true, idPrefix = 'aws-sso' }) => {
-  const s = useAwsSsoSignIn({ value, onChange, network, pickAccountRole });
+/** The sign-in controls (start URL, region, button, status, error) without account/role pickers. */
+export const AwsSsoSignInFields: React.FC<{
+  value: AwsSsoValue;
+  onChange: (patch: Partial<AwsSsoValue>) => void;
+  /** State from `useAwsSsoSignIn`, owned by the caller so it can also use the account list. */
+  s: SignInState;
+  idPrefix?: string;
+}> = ({ value, onChange, s, idPrefix = 'aws-sso' }) => {
   const info = describeSsoStatus(s.status, s.checking);
   const signedIn = s.status?.status === 'valid';
 
@@ -79,6 +82,22 @@ export const AwsSsoSignInPanel: React.FC<Props> = ({ value, onChange, network, p
           {s.error}
         </p>
       )}
+    </div>
+  );
+};
+
+/**
+ * AWS IAM Identity Center sign-in: start URL, region, a clear **Sign in** button, the sign-in status and, once signed
+ * in, account and role pickers. Shared by the S3 profile form, the AWS sign-in list, the SSM profile form and the
+ * instance import dialog so that signing in looks and behaves the same everywhere.
+ */
+export const AwsSsoSignInPanel: React.FC<Props> = ({ value, onChange, network, pickAccountRole = true, idPrefix = 'aws-sso' }) => {
+  const s = useAwsSsoSignIn({ value, onChange, network, pickAccountRole });
+  const signedIn = s.status?.status === 'valid';
+
+  return (
+    <div className="flex flex-col gap-3">
+      <AwsSsoSignInFields value={value} onChange={onChange} s={s} idPrefix={idPrefix} />
 
       {pickAccountRole && signedIn && !s.manualEntry && (
         <div className="grid grid-cols-2 gap-3">

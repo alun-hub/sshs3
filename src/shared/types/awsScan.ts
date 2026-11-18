@@ -54,6 +54,17 @@ export interface AwsScanResult {
   searched: number;
 }
 
+/** One chosen instance, ready to become a profile. */
+export interface AwsPickItem {
+  instance: ScannedInstance;
+  /** How to reach it: the credential source of the account/profile it was found with. */
+  source: AwsCredentialSource;
+  /** Profile name, already unique within its folder. */
+  name: string;
+  username: string;
+  folder: string;
+}
+
 export interface AwsScanProgress {
   done: number;
   total: number;

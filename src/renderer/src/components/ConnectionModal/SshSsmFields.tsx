@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { SshSsmConfig } from '@shared/types/ssm';
+import { ssmConfigForSource } from '@shared/ssmProfileFactory';
 import { ssmProblem } from '../../lib/ssmProfile';
 import { AwsInstancePickerModal } from '../AwsInstancePickerModal';
 import { AwsSsoSignInPanel } from '../AwsSsoSignInPanel';
@@ -86,7 +87,8 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
               initialSso={ssm.sso ? { startUrl: ssm.sso.startUrl, region: ssm.sso.region } : undefined}
               onClose={() => setPicking(false)}
               onPick={(r) => {
-                onChange({ enabled: true, region: r.region, sso: r.sso }, { host: r.instances[0].instanceId, username: r.username });
+                const item = r.items[0];
+                if (item) onChange(ssmConfigForSource(item.source, item.instance.region), { host: item.instance.instanceId, username: item.username });
                 setPicking(false);
               }}
             />
