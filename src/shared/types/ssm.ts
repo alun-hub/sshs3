@@ -37,14 +37,3 @@ export interface SsmInstance {
   ipAddress?: string;
   pingStatus?: 'Online' | 'ConnectionLost' | 'Inactive';
 }
-
-export interface SsmDiscoveryRequest {
-  sso: AwsSsoConfig;
-  region: string;
-}
-
-export interface SsmDiscoveryResult {
-  instances: SsmInstance[];
-  /** True when the result was cut at the cap; the user should narrow by account/region. */
-  truncated: boolean;
-}

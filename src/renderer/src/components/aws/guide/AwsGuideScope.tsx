@@ -7,6 +7,8 @@ const input = 'rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5
 const link = 'text-xs text-sky-400 hover:underline';
 
 interface Props {
+  /** The portal would not list accounts: let the user type account ids instead (SSO sign-in only). */
+  manualAccounts?: { text: string; onText: (text: string) => void; role?: string; onRole?: (r: string) => void };
   /** Accounts to choose from (SSO sign-in only). */
   accounts?: readonly AwsSsoAccount[];
   selectedAccounts?: ReadonlySet<string>;
@@ -40,7 +42,28 @@ export const AwsGuideScope: React.FC<Props> = (p) => {
 
   return (
     <div className="flex flex-col gap-4">
-      {p.accounts && (
+      {p.manualAccounts && (
+        <section className="flex flex-col gap-2" aria-label="Accounts and role">
+          <p className="text-txt-muted">This sign-in cannot list accounts. Enter the account IDs and the role name instead.</p>
+          <label className="flex flex-col gap-1 text-txt-secondary">
+            Account IDs (comma separated)
+            <textarea
+              data-testid="guide-account-ids"
+              value={p.manualAccounts.text}
+              onChange={(e) => p.manualAccounts?.onText(e.target.value)}
+              rows={2}
+              placeholder="123456789012, 210987654321"
+              className={`${input} font-mono`}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-txt-secondary">
+            Role
+            <input data-testid="guide-role" value={p.role ?? ''} onChange={(e) => p.onRole?.(e.target.value.trim())} placeholder="e.g. ReadOnlyAccess" className={`${input} font-mono`} />
+          </label>
+        </section>
+      )}
+
+      {p.accounts && !p.manualAccounts && (
         <section className="flex flex-col gap-2" aria-label="Accounts and role">
           <div className="flex items-end justify-between gap-3">
             <label className="flex min-w-0 flex-1 flex-col gap-1 text-txt-secondary">

@@ -3,17 +3,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Data the mocked SSM paginator returns, keyed `${targetTag}|${region}`; an Error value makes that search fail.
 const data = new Map<string, Array<Record<string, unknown>> | Error>();
 const ec2 = { names: new Map<string, string>(), denied: false, calls: 0 };
-const live = { active: 0, max: 0 };
+const live = { active: 0, max: 0, destroyed: 0, hang: false, waiters: [] as Array<() => void> };
 
 vi.mock('@aws-sdk/client-ssm', () => ({
   SSMClient: class {
     config: { region: string; credentials: { tag: string } };
     constructor(cfg: { region: string; credentials: { tag: string } }) { this.config = cfg; }
-    destroy() {}
+    destroy() { live.destroyed++; live.waiters.splice(0).forEach((f) => f()); }
   },
   paginateDescribeInstanceInformation: async function* ({ client }: { client: { config: { region: string; credentials: { tag: string } } } }) {
     live.active++; live.max = Math.max(live.max, live.active);
     try {
+      if (live.hang) await new Promise<void>((_, reject) => { live.waiters.push(() => reject(new Error('socket closed'))); });
       await new Promise((r) => setTimeout(r, 5));
       const entry = data.get(`${client.config.credentials.tag}|${client.config.region}`) ?? [];
       if (entry instanceof Error) throw entry;
@@ -41,7 +42,7 @@ const target = (tag: string, extra: Partial<AwsScanTarget> = {}): AwsScanTarget 
 });
 const credentialsFor = (t: AwsScanTarget) => Object.assign(async () => ({ accessKeyId: 'x', secretAccessKey: 'y' }), { tag: t.id }) as never;
 
-beforeEach(() => { data.clear(); ec2.names.clear(); ec2.denied = false; ec2.calls = 0; live.active = 0; live.max = 0; });
+beforeEach(() => { live.hang = false; live.destroyed = 0; live.waiters = []; data.clear(); ec2.names.clear(); ec2.denied = false; ec2.calls = 0; live.active = 0; live.max = 0; });
 
 describe('scanInstances', () => {
   it('merges accounts and regions, tags each instance with its origin and reports progress', async () => {
@@ -83,6 +84,18 @@ describe('scanInstances', () => {
     const regions = ['us-east-1', 'us-east-2', 'us-west-1', 'us-west-2', 'eu-west-1'];
     const r = await scanInstances({ targets: [target('a')], regions }, { credentialsFor, concurrency: 1, includeNames: false, signal: ac.signal, onProgress: () => ac.abort() });
     expect(r.searched).toBeLessThan(regions.length);
+  });
+
+  it('ends requests that are still in flight when cancelled, without reporting them as failures', async () => {
+    live.hang = true; // a region that never answers
+    const ac = new AbortController();
+    const running = scanInstances({ targets: [target('a')], regions: ['us-east-1', 'eu-west-1'] }, { credentialsFor, includeNames: false, signal: ac.signal, concurrency: 2 });
+    await new Promise((r) => setTimeout(r, 20));
+    ac.abort();
+    const r = await Promise.race([running, new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), 1000))]);
+    expect(r).not.toBe('timeout');
+    expect((r as { skipped: unknown[] }).skipped).toEqual([]);
+    expect(live.destroyed).toBeGreaterThanOrEqual(2);
   });
 
   it('hides Windows nodes unless asked, and caps the result', async () => {

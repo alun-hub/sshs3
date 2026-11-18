@@ -27,6 +27,39 @@ describe('shareCredentials', () => {
   });
 });
 
+describe('shareCredentials single flight', () => {
+  it('runs one refresh when many callers see expiring credentials at once', async () => {
+    let calls = 0;
+    const provider = vi.fn(async () => {
+      calls++;
+      await new Promise((r) => setTimeout(r, 5));
+      return { expiration: new Date(Date.now() + (calls === 1 ? 60_000 : 3600_000)) }; // the first result is already inside the margin
+    });
+    const shared = shareCredentials(provider);
+    const results = await Promise.all([shared(), shared(), shared(), shared()]);
+    expect(provider).toHaveBeenCalledTimes(2); // the first call plus ONE refresh, not one per caller
+    expect(new Set(results).size).toBe(1); // everyone ends up with the refreshed credentials
+    await shared();
+    expect(provider).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a failed provider once for the next call, not once per waiting caller', async () => {
+    let calls = 0;
+    const provider = vi.fn(async () => {
+      calls++;
+      await new Promise((r) => setTimeout(r, 5));
+      if (calls === 1) throw new Error('needs MFA');
+      return { expiration: new Date(Date.now() + 3600_000) };
+    });
+    const shared = shareCredentials(provider);
+    const first = await Promise.allSettled([shared(), shared(), shared()]);
+    expect(first.every((r) => r.status === 'rejected')).toBe(true);
+    expect(provider).toHaveBeenCalledTimes(1);
+    await expect(shared()).resolves.toBeDefined();
+    expect(provider).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('buildCredentialProvider validation', () => {
   it('rejects unsafe profile names and incomplete SSO targets before touching the SDK', () => {
     expect(() => buildCredentialProvider({ kind: 'profile', name: '$(id)' })).toThrow(/Invalid AWS CLI profile/);

@@ -1,4 +1,4 @@
-import { hostIsValid, trimProfileFields, withSsm } from '../../lib/ssmProfile';
+import { hostIsValid, ssmProblem, trimProfileFields, withSsm } from '../../lib/ssmProfile';
 import { SshSsmFields } from './SshSsmFields';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -1209,7 +1209,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           <button
             type="submit"
             disabled={!isValid}
-            title={isValid ? undefined : 'Fill in profile name, hostname and username first'}
+            title={isValid ? undefined : ssmProblem(config) ?? 'Fill in profile name, hostname and username first'}
             className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
           >
             Save Profile

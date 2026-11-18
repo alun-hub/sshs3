@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ssoTargets, profileTargets, defaultTargets, initialRegions, takenNamesByFolder, alreadyAdded, buildPickItems } from '../../src/renderer/src/lib/awsGuide';
+import { ssoTargets, profileTargets, defaultTargets, initialRegions, takenNamesByFolder, alreadyAdded, buildPickItems, parseAccountIds } from '../../src/renderer/src/lib/awsGuide';
 import { buildProfilesFromPicks, ssmConfigForSource } from '../../src/shared/ssmProfileFactory';
 import type { ScannedInstance, AwsScanTarget } from '../../src/shared/types/awsScan';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
@@ -66,5 +66,12 @@ describe('buildPickItems and profiles', () => {
 
   it('ignores instances whose target is unknown', () => {
     expect(buildPickItems([inst('9', { targetId: 'gone' })], targets, {})).toEqual([]);
+  });
+});
+
+describe('parseAccountIds', () => {
+  it('reads 12-digit ids separated by commas, spaces or newlines, once each', () => {
+    expect(parseAccountIds('123456789012, 210987654321;123456789012\nabc 12345 1234567890123').map((a) => a.accountId)).toEqual(['123456789012', '210987654321']);
+    expect(parseAccountIds('')).toEqual([]);
   });
 });

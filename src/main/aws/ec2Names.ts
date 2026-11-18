@@ -19,13 +19,16 @@ export async function fetchEc2Names(
   region: string,
   credentials: AwsCredentials,
   requestHandler?: unknown,
-  overrides: Record<string, unknown> = {}
+  overrides: Record<string, unknown> = {},
+  signal?: AbortSignal
 ): Promise<{ names: Map<string, string>; denied: boolean }> {
   const names = new Map<string, string>();
   const ec2Ids = instanceIds.filter((id) => id.startsWith('i-'));
   if (ec2Ids.length === 0) return { names, denied: false };
   const { EC2Client, DescribeInstancesCommand } = await import('@aws-sdk/client-ec2');
   const client = new EC2Client({ region, credentials, ...(requestHandler ? { requestHandler: requestHandler as never } : {}), ...overrides });
+  const abort = () => client.destroy();
+  signal?.addEventListener('abort', abort, { once: true });
   try {
     for (let i = 0; i < ec2Ids.length; i += CHUNK) {
       const resp = await client.send(new DescribeInstancesCommand({ InstanceIds: ec2Ids.slice(i, i + CHUNK) }));
@@ -42,6 +45,7 @@ export async function fetchEc2Names(
     // Any other failure (throttling, network) must not break the scan; names are a nicety.
     return { names, denied: false };
   } finally {
+    signal?.removeEventListener('abort', abort);
     client.destroy();
   }
 }

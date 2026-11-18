@@ -1,4 +1,4 @@
-import type { AwsSsmTools, SsmDiscoveryRequest, SsmDiscoveryResult } from './ssm';
+import type { AwsSsmTools } from './ssm';
 import { AWS_SCAN_CHANNELS, type AwsScanElectronApi } from './awsScanIpc';
 import type { UpdateState } from './update';
 import type {
@@ -316,7 +316,6 @@ export const IPC_CHANNELS = {
 
   // SSH over AWS Systems Manager
   AWS_SSM_CHECK_TOOLS: 'aws-ssm:check-tools',
-  AWS_SSM_DISCOVER_INSTANCES: 'aws-ssm:discover-instances',
   ...AWS_SCAN_CHANNELS,
 
   // Git & Git Provider Integration
@@ -892,8 +891,6 @@ export interface MultiSSHApi extends AwsScanElectronApi {
   awsSsoLogin(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginResult>;
   /** Detects the `aws` CLI and `session-manager-plugin` needed for SSH over AWS SSM. */
   awsSsmCheckTools(): Promise<AwsSsmTools>;
-  /** Lists SSM-managed instances for an SSO account/role and region (the user must be signed in). */
-  awsSsmDiscoverInstances(request: SsmDiscoveryRequest): Promise<SsmDiscoveryResult>;
   awsSsoCancelLogin(id: string): Promise<void>;
   onAwsSsoPrompt(callback: (event: AwsSsoPromptEvent) => void): () => void;
   /** Fires with the prompt id once a login attempt has ended (approved, failed, expired or cancelled). */

@@ -97,6 +97,9 @@ export async function scanInstances(req: AwsScanRequest, opts: ScanOptions = {})
       requestHandler: handler,
       ...(opts.clientOverrides?.(target, region) ?? {}),
     });
+    // Cancel must not leave requests hanging (a blackholed region can take minutes): closing the client ends them now.
+    const abort = () => client.destroy();
+    opts.signal?.addEventListener('abort', abort, { once: true });
     try {
       const records: Array<Record<string, unknown>> = [];
       const pages = paginateDescribeInstanceInformation(
@@ -112,7 +115,7 @@ export async function scanInstances(req: AwsScanRequest, opts: ScanOptions = {})
 
       let names = new Map<string, string>();
       if ((opts.includeNames ?? true) && instances.length > 0 && !namesDenied.has(target.id)) {
-        const r = await fetchEc2Names(instances.map((i) => i.instanceId), region, creds, handler, opts.ec2Overrides);
+        const r = await fetchEc2Names(instances.map((i) => i.instanceId), region, creds, handler, opts.ec2Overrides, opts.signal);
         names = r.names;
         if (r.denied) namesDenied.add(target.id);
       }
@@ -127,8 +130,10 @@ export async function scanInstances(req: AwsScanRequest, opts: ScanOptions = {})
         });
       }
     } catch (err) {
-      skipped.push({ targetId: target.id, label: target.label, region, ...classifyScanError(err) });
+      // A search that was cancelled is not a failure to report.
+      if (!opts.signal?.aborted) skipped.push({ targetId: target.id, label: target.label, region, ...classifyScanError(err) });
     } finally {
+      opts.signal?.removeEventListener('abort', abort);
       client.destroy();
     }
   };

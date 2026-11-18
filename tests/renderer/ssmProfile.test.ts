@@ -41,3 +41,15 @@ describe('trimProfileFields', () => {
     expect(out).toEqual({ host: 'i-0123456789abcdef0', username: 'ec2-user', port: 22 });
   });
 });
+
+describe('ssmProblem with a jump host or proxy', () => {
+  const host = 'i-0123456789abcdef0';
+  it('flags the combination the connect path refuses, even when it was switched on after SSM', () => {
+    expect(ssmProblem({ host, ssm: { enabled: true }, proxyJump: 'a@b' })).toMatch(/Turn off the jump host and the outgoing proxy/);
+    expect(ssmProblem({ host, ssm: { enabled: true }, proxyJumpProfileId: 'x' })).toMatch(/jump host/);
+    expect(ssmProblem({ host, ssm: { enabled: true }, proxy: { enabled: true, type: 'http', host: 'p', port: 1 } })).toMatch(/proxy/);
+    expect(ssmProblem({ host, ssm: { enabled: true }, proxy: { enabled: false, type: 'http', host: 'p', port: 1 }, proxyJump: ' ' })).toBeUndefined();
+    expect(hostIsValid({ host, ssm: { enabled: true }, proxyJump: 'a@b' })).toBe(false);
+    expect(hostIsValid({ host: 'example.com', proxyJump: 'a@b' })).toBe(true); // not an SSM profile
+  });
+});

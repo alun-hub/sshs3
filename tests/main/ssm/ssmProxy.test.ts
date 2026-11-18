@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm, setSsmAllowed } from '../../../src/main/ssh/ssmProxy';
+import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm, setSsmAllowed, networkEnvFor } from '../../../src/main/ssh/ssmProxy';
 import { buildSsoConfigFile, ensureSsoConfigFile, ssoProfileName } from '../../../src/main/aws/ssoConfigFile';
 import { candidateDirs, findExecutable, pathDirs, pluginStatusFromVersion, toolDirsMissingFromPath } from '../../../src/main/aws/AwsSsmToolchain';
 import { SmartcardDetector } from '../../../src/main/smartcard/SmartcardDetector';
@@ -188,5 +188,20 @@ describe('AWS network settings in the ssh environment', () => {
       expect(SmartcardDetector.buildProxyEnv(base())).not.toHaveProperty('HTTPS_PROXY'); // credentials never go into the environment
     } finally { setAwsNetworkSettings(undefined); }
     expect(SmartcardDetector.buildProxyEnv(base())).not.toHaveProperty('HTTPS_PROXY');
+  });
+});
+
+describe('networkEnvFor casing', () => {
+  const net = { httpsProxy: 'http://proxy.corp:3128', customCaPath: '/etc/corp-ca.pem' };
+  it('sets both spellings on POSIX so an ambient lower-case variable cannot win', () => {
+    expect(networkEnvFor(net, { https_proxy: 'http://old:1' }, 'linux')).toEqual({ HTTPS_PROXY: 'http://proxy.corp:3128', https_proxy: 'http://proxy.corp:3128', AWS_CA_BUNDLE: '/etc/corp-ca.pem' });
+  });
+  it('reuses the spelling already in the Windows environment so there is one entry', () => {
+    expect(networkEnvFor(net, { Https_Proxy: 'http://old:1' }, 'win32')).toEqual({ Https_Proxy: 'http://proxy.corp:3128', AWS_CA_BUNDLE: '/etc/corp-ca.pem' });
+    expect(networkEnvFor(net, {}, 'win32')).toEqual({ HTTPS_PROXY: 'http://proxy.corp:3128', AWS_CA_BUNDLE: '/etc/corp-ca.pem' });
+  });
+  it('adds nothing without a proxy', () => {
+    expect(networkEnvFor({ customCaPath: '/ca.pem' }, {}, 'linux')).toEqual({ AWS_CA_BUNDLE: '/ca.pem' });
+    expect(networkEnvFor(undefined, {}, 'win32')).toEqual({});
   });
 });

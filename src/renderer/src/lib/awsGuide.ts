@@ -96,3 +96,16 @@ export function buildPickItems(
 export function instanceKey(i: Pick<ScannedInstance, 'targetId' | 'region' | 'instanceId'>): string {
   return `${i.targetId}\u0000${i.region}\u0000${i.instanceId}`;
 }
+
+/** Account ids typed by hand (comma, space or newline separated); anything that is not 12 digits is ignored. */
+export function parseAccountIds(text: string): AwsSsoAccount[] {
+  const seen = new Set<string>();
+  const out: AwsSsoAccount[] = [];
+  for (const part of text.split(/[\s,;]+/)) {
+    if (/^\d{12}$/.test(part) && !seen.has(part)) {
+      seen.add(part);
+      out.push({ accountId: part });
+    }
+  }
+  return out;
+}

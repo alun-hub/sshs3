@@ -51,7 +51,7 @@ import type {
   SshCaVaultDetectRequest,
   SshCaVaultDetectResult,
 } from '../shared/types/sshCa';
-import type { AwsSsmTools, SsmDiscoveryRequest, SsmDiscoveryResult } from '../shared/types/ssm';
+import type { AwsSsmTools } from '../shared/types/ssm';
 import { awsScanApi } from './awsScanApi';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
 import type {
@@ -735,8 +735,6 @@ export const api: MultiSSHApi = {
 
   awsSsmCheckTools: (): Promise<AwsSsmTools> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSM_CHECK_TOOLS),
   ...awsScanApi,
-  awsSsmDiscoverInstances: (request: SsmDiscoveryRequest): Promise<SsmDiscoveryResult> =>
-    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSM_DISCOVER_INSTANCES, request),
 
   awsSsoReloginProvider: (providerId: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, providerId),

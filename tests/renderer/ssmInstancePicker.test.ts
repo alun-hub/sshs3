@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterInstances, suggestLogin, toggleSelection } from '../../src/renderer/src/lib/ssmInstancePicker';
+import { filterInstances, toggleSelection } from '../../src/renderer/src/lib/ssmInstancePicker';
 import type { SsmInstance } from '../../src/shared/types/ssm';
 
 const list: SsmInstance[] = [
@@ -15,11 +15,6 @@ describe('ssm instance picker helpers', () => {
     expect(filterInstances(list, 'amazon')[0].name).toBe('db-1');
     expect(filterInstances(list, '10.0.1')).toHaveLength(1);
     expect(filterInstances(list, 'nope')).toHaveLength(0);
-  });
-  it('suggests a login from the first selected instance', () => {
-    expect(suggestLogin([list[0]])).toBe('ubuntu');
-    expect(suggestLogin([list[1], list[0]])).toBe('ec2-user');
-    expect(suggestLogin([])).toBe('ec2-user');
   });
   it('toggles selections in single and multi mode', () => {
     expect([...toggleSelection(new Set(['a']), 'b', true)]).toEqual(['b']);

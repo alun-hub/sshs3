@@ -123,6 +123,25 @@ describe('AwsInstancePickerModal (SSO sign-in)', () => {
   });
 });
 
+describe('AwsInstancePickerModal (portal cannot list accounts)', () => {
+  it('lets the user type account ids and a role, and searches those accounts', async () => {
+    api.awsSsoListAccountsCached.mockRejectedValue(new Error('not allowed'));
+    open();
+    const ids = await screen.findByTestId('guide-account-ids');
+    expect(screen.getByText(/cannot list accounts/)).toBeInTheDocument();
+    expect(screen.getByTestId('guide-search')).toBeDisabled();
+    expect(screen.getByText('Enter at least one account ID.')).toBeInTheDocument();
+    fireEvent.change(ids, { target: { value: '111111111111, 222222222222, nonsense' } });
+    fireEvent.change(screen.getByTestId('guide-role'), { target: { value: 'Dev' } });
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    const req = (api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: Array<{ id: string; source: { sso: { accountId: string; roleName: string } } }> } }])[0].request;
+    expect(req.targets.map((t) => [t.id, t.source.sso.accountId, t.source.sso.roleName])).toEqual([['acct-111111111111', '111111111111', 'Dev'], ['acct-222222222222', '222222222222', 'Dev']]);
+    api.awsSsoListAccountsCached.mockResolvedValue([{ accountId: '111111111111', accountName: 'Prod' }, { accountId: '222222222222', accountName: 'Dev' }] as never);
+  });
+});
+
 describe('AwsInstancePickerModal (AWS CLI profiles and default credentials)', () => {
   it('searches the chosen CLI profile with the profile as credential source', async () => {
     settings = { awsRegions: 'eu-north-1' }; // no saved sign-in: the profile source is offered first

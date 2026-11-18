@@ -151,5 +151,7 @@ describe('aws profiles', () => {
   it('turns SDK errors into advice', () => {
     expect(describeProfileError(new Error('The SSO session associated with this profile has expired'), 'p')).toMatch(/expired/);
     expect(describeProfileError(new Error('weird'), 'p')).toBe('weird');
+    // an invalid or rejected token is not an expired sign-in: say what AWS said instead of looping through sign-in
+    expect(describeProfileError(new Error('The security token included in the request is invalid'), 'p')).toBe('The security token included in the request is invalid');
   });
 });

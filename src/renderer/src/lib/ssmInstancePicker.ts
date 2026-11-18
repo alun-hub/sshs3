@@ -1,4 +1,3 @@
-import { suggestLoginName } from '@shared/ssm';
 import type { SsmInstance } from '@shared/types/ssm';
 
 /** Case-insensitive match on name, instance id, platform and IP; an empty query keeps everything. */
@@ -8,11 +7,6 @@ export function filterInstances(instances: readonly SsmInstance[], query: string
   return instances.filter((i) =>
     [i.name, i.instanceId, i.platformName, i.platformType, i.ipAddress].some((v) => v?.toLowerCase().includes(q))
   );
-}
-
-/** Suggested SSH login for the picked instances: the first one's platform decides (the user can edit it). */
-export function suggestLogin(selected: readonly SsmInstance[]): string {
-  return suggestLoginName(selected[0]?.platformName);
 }
 
 /** Toggles one id in a selection; `single` mode keeps at most one. */

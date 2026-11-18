@@ -18,17 +18,19 @@ export function withSsm(
 }
 
 /** First problem that would make the main process refuse this SSM profile at connect time, or undefined. */
-export function ssmProblem(config: Pick<SSHConnectionConfig, 'host' | 'ssm'>): string | undefined {
+export function ssmProblem(config: Pick<SSHConnectionConfig, 'host' | 'ssm'> & Partial<Pick<SSHConnectionConfig, 'proxy' | 'proxyJump' | 'proxyJumpProfileId'>>): string | undefined {
   const ssm = config.ssm;
   if (!ssm?.enabled) return undefined;
   const base = validateSsmConfig(ssm, config.host.trim());
   if (base) return base;
   if (ssm.sso && (!ssm.sso.accountId || !ssm.sso.roleName)) return 'Enter the SSO account ID and role name';
+  // Enabling SSM clears these, but the form lets them be switched on again afterwards; the connect path refuses the mix.
+  if (config.proxy?.enabled || config.proxyJump?.trim() || config.proxyJumpProfileId) return 'Turn off the jump host and the outgoing proxy: they cannot be combined with SSM';
   return undefined;
 }
 
 /** Whether the profile can be saved: a hostname, and with SSM on, settings the connect path will accept. */
-export function hostIsValid(config: Pick<SSHConnectionConfig, 'host' | 'ssm'>): boolean {
+export function hostIsValid(config: Parameters<typeof ssmProblem>[0]): boolean {
   return config.host.trim() !== '' && ssmProblem(config) === undefined;
 }
 

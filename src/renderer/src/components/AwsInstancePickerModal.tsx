@@ -7,7 +7,7 @@ import { offersAwsSsoSignIn } from '@shared/types/aws';
 import type { AwsCliProfile, AwsPickItem, AwsProfileStatus, AwsScanTarget } from '@shared/types/awsScan';
 import type { AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
-import { alreadyAdded, buildPickItems, defaultTargets, initialRegions, instanceKey, profileTargets, ssoTargets, takenNamesByFolder } from '../lib/awsGuide';
+import { alreadyAdded, buildPickItems, defaultTargets, initialRegions, instanceKey, parseAccountIds, profileTargets, ssoTargets, takenNamesByFolder } from '../lib/awsGuide';
 import { describeIpcError } from '../lib/format';
 import { toggleSelection } from '../lib/ssmInstancePicker';
 import { useAwsScan } from '../lib/useAwsScan';
@@ -60,6 +60,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [role, setRole] = useState('');
   const [roleOptions, setRoleOptions] = useState<string[]>([]);
+  const [manualText, setManualText] = useState('');
   const [regions, setRegions] = useState<string[]>([]);
   const regionsTouched = useRef(false);
 
@@ -161,12 +162,22 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
     if (!profileStatus[name]) void checkProfile(name);
   };
 
+  // Some permission sets cannot list accounts through the portal: then account ids are typed in.
+  const manualAccounts = kind === 'sso' && signedIn && signInState.manualEntry;
+
   // What a search would look at right now.
   const targets: AwsScanTarget[] = useMemo(() => {
-    if (kind === 'sso') return ssoTargets({ startUrl: normalizeStartUrl(sso.startUrl), region: sso.region.trim() }, signInState.accounts, selectedAccounts, role);
+    if (kind === 'sso') {
+      const start = { startUrl: normalizeStartUrl(sso.startUrl), region: sso.region.trim() };
+      if (manualAccounts) {
+        const typed = parseAccountIds(manualText);
+        return ssoTargets(start, typed, new Set(typed.map((a) => a.accountId)), role);
+      }
+      return ssoTargets(start, signInState.accounts, selectedAccounts, role);
+    }
     if (kind === 'profile') return profileTargets([...chosenProfiles]);
     return defaultTargets();
-  }, [kind, sso, signInState.accounts, selectedAccounts, role, chosenProfiles]);
+  }, [kind, sso, signInState.accounts, selectedAccounts, role, chosenProfiles, manualAccounts, manualText]);
   const canSearch = regions.length > 0 && targets.length > 0 && (kind !== 'sso' || (signedIn && role.trim() !== '')) && scan.state.phase !== 'running';
 
   const search = () => {
@@ -233,7 +244,8 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
 
         {(kind !== 'sso' || signedIn) && (
           <AwsGuideScope
-            accounts={kind === 'sso' ? signInState.accounts : undefined}
+            accounts={kind === 'sso' && !manualAccounts ? signInState.accounts : undefined}
+            manualAccounts={manualAccounts ? { text: manualText, onText: setManualText, role, onRole: setRole } : undefined}
             selectedAccounts={selectedAccounts}
             onToggleAccount={(id) => setSelectedAccounts((cur) => toggleSelection(cur, id, false))}
             onSelectAccounts={(ids) => setSelectedAccounts(new Set(ids))}
@@ -257,7 +269,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
           </button>
           {!canSearch && scan.state.phase !== 'running' && (
             <span className="text-txt-muted">
-              {kind === 'sso' && !signedIn ? 'Sign in first.' : targets.length === 0 ? (kind === 'sso' ? 'Select at least one account.' : 'Choose a profile.') : kind === 'sso' && !role.trim() ? 'Enter the role name.' : 'Select at least one region.'}
+              {kind === 'sso' && !signedIn ? 'Sign in first.' : targets.length === 0 ? (kind === 'sso' ? (manualAccounts ? 'Enter at least one account ID.' : 'Select at least one account.') : 'Choose a profile.') : kind === 'sso' && !role.trim() ? 'Enter the role name.' : 'Select at least one region.'}
             </span>
           )}
         </div>

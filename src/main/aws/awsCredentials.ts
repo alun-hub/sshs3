@@ -17,24 +17,20 @@ const REFRESH_MARGIN_MS = 5 * 60_000;
  */
 export function shareCredentials(provider: () => Promise<{ expiration?: Date }>): () => Promise<any> {
   let current: Promise<{ expiration?: Date }> | undefined;
-  return () => {
-    if (current) {
-      return current.then(
-        (c) => {
-          if (c.expiration && c.expiration.getTime() - Date.now() < REFRESH_MARGIN_MS) {
-            current = provider();
-            return current;
-          }
-          return c;
-        },
-        () => {
-          current = provider();
-          return current;
-        }
-      );
+  const expiring = (c: { expiration?: Date }) => c.expiration !== undefined && c.expiration.getTime() - Date.now() < REFRESH_MARGIN_MS;
+  return async () => {
+    const mine = (current ??= provider());
+    try {
+      const c = await mine;
+      if (!expiring(c)) return c;
+      // Near expiry: the first caller to notice starts the refresh; the others wait for that same promise.
+      if (current === mine) current = provider();
+      return await current;
+    } catch (err) {
+      // A failed provider is retried by the next call, not by every caller that was waiting on it.
+      if (current === mine) current = undefined;
+      throw err;
     }
-    current = provider();
-    return current;
   };
 }
 

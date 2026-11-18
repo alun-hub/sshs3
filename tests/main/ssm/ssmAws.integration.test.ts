@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { discoverInstances } from '../../../src/main/aws/AwsSsmDiscoveryService';
 import { AwsSsoAuthService } from '../../../src/main/aws/AwsSsoAuthService';
 import { scanInstances } from '../../../src/main/aws/awsScanService';
 import { suggestLoginName } from '../../../src/shared/ssm';
@@ -11,17 +10,15 @@ import { suggestLoginName } from '../../../src/shared/ssm';
  */
 const instance = process.env.SSHS3_AWS_TEST_INSTANCE;
 const region = process.env.SSHS3_AWS_TEST_REGION ?? 'eu-north-1';
-const SSO = { startUrl: 'https://d-1.awsapps.com/start', region, accountId: '123456789012', roleName: 'Unused' };
 
-describe.skipIf(!instance)('discoverInstances against real AWS', () => {
+describe.skipIf(!instance)('scanInstances against real AWS with explicit credentials', () => {
   it('lists the SSM-managed node with sanitised fields and a sensible login suggestion', async () => {
-    const r = await discoverInstances({ sso: SSO, region }, {}, {
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-        sessionToken: process.env.AWS_SESSION_TOKEN,
-      },
-    });
+    const credentials = {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      sessionToken: process.env.AWS_SESSION_TOKEN,
+    };
+    const r = await scanInstances({ targets: [{ id: 't', label: 't', source: { kind: 'default' } }], regions: [region] }, { includeNames: false, clientOverrides: () => ({ credentials }) });
     const found = r.instances.find((i) => i.instanceId === instance);
     expect(found).toBeDefined();
     expect(found).toMatchObject({ platformType: 'Linux', pingStatus: 'Online' });
@@ -108,8 +105,9 @@ describe.skipIf(!ssoUrl || !instance || !key)('IAM Identity Center sign-in throu
 
     const sso = { startUrl: ssoUrl!, region: ssoRegion, accountId, roleName };
     // fromSSO + the token cache the sign-in just wrote
-    const found = await discoverInstances({ sso, region });
+    const found = await scanInstances({ targets: [{ id: 'sso', label: 'sso', source: { kind: 'sso', sso } }], regions: [region] }, { includeNames: false });
     expect(found.instances.map((i) => i.instanceId)).toContain(instance);
+    expect(found.skipped).toEqual([]);
 
     // AWS CLI v2 reading the app-owned legacy SSO profile with the shared token cache, via the real ProxyCommand
     const r = sshThroughSsm({ enabled: true, region, sso });

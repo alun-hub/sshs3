@@ -6,6 +6,7 @@ import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { SshSsmConfig } from '../../shared/types/ssm';
 import { awsNetworkEnv } from '../../shared/awsSignIns';
 import { getAwsNetworkSettings } from '../aws/awsNetworkSettings';
+import type { AwsNetworkSettings } from '../../shared/types/aws';
 import { toolDirsMissingFromPath } from '../aws/AwsSsmToolchain';
 import { ensureSsoConfigFile, ssoProfileName } from '../aws/ssoConfigFile';
 import { SSM_START_SESSION_POSIX, SSM_START_SESSION_WINDOWS, validateSsmConfig } from '../../shared/ssm';
@@ -129,5 +130,24 @@ export function ssmEnvOverlay(config: SSHConnectionConfig): Record<string, strin
   const dirs = toolDirsMissingFromPath();
   const cfg = ssm.sso ? ssoConfigPath(ssm.sso) : undefined;
   // The CLI needs the same proxy/CA as sshs3's own AWS calls; both are plain environment values, never credentials.
-  return { ...awsNetworkEnv(getAwsNetworkSettings()), ...buildSsmEnv(ssm, dirs, process.env, process.platform, cfg) };
+  return { ...networkEnvFor(getAwsNetworkSettings(), process.env, process.platform), ...buildSsmEnv(ssm, dirs, process.env, process.platform, cfg) };
+}
+
+/**
+ * Proxy and CA bundle for the `aws` CLI, in the casing the child will actually read: POSIX tools (botocore among them)
+ * prefer the lower-case proxy variable, so both spellings are set there; Windows names are case-insensitive, so the
+ * spelling already present in the environment is reused to avoid two entries that differ only by case.
+ */
+export function networkEnvFor(net: AwsNetworkSettings | undefined, baseEnv: NodeJS.ProcessEnv, platform: NodeJS.Platform): Record<string, string> {
+  const env = awsNetworkEnv(net);
+  if (!env.HTTPS_PROXY) return env;
+  if (platform === 'win32') {
+    const existing = Object.keys(baseEnv).find((k) => k.toUpperCase() === 'HTTPS_PROXY');
+    if (existing && existing !== 'HTTPS_PROXY') {
+      env[existing] = env.HTTPS_PROXY;
+      delete env.HTTPS_PROXY;
+    }
+    return env;
+  }
+  return { ...env, https_proxy: env.HTTPS_PROXY };
 }

@@ -34,7 +34,8 @@ export function describeProfileError(err: unknown, name: string): string {
   if (/mfa|token code/i.test(message)) {
     return `This profile needs an MFA code. Run "aws sts get-caller-identity --profile ${name}" once in a terminal, then try again.`;
   }
-  if (/sso|token|expired/i.test(message)) return `The sign-in for this profile has expired. Sign in again.`;
+  // Only a lapsed session says "expired": other token errors (invalid or rejected credentials) keep their own message.
+  if (/sso session|session .*expired|token (has )?expired|expired token|refresh token|sso token/i.test(message)) return `The sign-in for this profile has expired. Sign in again.`;
   return message.replace(/^Error:\s*/, '') || 'Could not get credentials for this profile';
 }
 

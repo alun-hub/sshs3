@@ -1,9 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mapInstances, sanitizeAwsText } from '../../src/shared/ssm';
-import { buildProfilesFromInstances, ssmFolder } from '../../src/shared/ssmProfileFactory';
 
 const ID = 'i-0123456789abcdef0';
-const SSO = { startUrl: 'https://d-1.awsapps.com/start', region: 'eu-north-1', accountId: '123456789012', roleName: 'Admin' };
 
 describe('mapInstances', () => {
   it('maps tolerant records and drops entries without a valid instance id', () => {
@@ -28,23 +26,5 @@ describe('mapInstances', () => {
   it('sanitizeAwsText handles non-strings', () => {
     expect(sanitizeAwsText(undefined)).toBe('');
     expect(sanitizeAwsText(5)).toBe('');
-  });
-});
-
-describe('buildProfilesFromInstances', () => {
-  const instances = mapInstances([{ InstanceId: ID, ComputerName: 'web-1' }, { InstanceId: 'i-0123456789abcdef1' }]);
-  it('builds one SSM profile per instance in the account/region folder', () => {
-    let n = 0;
-    const out = buildProfilesFromInstances(instances, { sso: SSO, region: 'eu-north-1', username: 'ec2-user', newId: () => `id${++n}` });
-    expect(out).toHaveLength(2);
-    expect(out[0]).toMatchObject({ id: 'id1', name: 'web-1', host: ID, username: 'ec2-user', authType: 'agent', group: 'AWS/123456789012/eu-north-1' });
-    expect(out[0].ssm).toEqual({ enabled: true, region: 'eu-north-1', sso: SSO });
-    expect(out[0].ssm!.sso).not.toBe(SSO);
-    expect(out[1].name).toBe('i-0123456789abcdef1');
-    expect(ssmFolder(SSO, 'eu-north-1')).toBe('AWS/123456789012/eu-north-1');
-  });
-  it('skips instances that already have a profile and duplicates', () => {
-    const out = buildProfilesFromInstances([...instances, ...instances], { sso: SSO, region: 'eu-north-1', username: 'u', existing: new Set([ID]) });
-    expect(out.map((p) => p.host)).toEqual(['i-0123456789abcdef1']);
   });
 });

@@ -12,7 +12,6 @@ archive:compress
 archive:extract
 askpass:submit-pin
 aws-ssm:check-tools
-aws-ssm:discover-instances
 aws-ssm:list-profiles
 aws-ssm:profile-login
 aws-ssm:profile-status
