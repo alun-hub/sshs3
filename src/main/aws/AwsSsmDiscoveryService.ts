@@ -1,4 +1,4 @@
-import { SSMClient, paginateDescribeInstanceInformation } from '@aws-sdk/client-ssm';
+import { SSMClient, paginateDescribeInstanceInformation, type SSMClientConfig } from '@aws-sdk/client-ssm';
 import { fromSSO } from '@aws-sdk/credential-provider-sso';
 import { MAX_DISCOVERED_INSTANCES, isValidRegion, isValidSsoConfig, mapInstances } from '../../shared/ssm';
 import type { AwsSsoNetworkOptions } from '../../shared/types/aws';
@@ -11,7 +11,12 @@ import { buildAwsNodeHttpHandler } from './buildAwsNodeHttpHandler';
  * Lists SSM-managed nodes (`DescribeInstanceInformation`) in one account/role and region, using the
  * token sshs3 already cached for IAM Identity Center. Read-only; no credentials leave this process.
  */
-export async function discoverInstances(req: SsmDiscoveryRequest, network: AwsSsoNetworkOptions = {}): Promise<SsmDiscoveryResult> {
+export async function discoverInstances(
+  req: SsmDiscoveryRequest,
+  network: AwsSsoNetworkOptions = {},
+  /** Main-process-internal test seam (endpoint, credentials, TLS trust for a local emulator); never reachable from IPC. */
+  clientOverrides: Partial<SSMClientConfig> = {}
+): Promise<SsmDiscoveryResult> {
   if (!isValidSsoConfig(req.sso) || !req.sso.accountId || !req.sso.roleName) {
     throw new Error('Choose an AWS account and role first');
   }
@@ -28,6 +33,7 @@ export async function discoverInstances(req: SsmDiscoveryRequest, network: AwsSs
       ssoRoleName: req.sso.roleName,
       clientConfig: { requestHandler: handler },
     }),
+    ...clientOverrides,
   });
 
   try {
