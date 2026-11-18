@@ -123,6 +123,57 @@ describe('AwsInstancePickerModal (SSO sign-in)', () => {
   });
 });
 
+describe('AwsInstancePickerModal (how the imported profiles connect)', () => {
+  async function toResults(onPick = vi.fn()) {
+    open('multi', onPick);
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    fireEvent.click(await screen.findByRole('option', { name: /web-1/ }));
+    return onPick;
+  }
+
+  it('defaults to SSH over SSM with the SSH agent', async () => {
+    const onPick = await toResults();
+    expect(screen.getByRole('radio', { name: 'SSH over SSM' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'SSH agent' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
+    await waitFor(() => expect(onPick).toHaveBeenCalled());
+    expect(onPick.mock.calls[0][0].items[0]).toMatchObject({ mode: 'ssh', authType: 'agent' });
+  });
+
+  it('needs a key file path before importing with a private key, then passes it on', async () => {
+    const onPick = await toResults();
+    fireEvent.click(screen.getByRole('radio', { name: 'Private key file' }));
+    expect(screen.getByRole('button', { name: 'Import selected (1)' })).toBeDisabled();
+    fireEvent.change(screen.getByTestId('guide-key-path'), { target: { value: ' ~/.ssh/sshs3-ssm-test ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
+    await waitFor(() => expect(onPick).toHaveBeenCalled());
+    expect(onPick.mock.calls[0][0].items[0]).toMatchObject({ mode: 'ssh', authType: 'privateKey', privateKeyPath: '~/.ssh/sshs3-ssm-test' });
+  });
+
+  it('imports Session Manager shell profiles without SSH login or key questions', async () => {
+    const onPick = await toResults();
+    expect(screen.getByLabelText('SSH login for web-1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'Session Manager shell (no SSH)' }));
+    expect(screen.queryByLabelText('SSH login for web-1')).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'SSH agent' })).toBeNull();
+    expect(screen.getByText(/needs no SSH daemon or key/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
+    await waitFor(() => expect(onPick).toHaveBeenCalled());
+    expect(onPick.mock.calls[0][0].items[0]).toMatchObject({ mode: 'shell' });
+  });
+
+  it('does not ask in single mode (the profile form has its own connection settings)', async () => {
+    open('single');
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    expect(screen.queryByRole('radiogroup', { name: 'Connection type' })).toBeNull();
+  });
+});
+
 describe('AwsInstancePickerModal (portal cannot list accounts)', () => {
   it('lets the user type account ids and a role, and searches those accounts', async () => {
     api.awsSsoListAccountsCached.mockRejectedValue(new Error('not allowed'));

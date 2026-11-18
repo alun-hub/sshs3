@@ -65,7 +65,8 @@ export function buildPickItems(
   chosen: readonly ScannedInstance[],
   targets: ReadonlyMap<string, AwsScanTarget>,
   usernames: Readonly<Record<string, string>>,
-  taken: ReadonlyMap<string, ReadonlySet<string>> = new Map()
+  taken: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
+  connect: Pick<AwsPickItem, 'mode' | 'authType' | 'privateKeyPath'> = {}
 ): AwsPickItem[] {
   const byFolder = new Map<string, ScannedInstance[]>();
   const folderOf = new Map<string, string>();
@@ -86,6 +87,7 @@ export function buildPickItems(
         name: names.get(i.instanceId) ?? i.name,
         username: usernames[i.instanceId]?.trim() || suggestLoginName(i.platformName),
         folder,
+        ...connect,
       });
     }
   }

@@ -1,4 +1,4 @@
-import { hostIsValid, ssmProblem, trimProfileFields, withSsm } from '../../lib/ssmProfile';
+import { hostIsValid, ssmProblem, trimProfileFields, usernameOk, withSsm } from '../../lib/ssmProfile';
 import { SshSsmFields } from './SshSsmFields';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -294,7 +294,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     void scanFido2ResidentKeys();
   }, [config.authType, config.fido2Resident]);
 
-  const isValid = config.name.trim() && hostIsValid(config) && config.username.trim();
+  const isValid = config.name.trim() && hostIsValid(config) && usernameOk(config);
 
   // A saved result no longer applies once anything the chain depends on changes.
   const accessResetKey = [

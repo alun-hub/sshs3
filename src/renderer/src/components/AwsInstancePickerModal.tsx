@@ -14,6 +14,7 @@ import { useAwsScan } from '../lib/useAwsScan';
 import { useAwsSsoSignIn } from '../lib/useAwsSsoSignIn';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { useModalDismiss } from '../lib/useModalDismiss';
+import { AwsGuideConnect, type ConnectChoice } from './aws/guide/AwsGuideConnect';
 import { AwsGuideResults } from './aws/guide/AwsGuideResults';
 import { AwsGuideScope } from './aws/guide/AwsGuideScope';
 import { AwsGuideSource, type SourceKind } from './aws/guide/AwsGuideSource';
@@ -69,6 +70,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
   const lastTargets = useRef<Map<string, AwsScanTarget>>(new Map());
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [usernames, setUsernames] = useState<Record<string, string>>({});
+  const [connect, setConnect] = useState<ConnectChoice>({ mode: 'ssh', authType: 'agent', privateKeyPath: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -196,7 +198,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
     setSaving(true);
     setError(null);
     try {
-      await onPick({ items: buildPickItems(chosen, lastTargets.current, usernames, takenNamesByFolder(profiles)) });
+      await onPick({ items: buildPickItems(chosen, lastTargets.current, usernames, takenNamesByFolder(profiles), single ? {} : { mode: connect.mode, authType: connect.authType, privateKeyPath: connect.privateKeyPath || undefined }) });
     } catch (err) {
       setError(describeIpcError(err, 'Could not import the selected instances'));
       setSaving(false);
@@ -280,11 +282,14 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
           single={single}
           selected={selectedKeys}
           onToggle={(key) => setSelectedKeys((cur) => toggleSelection(cur, key, single))}
+          showLogin={single || connect.mode === 'ssh'}
           usernames={usernames}
           onUsername={(id, v) => setUsernames((u) => ({ ...u, [id]: v }))}
           added={added}
           onCancel={scan.cancel}
         />
+
+        {!single && result && result.instances.length > 0 && <AwsGuideConnect value={connect} onChange={(patch) => setConnect((c) => ({ ...c, ...patch }))} />}
 
         {(error || scanError) && (
           <p role="alert" className="text-red-400">
@@ -298,7 +303,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={saving || chosen.length === 0}
+            disabled={saving || chosen.length === 0 || (!single && connect.mode === 'ssh' && connect.authType === 'privateKey' && !connect.privateKeyPath)}
             className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
           >
             {single ? 'Use selected' : `Import selected${chosen.length ? ` (${chosen.length})` : ''}`}

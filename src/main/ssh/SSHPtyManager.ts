@@ -5,6 +5,7 @@ import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
 import path from 'node:path';
 import fs from 'node:fs';
+import { buildSsmShellSpawn, isSsmShell } from './ssmProxy';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
@@ -546,6 +547,7 @@ export class SSHPtyManager extends EventEmitter {
    * Reconnects an existing session by spawning a new underlying SSH process.
    */
   public async reconnectSession(session: InternalSSHPtySession): Promise<boolean> {
+    if (isSsmShell(session.config)) return false; // a Session Manager shell ends with its process
     const config = session.config;
     const options = this.sessionOptions.get(session.sessionId);
     const cols = session.cols;
@@ -605,6 +607,7 @@ export class SSHPtyManager extends EventEmitter {
     config: SSHConnectionConfig,
     options?: PtyOptions
   ): Promise<SSHPtySession> {
+    if (isSsmShell(config)) return this.createSsmShellSession(config, options);
     const sessionId = config.id || `ssh-${crypto.randomUUID()}`;
     this.sessionOptions.set(sessionId, options);
     const cols = options?.cols ?? 80;
@@ -768,6 +771,16 @@ export class SSHPtyManager extends EventEmitter {
     return session;
   }
 
+  /** A Session Manager shell: `aws ssm start-session` in a PTY instead of `ssh` (no askpass, mux or tunnels; IAM decides). */
+  private async createSsmShellSession(config: SSHConnectionConfig, options?: PtyOptions): Promise<SSHPtySession> {
+    const sessionId = config.id || `ssm-${crypto.randomUUID()}`;
+    const { file, args, env } = buildSsmShellSpawn(config, options?.env);
+    const [cols, rows] = [options?.cols ?? 80, options?.rows ?? 24];
+    const pty = getSpawn()(file, args, { cols, rows, cwd: options?.cwd ?? (process.env.HOME || process.env.USERPROFILE || process.cwd()), env });
+    const session = new InternalSSHPtySession({ sessionId, config, pty, cols, rows, manager: this });
+    this.sessions.set(sessionId, session);
+    return session;
+  }
   /**
    * Spawns a local shell PTY session (e.g. bash or powershell/cmd).
    */

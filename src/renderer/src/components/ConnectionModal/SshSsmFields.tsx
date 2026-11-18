@@ -52,7 +52,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
   const patch = (p: Partial<SshSsmConfig>) => onChange({ enabled: true, ...ssm, ...p });
 
   const setSource = (next: CredentialSource) => {
-    const base: SshSsmConfig = { enabled: true, region: ssm?.region };
+    const base: SshSsmConfig = { enabled: true, ...(ssm?.mode ? { mode: ssm.mode } : {}), region: ssm?.region };
     if (next === 'profile') onChange({ ...base, awsProfile: '' });
     else if (next === 'sso') onChange({ ...base, sso: { startUrl: signIns[0]?.startUrl ?? '', region: signIns[0]?.region ?? 'us-east-1' } });
     else onChange(base);
@@ -85,8 +85,8 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
       {enabled && ssm && (
         <div className="mt-2.5 flex flex-col gap-2.5 border-t border-divider pt-2">
           <p className="text-xs text-txt-muted">
-            Enter the instance ID as hostname (i-0123456789abcdef0). The instance still needs an SSH daemon and SSH
-            authentication; SSM only carries the connection. A jump host or outgoing proxy cannot be combined with SSM.
+            Enter the instance ID as hostname (i-0123456789abcdef0). With SSH over SSM the instance still needs an SSH daemon
+            and SSH authentication; SSM only carries the connection. A jump host or outgoing proxy cannot be combined with SSM.
           </p>
           {host.trim() !== '' && ssmProblem({ host, ssm }) && (
             <p role="alert" className="text-xs text-red-400">
@@ -111,10 +111,28 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
               onClose={() => setPicking(false)}
               onPick={(r) => {
                 const item = r.items[0];
-                if (item) onChange(ssmConfigForSource(item.source, item.instance.region), { host: item.instance.instanceId, username: item.username });
+                if (item) onChange(ssmConfigForSource(item.source, item.instance.region, ssm.mode), { host: item.instance.instanceId, username: item.username });
                 setPicking(false);
               }}
             />
+          )}
+
+          <label className="flex flex-col gap-1 text-txt-secondary">
+            Connection type
+            <select
+              data-testid="ssm-mode"
+              value={ssm.mode ?? 'ssh'}
+              onChange={(e) => patch({ mode: e.target.value === 'shell' ? 'shell' : undefined })}
+              className={inputCls}
+            >
+              <option value="ssh">SSH over SSM (files, tunnels and editing work)</option>
+              <option value="shell">Session Manager shell (no SSH, no keys)</option>
+            </select>
+          </label>
+          {ssm.mode === 'shell' && (
+            <p role="note" className="text-xs text-txt-muted">
+              Opens a shell through Session Manager like the AWS console: IAM decides who may connect, and the instance needs no SSH daemon or key. Terminal only: the file manager, tunnels and key install need SSH. The SSH user and authentication below are not used.
+            </p>
           )}
 
           <div className="grid grid-cols-2 gap-2.5">

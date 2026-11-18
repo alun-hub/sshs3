@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm, setSsmAllowed, networkEnvFor } from '../../../src/main/ssh/ssmProxy';
+import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm, setSsmAllowed, networkEnvFor, buildSsmShellSpawn, isSsmShell, SSM_SHELL_NO_SSH_MESSAGE } from '../../../src/main/ssh/ssmProxy';
 import { buildSsoConfigFile, ensureSsoConfigFile, ssoProfileName } from '../../../src/main/aws/ssoConfigFile';
 import { candidateDirs, findExecutable, pathDirs, pluginStatusFromVersion, toolDirsMissingFromPath } from '../../../src/main/aws/AwsSsmToolchain';
 import { SmartcardDetector } from '../../../src/main/smartcard/SmartcardDetector';
@@ -203,5 +203,52 @@ describe('networkEnvFor casing', () => {
   it('adds nothing without a proxy', () => {
     expect(networkEnvFor({ customCaPath: '/ca.pem' }, {}, 'linux')).toEqual({ AWS_CA_BUNDLE: '/ca.pem' });
     expect(networkEnvFor(undefined, {}, 'win32')).toEqual({});
+  });
+});
+
+describe('Session Manager shell mode', () => {
+  const shell = (ssm: NonNullable<SSHConnectionConfig['ssm']>, over: Partial<SSHConnectionConfig> = {}) => base({ ssm: { mode: 'shell', ...ssm }, ...over });
+
+  it('is recognised only for enabled SSM profiles with mode shell', () => {
+    expect(isSsmShell(shell({ enabled: true }))).toBe(true);
+    expect(isSsmShell(base())).toBe(false);
+    expect(isSsmShell(base({ ssm: { enabled: true, mode: 'ssh' } }))).toBe(false);
+    expect(isSsmShell(base({ ssm: undefined }))).toBe(false);
+  });
+
+  it('builds the aws command for each credential source with validated arguments only', () => {
+    const def = buildSsmShellSpawn(shell({ enabled: true }));
+    expect(def.args).toEqual(['ssm', 'start-session', '--target', ID]);
+    expect(buildSsmShellSpawn(shell({ enabled: true, region: 'eu-north-1', awsProfile: 'prod' })).args).toEqual(['ssm', 'start-session', '--target', ID, '--region', 'eu-north-1', '--profile', 'prod']);
+    const sso = buildSsmShellSpawn(shell({ enabled: true, region: 'eu-north-1', sso: SSO }));
+    expect(sso.args.slice(0, 4)).toEqual(['ssm', 'start-session', '--target', ID]);
+    expect(sso.args).toContain('--profile');
+    expect(sso.args[sso.args.indexOf('--profile') + 1]).toMatch(/^sshs3-[0-9a-f]{12}$/);
+    expect(sso.env.AWS_CONFIG_FILE).toMatch(/\.config$/); // the app-owned config for the sign-in
+    expect(sso.env.TERM).toBe('xterm-256color');
+    expect(sso.env.AWS_ACCESS_KEY_ID).toBe(''); // ambient keys are cleared when sshs3 chose the source
+  });
+
+  it('adds the AWS network settings to the environment and the caller env on top', async () => {
+    const { setAwsNetworkSettings } = await import('../../../src/main/aws/awsNetworkSettings');
+    setAwsNetworkSettings({ httpsProxy: 'http://proxy.corp:3128' });
+    try {
+      const spawn = buildSsmShellSpawn(shell({ enabled: true }), { EXTRA: '1' });
+      expect(spawn.env.HTTPS_PROXY).toBe('http://proxy.corp:3128');
+      expect(spawn.env.EXTRA).toBe('1');
+    } finally { setAwsNetworkSettings(undefined); }
+  });
+
+  it('refuses hostile or incomplete settings and the policy switch', () => {
+    expect(() => buildSsmShellSpawn(base())).toThrow(/does not use a Session Manager shell/);
+    expect(() => buildSsmShellSpawn(shell({ enabled: true }, { host: 'example.com; rm -rf /' }))).toThrow(/Instance ID/);
+    expect(() => buildSsmShellSpawn(shell({ enabled: true, awsProfile: '$(id)' }))).toThrow(/profile/);
+    expect(() => buildSsmShellSpawn(shell({ enabled: true, mode: 'weird' as never }))).toThrow();
+    setSsmAllowed(false);
+    try { expect(() => buildSsmShellSpawn(shell({ enabled: true }))).toThrow(/disabled by your administrator/); } finally { setSsmAllowed(true); }
+  });
+
+  it('keeps every ssh-based feature from silently using a shell profile', () => {
+    expect(() => SmartcardDetector.buildSSHArguments(shell({ enabled: true }))).toThrow(SSM_SHELL_NO_SSH_MESSAGE);
   });
 });

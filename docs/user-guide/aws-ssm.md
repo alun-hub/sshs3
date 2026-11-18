@@ -1,6 +1,13 @@
 ## SSH over AWS Systems Manager (Experimental)
 
-Connect to EC2 instances (or hybrid nodes) that have no public SSH port by tunnelling SSH through AWS Systems Manager Session Manager. sshs3 hands OpenSSH the AWS-documented `ProxyCommand`, so the terminal, file manager, editor, search, directory sync, tunnels and key install all work like on any other SSH profile. You can type an instance ID, or sign in once and let sshs3 list what you have across accounts and regions.
+Connect to EC2 instances (or hybrid nodes) that have no public SSH port through AWS Systems Manager Session Manager. There are two connection types:
+
+| Connection type | What you get | What it needs |
+|-----------------|--------------|---------------|
+| **SSH over SSM** | A normal SSH profile: terminal, file manager, editor, search, directory sync, tunnels and key install. sshs3 hands OpenSSH the AWS-documented `ProxyCommand`. | sshd on the instance and SSH authentication (agent or key). |
+| **Session Manager shell** | A terminal like **Connect → Session Manager** in the EC2 console. IAM decides who may connect; you log in as `ssm-user`. | Only the SSM Agent and IAM permissions: no sshd, no key. Terminal only; files, tunnels and key install need SSH. |
+
+You can type an instance ID, or sign in once and let sshs3 list what you have across accounts and regions.
 
 > [!IMPORTANT]
 > This feature is **Experimental**. It has been tested end to end on Linux (Fedora) against a live AWS account with Amazon Linux 2023: an AWS CLI profile (`aws login`), the default credential chain and IAM Identity Center sign-in. Windows is verified for the `ProxyCommand` hand-off only, and Debian/Ubuntu, very large organizations, SCP region restrictions and corporate proxies are covered by automated tests but not yet tried against real environments.
@@ -15,7 +22,7 @@ Connect to EC2 instances (or hybrid nodes) that have no public SSH port by tunne
 | IAM permissions | `ssm:StartSession` on the instance and on the document `AWS-StartSSHSession`, plus `ssmmessages:OpenDataChannel`. Listing also needs `ssm:DescribeInstanceInformation`; names from the EC2 `Name` tag need `ec2:DescribeInstances` (optional). |
 
 > [!NOTE]
-> SSM only carries the TCP connection. You still need SSH authentication (key, agent or password) as for any profile.
+> With **SSH over SSM**, SSM only carries the TCP connection: you still need SSH authentication (key, agent or password) as for any profile. A Permission denied (publickey…) error means the instance does not accept the key you offered; choose a key file that matches the instance's key pair, or use a Session Manager shell.
 
 ## 2. Turn on AWS features
 
@@ -39,9 +46,10 @@ Press **Add from AWS…** in the SSH tab of the connection manager (or in the AW
 | **Credentials** | **AWS sign-in (SSO)** uses a saved sign-in or a start URL you type (the access portal URL `https://d-….awsapps.com/start`, or for newer instances `https://identitycenter.amazonaws.com/ssoins-…`). **AWS CLI profiles** lists the profiles in `~/.aws/config` and `~/.aws/credentials` (SSO, assume-role, access keys, `aws login`, credential process); **Check** shows whether one can produce credentials and **Sign in** runs `aws sso login --profile` for an SSO profile. **Default credentials** uses environment variables, your default profile or an instance role. |
 | **Accounts and role** | For SSO: tick the accounts and enter one role name used in all of them. Accounts without that role are skipped. |
 | **Regions** | Tick the regions to search. The list from **Settings → AWS** (or policy) is preselected. |
+| **Connect with** | Appears once instances are found: **SSH over SSM** (with **SSH agent** or a **Private key file**) or **Session Manager shell (no SSH)**. It applies to all instances you import in this run. |
 | **Instances** | **Find instances** searches every account and region at once, shows progress and can be cancelled. Results are grouped by account and region; nodes that already have a profile are marked **Already added**. Set the SSH login per instance (suggested from the platform) and press **Import selected**. |
 
-Imported profiles go into the folder `AWS/<account>/<region>`, use agent authentication and carry the credentials they were found with. If two nodes in a folder share a name, the instance ID is appended so they do not become one "system" with **Connect all**.
+Imported profiles go into the folder `AWS/<account>/<region>` and carry the credentials they were found with. Shell profiles show **SSM shell** in the list and have no SSH user. If two nodes in a folder share a name, the instance ID is appended so they do not become one "system" with **Connect all**.
 
 > [!NOTE]
 > Only nodes that are online in Systems Manager are listed (EC2 instances and hybrid `mi-…` nodes), so an instance without the SSM Agent or an instance profile will not appear, and the list cannot tell whether an SSH daemon is running. Windows nodes are hidden. Names come from the EC2 `Name` tag when the role may read it, otherwise from the host name. A search is cut at 500 instances; searches denied by the organization (for example a region blocked by policy) are skipped and summarized.
@@ -49,8 +57,9 @@ Imported profiles go into the folder `AWS/<account>/<region>`, use agent authent
 ## 4. A single profile
 
 1. Open the SSH profile form and enable **Connect via AWS Systems Manager (SSM)**.
-2. Press **Pick from AWS…** to choose the instance from a list, or enter the instance ID (`i-0123456789abcdef0`) as **Hostname** and the SSH user (for example `ec2-user` on Amazon Linux, `ubuntu` on Ubuntu).
-3. Choose **AWS credentials**:
+2. Choose the **Connection type**: **SSH over SSM** or **Session Manager shell (no SSH, no keys)**.
+3. Press **Pick from AWS…** to choose the instance from a list, or enter the instance ID (`i-0123456789abcdef0`) as **Hostname** and the SSH user (for example `ec2-user` on Amazon Linux, `ubuntu` on Ubuntu).
+4. Choose **AWS credentials**:
 
 | Source | Use when |
 |--------|----------|
@@ -58,7 +67,7 @@ Imported profiles go into the folder `AWS/<account>/<region>`, use agent authent
 | AWS CLI profile | A named profile (any kind the AWS CLI supports); detected profiles are suggested. |
 | Default credentials | You already use the AWS CLI with environment variables or a default profile. |
 
-4. Set the **Region of the instance** (required with SSO sign-in, because the Identity Center home region is often a different one).
+5. Set the **Region of the instance** (required with SSO sign-in, because the Identity Center home region is often a different one).
 
 A jump host or outgoing proxy cannot be combined with SSM; enabling SSM clears them. An SSM profile also cannot be used as another profile's jump host. The sign-in used with SSO: the access portal needs permission sets enabled; an instance that uses *account access manager* without permission sets cannot be used for this sign-in, so use an AWS CLI profile instead.
 
@@ -84,7 +93,8 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 - sshs3's own sign-in has no refresh token: sign in again when the Identity Center session ends (the AWS button turns amber). CLI profiles with an `sso-session` refresh on their own.
 - On Windows every connection opens its own SSM session (no connection sharing).
 - SSM profiles are not exported to `~/.ssh/config`, and the performance bar does not show a TCP ping.
-- Plain SSM shell without sshd and custom SSM documents are not available yet.
+- A Session Manager shell is terminal only (no file manager, editor, tunnels or key install), has no automatic reconnect, and logs in as the account AWS gives its sessions (`ssm-user` unless configured otherwise in Session Manager preferences).
+- Custom SSM documents and port forwarding through Session Manager are not available yet.
 
 ## 7. Troubleshooting & Diagnostics
 
@@ -93,6 +103,7 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 | No AWS button, no **Add from AWS…** | AWS features are off | Enable them under **Settings → AWS** (or ask your administrator if the switch is locked). |
 | Tool panel says **Missing** | AWS CLI or plugin not installed, or not in a standard folder | Install both; the panel updates on its own, or press **Check again**. |
 | Panel says **Too old** | Session Manager plugin below 1.1.23.0 | Update the plugin. |
+| "Permission denied (publickey…)" | SSH over SSM reached the instance, but it does not accept the key | Pick a key file that matches the instance's key pair in the profile, load the key into your agent, or use a Session Manager shell. |
 | Connection closes immediately | Wrong region, instance not SSM-managed, no IAM permission, or no SSH daemon | Check the **Region of the instance**, that the instance appears in Systems Manager Fleet Manager, the permissions above, and that `sshd` runs. |
 | "Instance ID must look like i-…" | Hostname is a DNS name | Enter the instance ID, or disable SSM. |
 | Sign-in expired | Identity Center session ended | Terminals sign in again automatically; otherwise use the AWS button or **Settings → AWS**, then reconnect. |

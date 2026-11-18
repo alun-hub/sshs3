@@ -59,6 +59,7 @@ export function isValidSsoConfig(value: unknown): value is AwsSsoConfig {
 /** First problem with an SSM config as a short message, or undefined when it is usable. */
 export function validateSsmConfig(ssm: SshSsmConfig, host: unknown): string | undefined {
   if (!isValidInstanceId(host)) return 'Instance ID must look like i-0123456789abcdef0 (or mi-… for a hybrid node)';
+  if (ssm.mode !== undefined && ssm.mode !== 'ssh' && ssm.mode !== 'shell') return 'Invalid connection type';
   if (ssm.sso !== undefined && !ssm.region) return 'Choose the AWS region of the instance';
   if (ssm.region !== undefined && !isValidRegion(ssm.region)) return 'Invalid AWS region';
   if (ssm.awsProfile !== undefined && !isValidAwsProfile(ssm.awsProfile)) return 'Invalid AWS CLI profile name';
@@ -71,6 +72,7 @@ export function validateSsmConfig(ssm: SshSsmConfig, host: unknown): string | un
 export function ssmEqual(a: SshSsmConfig | undefined, b: SshSsmConfig | undefined): boolean {
   if (!a?.enabled || !b?.enabled) return Boolean(a?.enabled) === Boolean(b?.enabled);
   return (
+    (a.mode ?? 'ssh') === (b.mode ?? 'ssh') &&
     (a.region ?? '') === (b.region ?? '') &&
     (a.awsProfile ?? '') === (b.awsProfile ?? '') &&
     (a.sso?.startUrl ?? '') === (b.sso?.startUrl ?? '') &&

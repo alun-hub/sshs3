@@ -19,7 +19,7 @@ describe('ssmProfile', () => {
   });
 });
 
-import { ssmProblem } from '../../src/renderer/src/lib/ssmProfile';
+import { ssmProblem, usernameOk, profileTarget } from '../../src/renderer/src/lib/ssmProfile';
 describe('ssmProblem', () => {
   const host = 'i-0123456789abcdef0';
   it('flags settings the connect path would refuse', () => {
@@ -51,5 +51,20 @@ describe('ssmProblem with a jump host or proxy', () => {
     expect(ssmProblem({ host, ssm: { enabled: true }, proxy: { enabled: false, type: 'http', host: 'p', port: 1 }, proxyJump: ' ' })).toBeUndefined();
     expect(hostIsValid({ host, ssm: { enabled: true }, proxyJump: 'a@b' })).toBe(false);
     expect(hostIsValid({ host: 'example.com', proxyJump: 'a@b' })).toBe(true); // not an SSM profile
+  });
+});
+
+describe('Session Manager shell profiles', () => {
+  it('need no SSH username, and every other profile still does', () => {
+    expect(usernameOk({ username: '', ssm: { enabled: true, mode: 'shell' } })).toBe(true);
+    expect(usernameOk({ username: '', ssm: { enabled: true } })).toBe(false);
+    expect(usernameOk({ username: ' ' })).toBe(false);
+    expect(usernameOk({ username: 'u' })).toBe(true);
+  });
+  it('shows what a shell profile is instead of user@host', () => {
+    const p = { username: 'ssm-user', host: 'i-0123456789abcdef0', port: 22, authType: 'agent' as const };
+    expect(profileTarget({ ...p, ssm: { enabled: true, mode: 'shell' } }, ' · agent')).toBe('Session Manager shell · i-0123456789abcdef0 · agent');
+    expect(profileTarget(p, ' · agent')).toBe('ssm-user@i-0123456789abcdef0:22 · agent');
+    expect(profileTarget({ ...p, ssm: { enabled: true } }, '')).toBe('ssm-user@i-0123456789abcdef0:22');
   });
 });

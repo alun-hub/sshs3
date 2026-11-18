@@ -64,6 +64,23 @@ describe('buildPickItems and profiles', () => {
     expect(ssmConfigForSource({ kind: 'default' }, 'eu-north-1')).toEqual({ enabled: true, region: 'eu-north-1' });
   });
 
+  it('creates SSH profiles with a key file or the agent, and Session Manager shell profiles without SSH settings', () => {
+    const base = buildPickItems(chosen.slice(0, 1), targets, {});
+    const key = buildProfilesFromPicks(buildPickItems(chosen.slice(0, 1), targets, {}, new Map(), { mode: 'ssh', authType: 'privateKey', privateKeyPath: '/home/u/.ssh/test-key' }))[0];
+    expect(key).toMatchObject({ authType: 'privateKey', privateKeyPath: '/home/u/.ssh/test-key', username: 'ec2-user' });
+    expect(key.ssm!.mode).toBeUndefined();
+    // a key file chosen without a path falls back to the agent instead of saving a broken profile
+    expect(buildProfilesFromPicks(buildPickItems(chosen.slice(0, 1), targets, {}, new Map(), { mode: 'ssh', authType: 'privateKey' }))[0]).toMatchObject({ authType: 'agent' });
+    expect(buildProfilesFromPicks(base)[0]).toMatchObject({ authType: 'agent' });
+
+    const shell = buildProfilesFromPicks(buildPickItems(chosen.slice(0, 1), targets, { [inst('1').instanceId]: 'deploy' }, new Map(), { mode: 'shell', authType: 'privateKey', privateKeyPath: '/k' }))[0];
+    expect(shell.ssm).toMatchObject({ enabled: true, mode: 'shell', region: 'eu-north-1' });
+    expect(shell).toMatchObject({ username: 'ssm-user', authType: 'agent' });
+    expect(shell).not.toHaveProperty('privateKeyPath');
+    expect(ssmConfigForSource({ kind: 'profile', name: 'p' }, 'eu-north-1', 'shell')).toEqual({ enabled: true, mode: 'shell', region: 'eu-north-1', awsProfile: 'p' });
+    expect(ssmConfigForSource({ kind: 'default' }, 'eu-north-1', 'ssh')).toEqual({ enabled: true, region: 'eu-north-1' });
+  });
+
   it('ignores instances whose target is unknown', () => {
     expect(buildPickItems([inst('9', { targetId: 'gone' })], targets, {})).toEqual([]);
   });

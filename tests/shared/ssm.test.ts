@@ -79,3 +79,17 @@ describe('normalizeStartUrl', () => {
     expect(normalizeStartUrl('https://d-1.awsapps.com/start')).toBe('https://d-1.awsapps.com/start');
   });
 });
+
+describe('connection type', () => {
+  it('accepts ssh and shell and rejects anything else', () => {
+    const host = 'i-0123456789abcdef0';
+    expect(validateSsmConfig({ enabled: true, mode: 'shell' }, host)).toBeUndefined();
+    expect(validateSsmConfig({ enabled: true, mode: 'ssh' }, host)).toBeUndefined();
+    expect(validateSsmConfig({ enabled: true }, host)).toBeUndefined();
+    expect(validateSsmConfig({ enabled: true, mode: 'exec' as never }, host)).toBe('Invalid connection type');
+  });
+  it('treats a change of connection type as a change (Team Vault routing guard)', () => {
+    expect(ssmEqual({ enabled: true }, { enabled: true, mode: 'ssh' })).toBe(true);
+    expect(ssmEqual({ enabled: true }, { enabled: true, mode: 'shell' })).toBe(false);
+  });
+});

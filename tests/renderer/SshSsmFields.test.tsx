@@ -78,4 +78,18 @@ describe('SshSsmFields (simplified)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Pick from AWS/ }));
     expect(await screen.findByRole('dialog', { name: 'Pick an AWS instance' })).toBeInTheDocument();
   });
+
+  it('switches between SSH over SSM and a Session Manager shell and keeps the choice when the credentials change', async () => {
+    render(<Harness initial={{ enabled: true, region: 'eu-north-1' }} />);
+    const mode = await screen.findByTestId('ssm-mode');
+    expect(mode).toHaveValue('ssh');
+    expect(screen.queryByText(/Terminal only/)).toBeNull();
+    fireEvent.change(mode, { target: { value: 'shell' } });
+    expect(latest.ssm).toMatchObject({ enabled: true, mode: 'shell', region: 'eu-north-1' });
+    expect(screen.getByRole('note')).toHaveTextContent('Terminal only');
+    fireEvent.change(screen.getByLabelText('AWS credentials'), { target: { value: 'profile' } });
+    expect(latest.ssm).toMatchObject({ mode: 'shell', awsProfile: '' });
+    fireEvent.change(screen.getByTestId('ssm-mode'), { target: { value: 'ssh' } });
+    expect(latest.ssm).not.toHaveProperty('mode', 'shell');
+  });
 });

@@ -1,5 +1,5 @@
 import type { AwsSsoConfig } from './aws';
-import type { SsmInstance } from './ssm';
+import type { SsmInstance, SsmMode } from './ssm';
 
 /** Where AWS credentials for a scan come from. */
 export type AwsCredentialSource =
@@ -63,6 +63,11 @@ export interface AwsPickItem {
   name: string;
   username: string;
   folder: string;
+  /** SSH over SSM (default) or a Session Manager shell. */
+  mode?: SsmMode;
+  /** SSH authentication of the new profile (SSH mode only). */
+  authType?: 'agent' | 'privateKey';
+  privateKeyPath?: string;
 }
 
 export interface AwsScanProgress {

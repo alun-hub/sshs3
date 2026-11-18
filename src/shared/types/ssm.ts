@@ -5,8 +5,13 @@ import type { AwsSsoConfig } from './aws';
  * `aws ssm start-session --document-name AWS-StartSSHSession` as its ProxyCommand.
  * At most one of `awsProfile` / `sso` is set; neither = the AWS CLI's default credential chain.
  */
+/** `ssh` = SSH over SSM (needs sshd and SSH authentication); `shell` = a Session Manager shell, IAM only, terminal only. */
+export type SsmMode = 'ssh' | 'shell';
+
 export interface SshSsmConfig {
   enabled: true;
+  /** Default `ssh`. */
+  mode?: SsmMode;
   region?: string;
   /** Name of an existing AWS CLI profile (e.g. after `aws sso login`). */
   awsProfile?: string;

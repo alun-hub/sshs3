@@ -41,3 +41,14 @@ export function hostIsValid(config: Parameters<typeof ssmProblem>[0]): boolean {
 export function trimProfileFields<T extends { host: string; username: string }>(config: T): T {
   return { ...config, host: config.host.trim(), username: config.username.trim() };
 }
+
+/** Whether the SSH username is filled in; a Session Manager shell has no SSH login, so it may be empty. */
+export function usernameOk(config: Pick<SSHConnectionConfig, 'username' | 'ssm'>): boolean {
+  return config.username.trim() !== '' || (config.ssm?.enabled === true && config.ssm.mode === 'shell');
+}
+
+/** The `user@host:port · auth` line of a profile row; a Session Manager shell shows what it is instead. */
+export function profileTarget(p: Pick<SSHConnectionConfig, 'username' | 'host' | 'port' | 'authType' | 'ssm'>, suffix: string): string {
+  if (p.ssm?.enabled && p.ssm.mode === 'shell') return `Session Manager shell · ${p.host}${suffix}`;
+  return `${p.username}@${p.host}:${p.port ?? 22}${suffix}`;
+}

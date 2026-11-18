@@ -1,12 +1,13 @@
 import type { SSHConnectionConfig } from './types/ssh';
-import type { SshSsmConfig } from './types/ssm';
+import type { SshSsmConfig, SsmMode } from './types/ssm';
 import type { AwsCredentialSource, AwsPickItem } from './types/awsScan';
 
 /** The `ssm` settings of a profile for a credential source and the region its instance runs in. */
-export function ssmConfigForSource(source: AwsCredentialSource, region: string): SshSsmConfig {
-  if (source.kind === 'sso') return { enabled: true, region, sso: { ...source.sso } };
-  if (source.kind === 'profile') return { enabled: true, region, awsProfile: source.name };
-  return { enabled: true, region };
+export function ssmConfigForSource(source: AwsCredentialSource, region: string, mode?: SsmMode): SshSsmConfig {
+  const base: SshSsmConfig = { enabled: true, ...(mode === 'shell' ? { mode } : {}), region };
+  if (source.kind === 'sso') return { ...base, sso: { ...source.sso } };
+  if (source.kind === 'profile') return { ...base, awsProfile: source.name };
+  return base;
 }
 
 export interface PickImportOptions {
@@ -29,10 +30,12 @@ export function buildProfilesFromPicks(items: readonly AwsPickItem[], opts: Pick
       name: item.name || id,
       host: id,
       port: 22,
-      username: item.username,
-      authType: 'agent',
+      // A Session Manager shell has no SSH login; `ssm-user` is the account AWS gives its sessions by default.
+      username: item.mode === 'shell' ? 'ssm-user' : item.username,
+      authType: item.mode !== 'shell' && item.authType === 'privateKey' && item.privateKeyPath ? 'privateKey' : 'agent',
+      ...(item.mode !== 'shell' && item.authType === 'privateKey' && item.privateKeyPath ? { privateKeyPath: item.privateKeyPath } : {}),
       group: item.folder,
-      ssm: ssmConfigForSource(item.source, item.instance.region),
+      ssm: ssmConfigForSource(item.source, item.instance.region, item.mode),
     });
   }
   return out;

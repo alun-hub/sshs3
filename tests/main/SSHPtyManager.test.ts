@@ -106,6 +106,38 @@ describe('SSHPtyManager', () => {
     await manager.killAll();
   });
 
+  describe('createSession for a Session Manager shell', () => {
+    const shellConfig = (over: Partial<SSHConnectionConfig> = {}): SSHConnectionConfig => ({
+      id: 'ssm-1', name: 'Cloud', host: 'i-0123456789abcdef0', port: 22, username: '', authType: 'agent',
+      ssm: { enabled: true, mode: 'shell', region: 'eu-north-1', awsProfile: 'corp' }, ...over,
+    });
+
+    it('runs `aws ssm start-session` in the PTY instead of ssh', async () => {
+      const session = await manager.createSession(shellConfig(), { cols: 100, rows: 40, cwd: '/tmp', env: { CUSTOM_VAR: 'xyz' } });
+      expect(session.cols).toBe(100);
+      const { file, args, options } = (mockPtyInstances[0] as any)._spawnArgs;
+      expect(file).toMatch(/(^|[/\\])aws(\.exe)?$/);
+      expect(args).toEqual(['ssm', 'start-session', '--target', 'i-0123456789abcdef0', '--region', 'eu-north-1', '--profile', 'corp']);
+      expect(options).toMatchObject({ cols: 100, rows: 40, cwd: '/tmp' });
+      expect(options.env.TERM).toBe('xterm-256color');
+      expect(options.env.CUSTOM_VAR).toBe('xyz');
+      expect(args.join(' ')).not.toContain('ssh');
+    });
+
+    it('does not reconnect: a closed shell ends the session', async () => {
+      const session = (await manager.createSession(shellConfig({ autoReconnect: true }))) as any;
+      await expect(manager.reconnectSession(session)).resolves.toBe(false);
+      expect(mockPtyInstances).toHaveLength(1);
+    });
+
+    it('refuses invalid SSM settings before spawning anything', async () => {
+      await expect(manager.createSession(shellConfig({ host: 'example.com' }))).rejects.toThrow(/Instance ID/);
+      await expect(manager.createSession(shellConfig({ ssm: { enabled: true, mode: 'shell', region: 'x;id' } }))).rejects.toThrow(/region/);
+      await expect(manager.createSession(shellConfig({ proxyJump: 'a@b' }))).rejects.toThrow(/jump host/);
+      expect(mockPtyInstances).toHaveLength(0);
+    });
+  });
+
   describe('createSession', () => {
     it('should spawn OpenSSH with correct args, dims and env', async () => {
       const config: SSHConnectionConfig = {

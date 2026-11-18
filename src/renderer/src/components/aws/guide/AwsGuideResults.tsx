@@ -15,6 +15,8 @@ interface Props {
   single: boolean;
   selected: ReadonlySet<string>;
   onToggle: (key: string) => void;
+  /** false for a Session Manager shell: there is no SSH login to choose. */
+  showLogin?: boolean;
   usernames: Readonly<Record<string, string>>;
   onUsername: (instanceId: string, value: string) => void;
   /** Instance ids that already have an SSM profile. */
@@ -23,7 +25,7 @@ interface Props {
 }
 
 /** Steps 4 and 5 of "Add from AWS": progress while searching, then the nodes found, grouped by account and region. */
-export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selected, onToggle, usernames, onUsername, added, onCancel }) => {
+export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selected, onToggle, showLogin = true, usernames, onUsername, added, onCancel }) => {
   const [query, setQuery] = useState('');
   const result = state.result;
   const groups = useMemo(() => {
@@ -93,12 +95,13 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
                                 onToggle(key);
                               }
                             }}
-                            className={`grid cursor-pointer grid-cols-[1.3fr_1.2fr_0.9fr_0.9fr_7rem] items-center gap-2 rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'} ${isAdded ? 'cursor-default opacity-60' : ''}`}
+                            className={`grid cursor-pointer ${showLogin ? 'grid-cols-[1.3fr_1.2fr_0.9fr_0.9fr_7rem]' : 'grid-cols-[1.3fr_1.2fr_0.9fr_0.9fr]'} items-center gap-2 rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'} ${isAdded ? 'cursor-default opacity-60' : ''}`}
                           >
                             <span className="truncate font-medium text-txt-primary">{on ? '✓ ' : ''}{i.name}{isAdded && <span className="ml-1.5 rounded bg-emerald-500/20 px-1 text-[10px] text-emerald-300">Already added</span>}</span>
                             <span className="truncate font-mono text-txt-muted">{i.instanceId}</span>
                             <span className="truncate text-txt-secondary">{i.platformName ?? i.platformType ?? ''}</span>
                             <span className="truncate text-txt-muted">{i.ipAddress ?? ''}</span>
+                            {showLogin && (
                             <input
                               aria-label={`SSH login for ${i.name}`}
                               value={usernames[i.instanceId] ?? suggestLoginName(i.platformName)}
@@ -108,6 +111,7 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
                               disabled={isAdded}
                               className="rounded border border-border-subtle bg-app-input px-1.5 py-0.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
                             />
+                            )}
                           </div>
                         );
                       })}
@@ -115,7 +119,7 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
                   );
                 })}
               </div>
-              <p className="text-txt-muted">The SSH login is a suggestion for the platform; the instance may use another. SSH authentication is still required.</p>
+              {showLogin && <p className="text-txt-muted">The SSH login is a suggestion for the platform; the instance may use another. SSH authentication is still required.</p>}
             </>
           )}
         </>

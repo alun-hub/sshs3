@@ -7,7 +7,7 @@ import type { SshSsmConfig } from '../../shared/types/ssm';
 import { awsNetworkEnv } from '../../shared/awsSignIns';
 import { getAwsNetworkSettings } from '../aws/awsNetworkSettings';
 import type { AwsNetworkSettings } from '../../shared/types/aws';
-import { toolDirsMissingFromPath } from '../aws/AwsSsmToolchain';
+import { locateTools, toolDirsMissingFromPath } from '../aws/AwsSsmToolchain';
 import { ensureSsoConfigFile, ssoProfileName } from '../aws/ssoConfigFile';
 import { SSM_START_SESSION_POSIX, SSM_START_SESSION_WINDOWS, validateSsmConfig } from '../../shared/ssm';
 
@@ -49,13 +49,42 @@ export function assertValidSsm(config: SSHConnectionConfig): void {
  * @param profileName CLI profile to pass as --profile (app-owned SSO profile or the user's own)
  */
 export function buildSsmProxyCommand(ssm: SshSsmConfig, platform: NodeJS.Platform, profileName?: string): string {
-  // The instance's region, never the Identity Center home region (they routinely differ).
-  const region = ssm.region;
-  const profile = profileName ?? ssm.awsProfile;
-  let extra = '';
-  if (region) extra += ` --region ${region}`;
-  if (profile) extra += ` --profile ${profile}`;
+  const extra = ssmCliFlags(ssm, profileName).map((f) => ` ${f}`).join('');
   return platform === 'win32' ? SSM_START_SESSION_WINDOWS(extra) : SSM_START_SESSION_POSIX(extra);
+}
+
+/** `--region` / `--profile` for the aws CLI, from validated values only (see assertValidSsm). */
+function ssmCliFlags(ssm: SshSsmConfig, profileName?: string): string[] {
+  const flags: string[] = [];
+  // The instance's region, never the Identity Center home region (they routinely differ).
+  if (ssm.region) flags.push('--region', ssm.region);
+  const profile = profileName ?? ssm.awsProfile;
+  if (profile) flags.push('--profile', profile);
+  return flags;
+}
+
+/** True when the profile opens a Session Manager shell (IAM only, no SSH) instead of SSH over SSM. */
+export function isSsmShell(config: Pick<SSHConnectionConfig, 'ssm'>): boolean {
+  return config.ssm?.enabled === true && config.ssm.mode === 'shell';
+}
+
+export const SSM_SHELL_NO_SSH_MESSAGE =
+  'This profile opens a Session Manager shell (no SSH). Files, tunnels, key install and the other SSH features need the connection type "SSH over SSM".';
+
+/**
+ * What to run for a Session Manager shell: `aws ssm start-session --target <id> [--region …] [--profile …]`, with the same
+ * credential sources, tool lookup and environment as SSH over SSM. Only validated values become arguments; no shell is
+ * involved because node-pty runs the file directly.
+ */
+export function buildSsmShellSpawn(config: SSHConnectionConfig, extraEnv: Record<string, string> = {}): { file: string; args: string[]; env: Record<string, string> } {
+  if (!isSsmShell(config)) throw new Error('This profile does not use a Session Manager shell');
+  assertValidSsm(config);
+  const ssm = config.ssm!;
+  const profile = ssm.sso ? ssoProfileName(ssm.sso) : undefined;
+  const env = ssmEnvOverlay(config);
+  const file = locateTools().aws ?? (process.platform === 'win32' ? 'aws.exe' : 'aws');
+  const full = { ...(process.env as Record<string, string>), TERM: 'xterm-256color', ...env, ...extraEnv };
+  return { file, args: ['ssm', 'start-session', '--target', config.host, ...ssmCliFlags(ssm, profile)], env: full };
 }
 
 /**

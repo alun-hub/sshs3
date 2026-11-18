@@ -1,3 +1,4 @@
+import { profileTarget } from '../../lib/ssmProfile';
 import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Cable, Copy, Folder, KeyRound, Pencil, Trash2 } from 'lucide-react';
@@ -48,8 +49,8 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
           </span>
         )}
         {profile.ssm?.enabled && (
-          <span title="Connects through AWS Systems Manager (experimental)" className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
-            SSM
+          <span title={profile.ssm.mode === 'shell' ? 'Session Manager shell, no SSH (experimental)' : 'Connects through AWS Systems Manager (experimental)'} className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
+            {profile.ssm.mode === 'shell' ? 'SSM shell' : 'SSM'}
           </span>
         )}
         {profile.group && (
@@ -63,7 +64,7 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
         )}
       </div>
       <div className="truncate text-xs text-txt-muted">
-        {profile.username}@{profile.host}:{profile.port ?? 22} · Last connected:{' '}
+        {profileTarget(profile, ' · Last connected: ')}
         {profile.lastUsedAt}
       </div>
     </div>
@@ -158,7 +159,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
         )}
       </div>
       <div className="truncate text-xs text-txt-muted">
-        {profile.username}@{profile.host}:{profile.port ?? 22} · {profile.authType}
+        {profileTarget(profile, ` · ${profile.authType}`)}
       </div>
     </div>
     <div className="flex shrink-0 items-center gap-1.5">
