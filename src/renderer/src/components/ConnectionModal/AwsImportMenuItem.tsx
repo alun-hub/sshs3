@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Cloud } from 'lucide-react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { buildProfilesFromInstances } from '@shared/ssmProfileFactory';
+import { useAwsEnabled } from '../../lib/awsEnabled';
 import { AwsInstancePickerModal, type AwsPickResult } from '../AwsInstancePickerModal';
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 
 /** "Import from AWS…" entry of the Import / Export menu: pick SSM-managed instances and save them as SSM profiles. */
 export const AwsImportMenuItem: React.FC<Props> = ({ onDone, profiles }) => {
+  const awsEnabled = useAwsEnabled();
   const [open, setOpen] = useState(false);
   // Profiles saved by this dialog so far: a retry after a failed save must not create them twice.
   const savedIds = useRef(new Set<string>());
@@ -29,6 +31,8 @@ export const AwsImportMenuItem: React.FC<Props> = ({ onDone, profiles }) => {
     setOpen(false);
     onDone(created.length);
   };
+
+  if (!awsEnabled) return null;
 
   return (
     <>

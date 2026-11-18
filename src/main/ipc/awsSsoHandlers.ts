@@ -1,3 +1,4 @@
+import { globalAwsNetwork } from '../aws/awsNetworkSettings';
 import crypto from 'node:crypto';
 import { shell as electronShell } from 'electron';
 import { AwsSsoLoginCancelledError } from '../aws/AwsSsoAuthService';
@@ -73,7 +74,8 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.AWS_SSO_LOGIN,
     async (event, startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginResult> =>
-      runSsoLogin(bridge, event, startUrl, region, network)
+      // Callers that carry their own proxy/CA (S3 profiles) pass it; everyone else gets the AWS page's network settings.
+      runSsoLogin(bridge, event, startUrl, region, network ?? globalAwsNetwork())
   );
 
   // Re-authenticates a pane's existing provider from its own saved profile, so an expired session

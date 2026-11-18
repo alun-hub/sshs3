@@ -10,6 +10,7 @@ vi.mock('../../../src/main/aws/awsCredentials', () => ({ buildCredentialProvider
 vi.mock('../../../src/main/aws/AwsSsmToolchain', () => ({ locateTools: () => ({ aws: '/usr/bin/aws' }) }));
 vi.mock('node:child_process', () => ({ execFile: (...a: unknown[]) => execFileMock(...a) }));
 
+import { setAwsNetworkSettings } from '../../../src/main/aws/awsNetworkSettings';
 import { registerAwsScanHandlers, describeProfileError } from '../../../src/main/ipc/awsScanHandlers';
 import { IPC_CHANNELS } from '../../../src/shared/types/ipc';
 import { validateScanRequest, normalizeScanRequest, isValidScanId } from '../../../src/shared/awsScan';
@@ -76,6 +77,15 @@ describe('aws-ssm:scan', () => {
     expect(sent[0][2]).toEqual({ scanId: ID, done: 1, total: 2 });
     // the same id can be reused after it finished
     await expect(call(IPC_CHANNELS.AWS_SSM_SCAN, { scanId: ID, request: goodRequest() })).resolves.toBeDefined();
+  });
+
+  it('searches with the AWS network settings', async () => {
+    scan.mockResolvedValue({ instances: [], skipped: [], truncated: false, searched: 1 });
+    setAwsNetworkSettings({ httpsProxy: 'http://proxy.corp:3128' });
+    try {
+      await call(IPC_CHANNELS.AWS_SSM_SCAN, { scanId: ID, request: goodRequest() });
+      expect(scan.mock.calls[0][1].network).toMatchObject({ proxy: { host: 'proxy.corp', port: 3128 } });
+    } finally { setAwsNetworkSettings(undefined); }
   });
 
   it('refuses invalid requests, expired sign-ins and a blocking policy', async () => {

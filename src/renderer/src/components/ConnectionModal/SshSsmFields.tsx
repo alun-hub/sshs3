@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import type { SshSsmConfig } from '@shared/types/ssm';
 import { ssmProblem } from '../../lib/ssmProfile';
 import { AwsInstancePickerModal } from '../AwsInstancePickerModal';
 import { AwsSsoSignInPanel } from '../AwsSsoSignInPanel';
-import { useAwsSsmTools } from '../../lib/useAwsSsmTools';
+import { AwsToolsPanel } from '../aws/AwsToolsPanel';
+import { useAwsEnabled } from '../../lib/awsEnabled';
 import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
 import { FeatureBlockedNotice } from '../SettingsModal/Managed';
 
@@ -23,27 +23,10 @@ function sourceOf(ssm: SshSsmConfig): CredentialSource {
   return ssm.sso ? 'sso' : ssm.awsProfile !== undefined ? 'profile' : 'default';
 }
 
-const INSTALL_STEPS: Array<{ os: string; steps: string[] }> = [
-  {
-    os: 'Windows',
-    steps: [
-      'Install the AWS CLI v2 (MSI) from https://aws.amazon.com/cli/ and the Session Manager plugin installer from the AWS documentation ("Install the Session Manager plugin on Windows").',
-      'Run the installers as administrator, then reopen sshs3 if the tools are still not found.',
-    ],
-  },
-  {
-    os: 'Linux',
-    steps: [
-      'Install the AWS CLI v2 with the official installer (awscli.amazonaws.com), or your distribution package.',
-      'Install the Session Manager plugin .deb or .rpm from the AWS documentation ("Install the Session Manager plugin on Linux").',
-    ],
-  },
-];
-
 export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
+  const awsEnabled = useAwsEnabled();
   const blocked = isFeatureBlocked(usePolicy(), 'awsSsm');
   const enabled = Boolean(ssm?.enabled);
-  const { tools, readiness, refresh } = useAwsSsmTools(enabled);
   const [picking, setPicking] = useState(false);
 
   const source: CredentialSource = ssm ? sourceOf(ssm) : 'default';
@@ -56,8 +39,17 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
     else onChange(base);
   };
 
+  // AWS features are off: new profiles do not see this section at all. A profile that already uses SSM keeps it
+  // (and keeps connecting), with a hint where to turn the feature on.
+  if (!awsEnabled && !enabled) return null;
+
   return (
     <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
+      {!awsEnabled && (
+        <p role="note" className="mb-2 text-xs text-amber-300">
+          AWS features are off. Turn them on in Settings → AWS to pick instances and manage sign-ins; this profile keeps working.
+        </p>
+      )}
       <label className="flex items-center gap-2 text-txt-secondary font-medium cursor-pointer">
         <input
           type="checkbox"
@@ -145,61 +137,9 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
             />
           )}
 
-          <div className="rounded-lg border border-border-subtle p-2" aria-label="Required tools">
-            <div role="status" aria-live="polite" className="flex flex-col gap-1 text-xs">
-              {readiness === 'checking' && (
-                <span className="flex items-center gap-1.5 text-txt-muted">
-                  <Loader2 size={12} className="animate-spin" aria-hidden="true" /> Checking for the AWS CLI and Session Manager plugin…
-                </span>
-              )}
-              {tools && (
-                <>
-                  <ToolLine name="AWS CLI v2" status={tools.aws} />
-                  <ToolLine name="Session Manager plugin" status={tools.plugin} outdated={tools.plugin.ok === false} />
-                  {readiness === 'ready' && <span className="font-medium text-emerald-400">Ready</span>}
-                </>
-              )}
-            </div>
-            {(readiness === 'missing' || readiness === 'outdated') && (
-              <details className="mt-1.5 text-xs text-txt-secondary">
-                <summary className="cursor-pointer">How to install</summary>
-                {INSTALL_STEPS.map((s) => (
-                  <div key={s.os} className="mt-1">
-                    <div className="font-medium">{s.os}</div>
-                    <ul className="list-disc pl-4">
-                      {s.steps.map((t) => (
-                        <li key={t}>{t}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-                <button type="button" onClick={refresh} className="mt-1.5 rounded border border-border-subtle px-2 py-0.5 hover:bg-app-hover">
-                  Check again
-                </button>
-              </details>
-            )}
-          </div>
+          <AwsToolsPanel />
         </div>
       )}
     </div>
   );
 };
-
-const ToolLine: React.FC<{ name: string; status: { found: boolean; version?: string; path?: string }; outdated?: boolean }> = ({
-  name,
-  status,
-  outdated,
-}) => (
-  <span className="flex items-center gap-1.5 text-txt-secondary">
-    {status.found && !outdated ? (
-      <CheckCircle2 size={12} className="text-emerald-400" aria-hidden="true" />
-    ) : (
-      <AlertTriangle size={12} className="text-amber-400" aria-hidden="true" />
-    )}
-    <span>
-      {name}: {outdated ? 'Too old (1.1.23.0 or newer required)' : status.found ? 'Found' : 'Missing'}
-      {status.version ? ` ${status.version}` : ''}
-      {status.path ? ` — ${status.path}` : ''}
-    </span>
-  </span>
-);

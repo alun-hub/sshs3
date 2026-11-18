@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { AwsSsoAuthService } from '../../../src/main/aws/AwsSsoAuthService';
+import { setAwsNetworkSettings } from '../../../src/main/aws/awsNetworkSettings';
 import { registerAwsSsoCachedHandlers } from '../../../src/main/ipc/awsSsoCachedHandlers';
 import { IPC_CHANNELS } from '../../../src/shared/types/ipc';
 
@@ -41,10 +42,10 @@ describe('cached SSO handlers', () => {
   it('lists accounts and roles with the cached token, which is not part of any result', async () => {
     writeToken(new Date(Date.now() + 3600_000).toISOString());
     const a = await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1' });
-    expect(accounts).toHaveBeenCalledWith(TOKEN, 'us-east-1', undefined);
+    expect(accounts).toHaveBeenCalledWith(TOKEN, 'us-east-1', {});
     expect(JSON.stringify(a)).not.toContain(TOKEN);
     const r = await call(IPC_CHANNELS.AWS_SSO_LIST_ROLES_CACHED, { startUrl: URL_, region: 'us-east-1', accountId: '123456789012' });
-    expect(roles).toHaveBeenCalledWith(TOKEN, 'us-east-1', '123456789012', undefined);
+    expect(roles).toHaveBeenCalledWith(TOKEN, 'us-east-1', '123456789012', {});
     expect(r).toEqual([{ roleName: 'Dev' }]);
   });
 
@@ -54,6 +55,18 @@ describe('cached SSO handlers', () => {
     expect(accounts).toHaveBeenLastCalledWith(TOKEN, 'us-east-1', { customCaPath: '/ca.pem', rejectUnauthorized: false, proxy: undefined });
     await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: 'x' })).rejects.toThrow(/Invalid network/);
     await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: { rejectUnauthorized: 'no' } })).rejects.toThrow(/Invalid network/);
+  });
+
+  it('falls back to the AWS network settings when the caller brings none', async () => {
+    writeToken(new Date(Date.now() + 3600_000).toISOString());
+    setAwsNetworkSettings({ httpsProxy: 'http://proxy.corp:3128', customCaPath: '/etc/corp-ca.pem' });
+    try {
+      await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1' });
+      expect(accounts).toHaveBeenLastCalledWith(TOKEN, 'us-east-1', expect.objectContaining({ customCaPath: '/etc/corp-ca.pem', proxy: expect.objectContaining({ host: 'proxy.corp', port: 3128 }) }));
+      // an explicit (S3 profile) setting wins over the global one
+      await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', network: { customCaPath: '/profile-ca.pem' } });
+      expect(accounts).toHaveBeenLastCalledWith(TOKEN, 'us-east-1', expect.objectContaining({ customCaPath: '/profile-ca.pem' }));
+    } finally { setAwsNetworkSettings(undefined); }
   });
 
   it('asks for a sign-in when the token is missing or expired', async () => {

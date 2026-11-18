@@ -173,3 +173,20 @@ describe('review fixes', () => {
     expect(() => SmartcardDetector.buildSSHArguments(base())).not.toThrow();
   });
 });
+
+describe('AWS network settings in the ssh environment', () => {
+  it('exports proxy and CA bundle to the aws CLI, for every SSM credential source', async () => {
+    const { setAwsNetworkSettings } = await import('../../../src/main/aws/awsNetworkSettings');
+    setAwsNetworkSettings({ httpsProxy: 'http://proxy.corp:3128', customCaPath: '/etc/corp-ca.pem' });
+    try {
+      for (const ssm of [{ enabled: true as const }, { enabled: true as const, awsProfile: 'p' }]) {
+        const env = SmartcardDetector.buildProxyEnv(base({ ssm }));
+        expect(env.HTTPS_PROXY).toBe('http://proxy.corp:3128');
+        expect(env.AWS_CA_BUNDLE).toBe('/etc/corp-ca.pem');
+      }
+      setAwsNetworkSettings({ httpsProxy: 'http://user:secret@proxy.corp:3128' });
+      expect(SmartcardDetector.buildProxyEnv(base())).not.toHaveProperty('HTTPS_PROXY'); // credentials never go into the environment
+    } finally { setAwsNetworkSettings(undefined); }
+    expect(SmartcardDetector.buildProxyEnv(base())).not.toHaveProperty('HTTPS_PROXY');
+  });
+});

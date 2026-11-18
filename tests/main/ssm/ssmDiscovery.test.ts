@@ -50,6 +50,7 @@ describe('aws-ssm:discover-instances handler', () => {
     registerHandler: (c: string, h: (...a: unknown[]) => Promise<unknown>) => { handlers.set(c, h); },
     policy: { policy: { settings: {}, features: {} } },
     awsSsoAuthService: { getTokenStatus: vi.fn().mockResolvedValue('valid') },
+    settingsStore: { getSettings: async () => ({}) },
   } as never;
   registerAwsSsmHandlers(bridge);
   const call = (req: unknown) => handlers.get(IPC_CHANNELS.AWS_SSM_DISCOVER_INSTANCES)!({}, req);

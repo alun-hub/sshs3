@@ -1,3 +1,4 @@
+import { globalAwsNetwork } from '../aws/awsNetworkSettings';
 import { execFile } from 'node:child_process';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import { isValidScanId, normalizeScanRequest, validateScanRequest } from '../../shared/awsScan';
@@ -70,6 +71,7 @@ export function registerAwsScanHandlers(bridge: AwsScanHost): void {
       const sender = (event as { sender?: unknown } | undefined)?.sender as Parameters<AwsScanHost['sendToSender']>[0];
       try {
         return await scanInstances(request, {
+          network: globalAwsNetwork(),
           signal: controller.signal,
           onProgress: (p) => {
             const progress: AwsScanProgressEvent = { scanId: req.scanId, ...p };
@@ -95,7 +97,7 @@ export function registerAwsScanHandlers(bridge: AwsScanHost): void {
     checkPolicy();
     const profile = await requireProfile(name);
     try {
-      const provider = buildCredentialProvider({ kind: 'profile', name: profile }) as () => Promise<{ expiration?: Date }>;
+      const provider = buildCredentialProvider({ kind: 'profile', name: profile }, globalAwsNetwork()) as () => Promise<{ expiration?: Date }>;
       let timer: NodeJS.Timeout | undefined;
       const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error('Timed out waiting for credentials')), PROFILE_STATUS_TIMEOUT_MS);

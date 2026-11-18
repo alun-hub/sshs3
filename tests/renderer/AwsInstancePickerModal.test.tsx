@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest';
 import { AwsInstancePickerModal } from '../../src/renderer/src/components/AwsInstancePickerModal';
 import { AwsImportMenuItem } from '../../src/renderer/src/components/ConnectionModal/AwsImportMenuItem';
+import { AwsEnabledContext } from '../../src/renderer/src/lib/awsEnabled';
 
 const instances = [
   { instanceId: 'i-0123456789abcdef0', name: 'web-1', platformName: 'Ubuntu', platformType: 'Linux', ipAddress: '10.0.0.5' },
@@ -88,13 +89,19 @@ describe('AwsInstancePickerModal', () => {
 });
 
 describe('AwsImportMenuItem', () => {
+  it('is not shown while AWS features are off', () => {
+    mockApi();
+    render(<AwsImportMenuItem profiles={[]} onDone={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Import from AWS/ })).toBeNull();
+  });
+
   beforeEach(() => mockApi());
   afterEach(() => cleanup());
 
   it('saves one SSM profile per picked instance and skips instances that already have one', async () => {
     const onDone = vi.fn();
     const existing = [{ id: 'old', name: 'old', host: 'i-0123456789abcdef1', username: 'u', authType: 'agent', ssm: { enabled: true } }] as never;
-    render(<AwsImportMenuItem profiles={existing} onDone={onDone} />);
+    render(<AwsEnabledContext.Provider value={true}><AwsImportMenuItem profiles={existing} onDone={onDone} /></AwsEnabledContext.Provider>);
     fireEvent.click(screen.getByRole('button', { name: /Import from AWS/ }));
     await walkToInstances();
     fireEvent.click(screen.getByRole('option', { name: /web-1/ }));

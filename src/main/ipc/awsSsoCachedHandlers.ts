@@ -1,3 +1,4 @@
+import { globalAwsNetwork } from '../aws/awsNetworkSettings';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import { isValidRegion, isValidSsoConfig } from '../../shared/ssm';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoNetworkOptions } from '../../shared/types/aws';
@@ -47,7 +48,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
     async (_event, req: AwsSsoCachedRequest): Promise<AwsSsoAccount[]> => {
       checkPolicy(bridge);
       const r = checkRequest(req, false);
-      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, checkNetwork(r.network));
+      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, checkNetwork(r.network) ?? globalAwsNetwork());
     }
   );
 
@@ -56,7 +57,12 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
     async (_event, req: AwsSsoCachedRequest): Promise<AwsSsoAccountRole[]> => {
       checkPolicy(bridge);
       const r = checkRequest(req, true);
-      return await bridge.awsSsoAuthService.listAccountRolesCached(r.startUrl, r.region, r.accountId!, checkNetwork(r.network));
+      return await bridge.awsSsoAuthService.listAccountRolesCached(
+        r.startUrl,
+        r.region,
+        r.accountId!,
+        checkNetwork(r.network) ?? globalAwsNetwork()
+      );
     }
   );
 }

@@ -4,6 +4,8 @@ import path from 'node:path';
 import { app } from 'electron';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { SshSsmConfig } from '../../shared/types/ssm';
+import { awsNetworkEnv } from '../../shared/awsSignIns';
+import { getAwsNetworkSettings } from '../aws/awsNetworkSettings';
 import { toolDirsMissingFromPath } from '../aws/AwsSsmToolchain';
 import { ensureSsoConfigFile, ssoProfileName } from '../aws/ssoConfigFile';
 import { SSM_START_SESSION_POSIX, SSM_START_SESSION_WINDOWS, validateSsmConfig } from '../../shared/ssm';
@@ -126,5 +128,6 @@ export function ssmEnvOverlay(config: SSHConnectionConfig): Record<string, strin
   if (!ssm?.enabled) return {};
   const dirs = toolDirsMissingFromPath();
   const cfg = ssm.sso ? ssoConfigPath(ssm.sso) : undefined;
-  return buildSsmEnv(ssm, dirs, process.env, process.platform, cfg);
+  // The CLI needs the same proxy/CA as sshs3's own AWS calls; both are plain environment values, never credentials.
+  return { ...awsNetworkEnv(getAwsNetworkSettings()), ...buildSsmEnv(ssm, dirs, process.env, process.platform, cfg) };
 }
