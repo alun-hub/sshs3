@@ -141,3 +141,15 @@ describe('registry parsing', () => {
     expect(new Set(POLICY_DEFINITIONS.map((d) => policyRegistryName(d.id))).size).toBe(POLICY_DEFINITIONS.length);
   });
 });
+
+describe('AWS policies', () => {
+  it('accepts the long managed sign-in list but caps ordinary strings at 1024', () => {
+    const long = Array.from({ length: 40 }, (_, i) => `Team${i}|https://d-${i}.awsapps.com/start|us-east-1`).join(';');
+    expect(long.length).toBeGreaterThan(1024);
+    const ok = parsePolicyObject({ awsManagedSignIns: long, enableAws: true, awsRegions: 'eu-north-1' });
+    expect(ok.warnings).toEqual([]);
+    expect(ok.policy.settings).toMatchObject({ enableAws: true, awsRegions: 'eu-north-1' });
+    expect(parsePolicyObject({ awsManagedSignIns: 'x'.repeat(4097) }).warnings[0]).toMatch(/4096/);
+    expect(parsePolicyObject({ x11ServerArgs: 'x'.repeat(1025) }).warnings[0]).toMatch(/1024/);
+  });
+});

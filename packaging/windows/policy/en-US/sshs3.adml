@@ -43,6 +43,20 @@ Not configured: each user decides.</string>
       <string id="EnableOpenShift_Help">Enabled: OpenShift login and the oc CLI shim are available and cannot be turned off.
 Disabled: OpenShift support is off and cannot be turned on.
 Not configured: each user decides.</string>
+      <string id="EnableAws">AWS features</string>
+      <string id="EnableAws_Help">Enabled: AWS features (SSH over Systems Manager, importing instances, the AWS sign-in button) are on and cannot be turned off.
+Disabled: AWS features are off and cannot be turned on.
+Not configured: each user decides.</string>
+      <string id="AwsRegions">AWS regions to search</string>
+      <string id="AwsRegions_Help">Regions searched when users import AWS instances, comma separated (for example eu-north-1,eu-west-1). Locks the list for users.
+
+Not configured: each user decides.</string>
+      <string id="AwsManagedSignIns">AWS sign-ins</string>
+      <string id="AwsManagedSignIns_Help">IAM Identity Center sign-ins offered to every user, as Name|https://start-url|region entries separated by semicolons, for example Corp|https://corp.awsapps.com/start|us-east-1. Users see them locked.
+
+Group Policy limits this text to 1023 characters; policy.conf allows 4096.
+
+Not configured: users add their own sign-ins.</string>
       <string id="GitKeyFetch">Fetch public SSH keys from Git hosts</string>
       <string id="GitKeyFetch_Help">Allows fetching public SSH keys from GitHub, GitLab or a custom Git host.
 

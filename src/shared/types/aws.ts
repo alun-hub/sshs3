@@ -63,3 +63,25 @@ export interface AwsSsoConfig {
   accountId?: string;
   roleName?: string;
 }
+
+/** A saved IAM Identity Center sign-in (start URL + region) offered everywhere AWS is used. Non-secret. */
+export interface AwsSignIn {
+  id: string;
+  name: string;
+  startUrl: string;
+  region: string;
+  /** Last account/role chosen with this sign-in, preselected next time. */
+  lastAccountId?: string;
+  lastRoleName?: string;
+  /** Provided by the organisation's policy: shown locked and not stored in the user's settings. */
+  managed?: boolean;
+}
+
+/** Network options for every AWS call sshs3 makes and for the `aws` CLI it starts. */
+export interface AwsNetworkSettings {
+  /** `http(s)://host:port` without credentials (a proxy that needs a login is not supported for the CLI). */
+  httpsProxy?: string;
+  customCaPath?: string;
+  /** Default true. */
+  rejectUnauthorized?: boolean;
+}

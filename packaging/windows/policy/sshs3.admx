@@ -62,6 +62,26 @@
       <enabledValue><decimal value="1" /></enabledValue>
       <disabledValue><decimal value="0" /></disabledValue>
     </policy>
+    <policy name="EnableAws" class="Machine" displayName="$(string.EnableAws)" explainText="$(string.EnableAws_Help)" key="SOFTWARE\Policies\sshs3" valueName="EnableAws">
+      <parentCategory ref="Sshs3" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AwsRegions" class="Machine" displayName="$(string.AwsRegions)" explainText="$(string.AwsRegions_Help)" key="SOFTWARE\Policies\sshs3">
+      <parentCategory ref="Sshs3" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <text id="AwsRegionsValue" valueName="AwsRegions" required="true" maxLength="512" />
+      </elements>
+    </policy>
+    <policy name="AwsManagedSignIns" class="Machine" displayName="$(string.AwsManagedSignIns)" explainText="$(string.AwsManagedSignIns_Help)" key="SOFTWARE\Policies\sshs3">
+      <parentCategory ref="Sshs3" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <text id="AwsManagedSignInsValue" valueName="AwsManagedSignIns" required="true" maxLength="1023" />
+      </elements>
+    </policy>
     <policy name="GitKeyFetch" class="Machine" displayName="$(string.GitKeyFetch)" explainText="$(string.GitKeyFetch_Help)" key="SOFTWARE\Policies\sshs3" valueName="GitKeyFetch">
       <parentCategory ref="Sshs3" />
       <supportedOn ref="windows:SUPPORTED_Windows7" />

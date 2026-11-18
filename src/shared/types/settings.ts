@@ -1,3 +1,4 @@
+import type { AwsNetworkSettings, AwsSignIn } from './aws';
 import type { LogLevel } from './log';
 import type { SshCaConfig } from './sshCa';
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from './kubernetes';
@@ -205,6 +206,16 @@ export interface AppSettings {
   sshCaConfigs?: SshCaConfig[];
   /** Default SSH CA configuration ID to use for login/renewal. */
   defaultSshCaConfigId?: string;
+  /** Master switch for AWS features (SSH over SSM, importing instances, the AWS sign-in button). Off by default. */
+  enableAws?: boolean;
+  /** Saved AWS IAM Identity Center sign-ins. Local to this machine. */
+  awsSignIns?: AwsSignIn[];
+  /** Regions searched by default, comma separated (e.g. "eu-north-1, eu-west-1"). Empty = ask each time. */
+  awsRegions?: string;
+  /** Sign-ins provided by policy, as `Name|https://start-url|region` entries separated by `;` (never edited by users). */
+  awsManagedSignIns?: string;
+  /** Proxy / CA for AWS calls and the aws CLI. */
+  awsNetwork?: AwsNetworkSettings;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -247,4 +258,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fileManagerGitIntegration: true,
   localTerminalAgentMode: 'auto',
   autoSyncLocalSshConfig: true,
+  enableAws: false,
+  awsSignIns: [],
 };

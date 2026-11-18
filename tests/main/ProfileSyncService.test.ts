@@ -1041,6 +1041,30 @@ describe('ProfileSyncService', () => {
     expect(settings.smartcardLibPath).toBeUndefined();
   });
 
+  it('keeps AWS sign-ins, the AWS switch and the proxy/CA settings on this machine', async () => {
+    const machineB = await harness();
+    await machineB.settingsStore.saveSettings({ theme: 'dark', enableAws: false });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const machineA = await harness();
+    await machineA.settingsStore.saveSettings({
+      theme: 'light',
+      enableAws: true,
+      awsSignIns: [{ id: 's1', name: 'Corp', startUrl: 'https://corp.awsapps.com/start', region: 'us-east-1' }],
+      awsRegions: 'eu-north-1',
+      awsNetwork: { httpsProxy: 'http://proxy.corp:3128', customCaPath: '/etc/corp-ca.pem' },
+    });
+    await machineA.sync.pushToRemote(provider);
+    await machineB.sync.pullFromRemote(provider);
+
+    const settings = await machineB.settingsStore.getSettings();
+    expect(settings.theme).toBe('light');
+    expect(settings.enableAws).toBe(false);
+    expect(settings.awsSignIns ?? []).toEqual([]);
+    expect(settings.awsRegions).toBeUndefined();
+    expect(settings.awsNetwork).toBeUndefined();
+  });
+
   describe('with a machine policy', () => {
     const policy: PolicyDocument = { settings: { x11ServerMode: 'always' }, features: {} };
 
