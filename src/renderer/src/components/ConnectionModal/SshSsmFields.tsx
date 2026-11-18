@@ -134,6 +134,11 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
                 className={inputCls}
                 placeholder="eu-north-1"
               />
+              {source === 'sso' && ssm.sso && ssm.region && ssm.region === ssm.sso.region && (
+                <span role="note" className="text-amber-300">
+                  Same as the SSO region. This is the region the instance runs in, which is often a different one.
+                </span>
+              )}
             </label>
           </div>
 

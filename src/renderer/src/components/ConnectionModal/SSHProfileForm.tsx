@@ -1,4 +1,4 @@
-import { hostIsValid, withSsm } from '../../lib/ssmProfile';
+import { hostIsValid, trimProfileFields, withSsm } from '../../lib/ssmProfile';
 import { SshSsmFields } from './SshSsmFields';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -320,7 +320,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         e.preventDefault();
         if (!isValid) return;
         if (needsAccessReminder) setSaveReminderOpen(true);
-        else onSave(config);
+        else onSave(trimProfileFields(config));
       }}
       className="flex h-full min-h-0 flex-col text-xs text-txt-secondary"
     >
@@ -1238,7 +1238,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                 type="button"
                 onClick={() => {
                   setSaveReminderOpen(false);
-                  onSave(config);
+                  onSave(trimProfileFields(config));
                 }}
                 className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
               >

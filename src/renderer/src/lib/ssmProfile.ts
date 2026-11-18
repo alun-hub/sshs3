@@ -31,3 +31,11 @@ export function ssmProblem(config: Pick<SSHConnectionConfig, 'host' | 'ssm'>): s
 export function hostIsValid(config: Pick<SSHConnectionConfig, 'host' | 'ssm'>): boolean {
   return config.host.trim() !== '' && ssmProblem(config) === undefined;
 }
+
+/**
+ * Hostname and username as saved: surrounding whitespace (typically from copy-paste) is dropped. Validation already
+ * ignores it, so saving the untrimmed value made a profile that passed the form but was refused at connect time.
+ */
+export function trimProfileFields<T extends { host: string; username: string }>(config: T): T {
+  return { ...config, host: config.host.trim(), username: config.username.trim() };
+}

@@ -33,3 +33,11 @@ describe('ssmProblem', () => {
     expect(ssmProblem({ host, ssm: { enabled: true, region: 'eu-west-1', sso: { ...sso, accountId: '123456789012', roleName: 'Admin' } } })).toBeUndefined();
   });
 });
+
+import { trimProfileFields } from '../../src/renderer/src/lib/ssmProfile';
+describe('trimProfileFields', () => {
+  it('drops pasted whitespace from host and username so the saved value passes the connect-time check', () => {
+    const out = trimProfileFields({ host: ' i-0123456789abcdef0\n', username: ' ec2-user ', port: 22 });
+    expect(out).toEqual({ host: 'i-0123456789abcdef0', username: 'ec2-user', port: 22 });
+  });
+});
