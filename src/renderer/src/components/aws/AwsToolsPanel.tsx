@@ -23,8 +23,15 @@ const INSTALL_STEPS: Array<{ os: string; steps: string[] }> = [
  * Whether the `aws` CLI and the Session Manager plugin are installed (found, version, install steps), updating by
  * itself when they appear. Shared by the AWS settings page and the SSM profile form.
  */
-export const AwsToolsPanel: React.FC<{ enabled?: boolean }> = ({ enabled = true }) => {
+export const AwsToolsPanel: React.FC<{ enabled?: boolean; /** One line once everything is installed. */ compact?: boolean }> = ({ enabled = true, compact = false }) => {
   const { tools, readiness, refresh } = useAwsSsmTools(enabled);
+  if (compact && readiness === 'ready' && tools) {
+    return (
+      <p role="status" aria-live="polite" className="flex items-center gap-1.5 text-xs text-emerald-400">
+        <CheckCircle2 size={12} aria-hidden="true" /> AWS CLI {tools.aws.version ?? ''} and Session Manager plugin {tools.plugin.version ?? ''} found
+      </p>
+    );
+  }
   return (
     <div className="rounded-lg border border-border-subtle p-2" aria-label="Required tools">
       <div role="status" aria-live="polite" className="flex flex-col gap-1 text-xs">

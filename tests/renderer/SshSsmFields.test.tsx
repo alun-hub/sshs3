@@ -1,0 +1,81 @@
+// @vitest-environment jsdom
+import { useState } from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
+import { SshSsmFields } from '../../src/renderer/src/components/ConnectionModal/SshSsmFields';
+import { AwsEnabledContext } from '../../src/renderer/src/lib/awsEnabled';
+import type { SshSsmConfig } from '../../src/shared/types/ssm';
+
+const CORP = 'https://corp.awsapps.com/start';
+const api = {
+  settingsGet: vi.fn(async () => ({ awsSignIns: [{ id: 's1', name: 'Corp', startUrl: CORP, region: 'us-east-1', lastAccountId: '123456789012', lastRoleName: 'Dev' }, { id: 's2', name: 'Lab', startUrl: 'https://lab.awsapps.com/start', region: 'eu-north-1' }] })),
+  awsSsmListProfiles: vi.fn(async () => [{ name: 'keys', kind: 'keys' }, { name: 'corp-sso', kind: 'sso' }]),
+  awsSsmCheckTools: vi.fn(async () => ({ aws: { found: true, version: '2.38.0' }, plugin: { found: true, version: '1.2.896.0', ok: true } })),
+  awsSsoStatus: vi.fn(async () => ({ status: 'missing' })),
+  awsSsoListAccountsCached: vi.fn(async () => []),
+  policyGet: vi.fn(async () => ({ managed: [], features: {}, warnings: [] })),
+  profilesGet: vi.fn(async () => ({ ssh: [], s3: [] })),
+  awsSsoListRolesCached: vi.fn(async () => []),
+  awsSsmScanCancel: vi.fn(async () => undefined),
+  onAwsSsmScanProgress: vi.fn(() => () => {}),
+};
+
+let latest: { ssm?: SshSsmConfig; host?: string; username?: string };
+const Harness = ({ initial }: { initial?: SshSsmConfig }) => {
+  const [ssm, setSsm] = useState<SshSsmConfig | undefined>(initial);
+  latest = { ssm };
+  return (
+    <AwsEnabledContext.Provider value={true}>
+      <SshSsmFields ssm={ssm} host="i-0123456789abcdef0" onChange={(next, extra) => { setSsm(next); latest = { ssm: next, ...extra }; }} />
+    </AwsEnabledContext.Provider>
+  );
+};
+
+beforeEach(() => { Object.values(api).forEach((f) => f.mockClear()); window.multissh = { ...api } as never; });
+afterEach(() => cleanup());
+
+describe('SshSsmFields (simplified)', () => {
+  it('starts on the first saved sign-in when SSM is switched on and lists the others', async () => {
+    render(<Harness />);
+    await waitFor(() => expect(api.settingsGet).toHaveBeenCalled());
+    fireEvent.click(screen.getByLabelText(/Connect via AWS Systems Manager/));
+    expect(latest.ssm).toEqual({ enabled: true, sso: { startUrl: CORP, region: 'us-east-1' } });
+    const select = await screen.findByTestId('ssm-saved-signin');
+    expect(select).toHaveValue('s1');
+    fireEvent.change(select, { target: { value: 's2' } });
+    expect(latest.ssm).toMatchObject({ sso: { startUrl: 'https://lab.awsapps.com/start', region: 'eu-north-1' } });
+  });
+
+  it('shows the account and role of the chosen sign-in and keeps the details collapsed', async () => {
+    render(<Harness initial={{ enabled: true, region: 'eu-north-1', sso: { startUrl: CORP, region: 'us-east-1', accountId: '123456789012', roleName: 'Dev' } }} />);
+    expect(await screen.findByText('123456789012')).toBeInTheDocument();
+    expect(screen.getByText('Dev')).toBeInTheDocument();
+    const details = screen.getByText('Sign-in, account and role').closest('details')!;
+    expect(details.hasAttribute('open')).toBe(false);
+  });
+
+  it('opens the details when the account or role is still missing', async () => {
+    render(<Harness initial={{ enabled: true, sso: { startUrl: CORP, region: 'us-east-1' } }} />);
+    await waitFor(() => expect(screen.getByText('Sign-in, account and role').closest('details')!.hasAttribute('open')).toBe(true));
+  });
+
+  it('offers the detected AWS CLI profiles and common regions as suggestions', async () => {
+    render(<Harness initial={{ enabled: true, awsProfile: '' }} />);
+    await waitFor(() => expect(document.querySelectorAll('#ssm-cli-profiles option')).toHaveLength(2));
+    expect(document.querySelector('#ssm-regions option[value="eu-north-1"]')).not.toBeNull();
+    fireEvent.change(screen.getByLabelText('AWS CLI profile'), { target: { value: ' keys ' } });
+    expect(latest.ssm).toMatchObject({ awsProfile: 'keys' });
+  });
+
+  it('summarises the tools in one line when they are installed', async () => {
+    render(<Harness initial={{ enabled: true }} />);
+    expect(await screen.findByText(/AWS CLI 2.38.0 and Session Manager plugin 1.2.896.0 found/)).toBeInTheDocument();
+  });
+
+  it('opens the instance picker from a clear button', async () => {
+    render(<Harness initial={{ enabled: true }} />);
+    fireEvent.click(screen.getByRole('button', { name: /Pick from AWS/ }));
+    expect(await screen.findByRole('dialog', { name: 'Pick an AWS instance' })).toBeInTheDocument();
+  });
+});

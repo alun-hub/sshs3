@@ -1,4 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Cloud } from 'lucide-react';
+import { allSignIns } from '@shared/awsSignIns';
+import { AWS_DEFAULT_REGIONS } from '@shared/awsScan';
+import type { AwsSignIn } from '@shared/types/aws';
+import type { AwsCliProfile } from '@shared/types/awsScan';
 import type { SshSsmConfig } from '@shared/types/ssm';
 import { ssmConfigForSource } from '@shared/ssmProfileFactory';
 import { ssmProblem } from '../../lib/ssmProfile';
@@ -29,6 +34,19 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
   const blocked = isFeatureBlocked(usePolicy(), 'awsSsm');
   const enabled = Boolean(ssm?.enabled);
   const [picking, setPicking] = useState(false);
+  const [signIns, setSignIns] = useState<AwsSignIn[]>([]);
+  const [cliProfiles, setCliProfiles] = useState<AwsCliProfile[]>([]);
+
+  // Saved sign-ins (settings and policy) and the AWS CLI profiles, for the pickers below.
+  useEffect(() => {
+    if (!awsEnabled) return;
+    let alive = true;
+    window.multissh?.settingsGet?.().then((s) => alive && setSignIns(allSignIns(s.awsSignIns, s.awsManagedSignIns))).catch(() => {});
+    window.multissh?.awsSsmListProfiles?.().then((p) => alive && setCliProfiles(p)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [awsEnabled]);
 
   const source: CredentialSource = ssm ? sourceOf(ssm) : 'default';
   const patch = (p: Partial<SshSsmConfig>) => onChange({ enabled: true, ...ssm, ...p });
@@ -36,7 +54,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
   const setSource = (next: CredentialSource) => {
     const base: SshSsmConfig = { enabled: true, region: ssm?.region };
     if (next === 'profile') onChange({ ...base, awsProfile: '' });
-    else if (next === 'sso') onChange({ ...base, sso: { startUrl: '', region: ssm?.region ?? 'us-east-1' } });
+    else if (next === 'sso') onChange({ ...base, sso: { startUrl: signIns[0]?.startUrl ?? '', region: signIns[0]?.region ?? 'us-east-1' } });
     else onChange(base);
   };
 
@@ -56,7 +74,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
           type="checkbox"
           checked={enabled}
           disabled={blocked}
-          onChange={(e) => onChange(e.target.checked ? { enabled: true } : undefined)}
+          onChange={(e) => onChange(e.target.checked ? (signIns[0] ? { enabled: true, sso: { startUrl: signIns[0].startUrl, region: signIns[0].region } } : { enabled: true }) : undefined)}
           className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
         />
         <span>Connect via AWS Systems Manager (SSM)</span>
@@ -76,10 +94,15 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
             </p>
           )}
 
-          <div>
-            <button type="button" onClick={() => setPicking(true)} className="rounded-lg border border-border-subtle px-3 py-1.5 text-sm text-txt-primary hover:bg-app-hover">
-              Pick from AWS…
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setPicking(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs font-medium text-txt-primary hover:bg-app-surface-hover transition-colors"
+            >
+              <Cloud className="h-3.5 w-3.5 text-sky-400" aria-hidden="true" /> Pick from AWS…
             </button>
+            <span className="text-xs text-txt-muted">Search your accounts and fill in the instance, region and credentials.</span>
           </div>
           {picking && (
             <AwsInstancePickerModal
@@ -98,19 +121,23 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
             <label className="flex flex-col gap-1 text-txt-secondary">
               AWS credentials
               <select value={source} onChange={(e) => setSource(e.target.value as CredentialSource)} className={inputCls}>
-                <option value="default">Default AWS CLI credentials</option>
+                <option value="sso">AWS sign-in (SSO)</option>
                 <option value="profile">AWS CLI profile</option>
-                <option value="sso">Signed in with sshs3 (SSO)</option>
+                <option value="default">Default credentials</option>
               </select>
             </label>
             <label className="flex flex-col gap-1 text-txt-secondary">
               {source === 'sso' ? 'Region of the instance' : 'Region (optional)'}
               <input
+                list="ssm-regions"
                 value={ssm.region ?? ''}
                 onChange={(e) => patch({ region: e.target.value.trim() || undefined })}
                 className={inputCls}
                 placeholder="eu-north-1"
               />
+              <datalist id="ssm-regions">
+                {AWS_DEFAULT_REGIONS.map((r) => <option key={r} value={r} />)}
+              </datalist>
               {source === 'sso' && ssm.sso && ssm.region && ssm.region === ssm.sso.region && (
                 <span role="note" className="text-amber-300">
                   Same as the SSO region. This is the region the instance runs in, which is often a different one.
@@ -121,25 +148,54 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
 
           {source === 'profile' && (
             <label className="flex flex-col gap-1 text-txt-secondary">
-              AWS CLI profile name
+              AWS CLI profile
               <input
+                list="ssm-cli-profiles"
                 value={ssm.awsProfile ?? ''}
                 onChange={(e) => patch({ awsProfile: e.target.value.trim() })}
                 className={inputCls}
                 placeholder="default"
               />
+              <datalist id="ssm-cli-profiles">
+                {cliProfiles.map((p) => <option key={p.name} value={p.name} />)}
+              </datalist>
             </label>
           )}
 
           {source === 'sso' && ssm.sso && (
-            <AwsSsoSignInPanel
-              idPrefix="ssm-sso"
-              value={ssm.sso}
-              onChange={(p) => patch({ sso: { ...ssm.sso!, ...p } })}
-            />
+            <div className="flex flex-col gap-2">
+              {signIns.length > 0 && (
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  AWS sign-in
+                  <select
+                    data-testid="ssm-saved-signin"
+                    value={signIns.find((s) => s.startUrl === ssm.sso!.startUrl && s.region === ssm.sso!.region)?.id ?? ''}
+                    onChange={(e) => {
+                      const s = signIns.find((x) => x.id === e.target.value);
+                      patch({ sso: s ? { startUrl: s.startUrl, region: s.region, accountId: s.lastAccountId, roleName: s.lastRoleName } : { startUrl: '', region: ssm.sso!.region } });
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">Other…</option>
+                    {signIns.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.region})</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {ssm.sso.accountId && ssm.sso.roleName && (
+                <p className="text-xs text-txt-muted">Account <span className="font-mono">{ssm.sso.accountId}</span> · role <span className="font-mono">{ssm.sso.roleName}</span></p>
+              )}
+              <details open={signIns.length === 0 || !ssm.sso.accountId || !ssm.sso.roleName || undefined} className="rounded-lg border border-border-subtle bg-app-surface/40 p-2">
+                <summary className="cursor-pointer text-xs text-txt-secondary">Sign-in, account and role</summary>
+                <div className="mt-2">
+                  <AwsSsoSignInPanel idPrefix="ssm-sso" value={ssm.sso} onChange={(p) => patch({ sso: { ...ssm.sso!, ...p } })} />
+                </div>
+              </details>
+            </div>
           )}
 
-          <AwsToolsPanel />
+          <AwsToolsPanel compact />
         </div>
       )}
     </div>
