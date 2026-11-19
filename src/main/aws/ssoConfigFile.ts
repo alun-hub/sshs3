@@ -13,6 +13,8 @@ import type { AwsSsoConfig } from '../../shared/types/aws';
  * so a hostile synced profile cannot inject extra keys or sections.
  */
 export function ssoProfileName(sso: AwsSsoConfig): string {
+  // A short stable name for the profile, derived from public sign-in settings. Not a password hash and no secret goes in
+  // (CodeQL js/insufficient-password-hash: false positive).
   const h = crypto.createHash('sha256').update(`${sso.startUrl}\n${sso.region}\n${sso.accountId ?? ''}\n${sso.roleName ?? ''}`).digest('hex');
   return `sshs3-${h.slice(0, 12)}`;
 }

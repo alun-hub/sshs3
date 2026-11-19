@@ -311,6 +311,8 @@ export class AwsSsoAuthService extends EventEmitter {
    * only to callers inside the main process; IPC handlers must expose just `status` and `expiresAt`.
    */
   private async readCachedToken(startUrl: string): Promise<{ status: AwsSsoTokenStatus; expiresAt?: string; accessToken?: string }> {
+    // SHA-1 only because the AWS CLI/SDK name the token cache file sha1(startUrl); it is a lookup key over a public URL,
+    // not a security function, and the file must have exactly this name to be found. (CodeQL js/weak-cryptographic-algorithm: false positive.)
     const key = crypto.createHash('sha1').update(startUrl).digest('hex');
     try {
       const raw = await fs.readFile(path.join(this.ssoCacheDir(), `${key}.json`), 'utf-8');
