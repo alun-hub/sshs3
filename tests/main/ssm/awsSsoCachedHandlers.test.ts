@@ -21,7 +21,7 @@ registerAwsSsoCachedHandlers({
   registerHandler: (c: string, h: (...a: unknown[]) => Promise<unknown>) => { handlers.set(c, h); },
   awsSsoAuthService: svc,
   get policy() { return { policy: { settings: {}, features } }; },
-  profileStore: { getProfiles: async () => ({ s3: [{ id: 's3-saved', proxy: { enabled: true, type: 'http', host: 'saved.proxy', port: 3128 }, rejectUnauthorized: true }, { id: 's3-plain' }] }) },
+  profileStore: { getProfiles: async () => ({ s3: [{ id: 's3-saved', sso: { startUrl: 'https://d-1.awsapps.com/start' }, proxy: { enabled: true, type: 'http', host: 'saved.proxy', port: 3128 }, rejectUnauthorized: true }, { id: 's3-plain' }, { id: 's3-other', sso: { startUrl: 'https://d-2.awsapps.com/start' }, rejectUnauthorized: false, proxy: { enabled: true, type: 'http', host: 'other.proxy', port: 1 } }] }) },
 } as never);
 const call = (c: string, ...a: unknown[]) => handlers.get(c)!({}, ...a);
 const writeToken = (expiresAt: string) =>
@@ -90,7 +90,7 @@ describe('cached SSO handlers', () => {
     writeToken(new Date(Date.now() + 3600_000).toISOString());
     await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', s3ProfileId: 's3-saved' });
     expect((accounts.mock.calls.at(-1)!.at(-1) as { proxy?: { host: string } }).proxy?.host).toBe('saved.proxy');
-    for (const id of ['s3-plain', 'unknown']) {
+    for (const id of ['s3-plain', 'unknown', 's3-other']) { // 's3-other' belongs to another start URL: its proxy is not used
       setAwsNetworkSettings({ httpsProxy: 'http://proxy.corp:8080' });
       await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', s3ProfileId: id });
       expect((accounts.mock.calls.at(-1)!.at(-1) as { proxy?: { host: string } }).proxy?.host).toBe('proxy.corp');

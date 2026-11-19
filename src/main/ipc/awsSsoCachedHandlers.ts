@@ -1,6 +1,6 @@
 import { globalAwsNetwork } from '../aws/awsNetworkSettings';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
-import { isValidRegion, isValidStartUrl } from '../../shared/ssm';
+import { isValidRegion, isValidStartUrl, normalizeStartUrl } from '../../shared/ssm';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoNetworkOptions } from '../../shared/types/aws';
 import type { AwsSsoCachedRequest, AwsSsoStatusInfo } from '../../shared/types/awsScan';
 import { isFeatureAllowed } from '../policy/policyApply';
@@ -25,8 +25,16 @@ function checkRequest(req: unknown, needsAccount: boolean): AwsSsoCachedRequest 
 async function networkFor(bridge: AwsSsoCachedHost, r: AwsSsoCachedRequest): Promise<AwsSsoNetworkOptions | undefined> {
   if (typeof r.s3ProfileId !== 'string' || !bridge.profileStore) return globalAwsNetwork();
   const saved = (await bridge.profileStore.getProfiles()).s3?.find((p) => p.id === r.s3ProfileId);
-  if (!saved || (!saved.proxy && !saved.customCaPath && saved.rejectUnauthorized === undefined)) return globalAwsNetwork();
-  return { customCaPath: saved.customCaPath, rejectUnauthorized: saved.rejectUnauthorized, proxy: saved.proxy };
+  // Only a profile signed in to this very start URL may route its token, and it can never relax TLS verification
+  // beyond what the AWS settings allow.
+  if (!saved?.sso?.startUrl || normalizeStartUrl(saved.sso.startUrl) !== r.startUrl || (saved.sso.region ?? r.region) !== r.region) return globalAwsNetwork();
+  if (!saved.proxy && !saved.customCaPath && saved.rejectUnauthorized === undefined) return globalAwsNetwork();
+  const global = globalAwsNetwork();
+  return {
+    customCaPath: saved.customCaPath,
+    rejectUnauthorized: saved.rejectUnauthorized === false ? global?.rejectUnauthorized : saved.rejectUnauthorized,
+    proxy: saved.proxy,
+  };
 }
 
 /**
