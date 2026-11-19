@@ -1,9 +1,13 @@
 import React from 'react';
 import { Files } from 'lucide-react';
+import { isSsmShellProfile } from '@shared/ssm';
+import type { SshSsmConfig } from '@shared/types/ssm';
 import { sftpUnavailableReason } from '../lib/platform';
 
 interface SftpButtonProps {
   authType: string | undefined;
+  /** A Session Manager shell profile has no SSH, so there is nothing for SFTP to open: the button is not shown. */
+  ssm?: Pick<SshSsmConfig, 'enabled' | 'mode'>;
   onOpen: () => void;
   /** Nothing to open yet (e.g. an empty quick-connect box); greyed out like the Connect button next to it. */
   disabled?: boolean;
@@ -14,7 +18,8 @@ interface SftpButtonProps {
  * sftpUnavailableReason) it stays visible but is greyed out and explains why on hover, so the
  * limitation is discoverable instead of the button silently failing after a PIN/touch prompt.
  */
-export const SftpButton: React.FC<SftpButtonProps> = ({ authType, onOpen, disabled = false }) => {
+export const SftpButton: React.FC<SftpButtonProps> = ({ authType, ssm, onOpen, disabled = false }) => {
+  if (isSsmShellProfile({ ssm })) return null;
   const unavailableReason = sftpUnavailableReason(authType);
   return (
     <button

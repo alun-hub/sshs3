@@ -67,7 +67,7 @@ export const TeamSshProfileRow: React.FC<TeamSshProfileRowProps> = ({
             Connect
           </button>
         )}
-        {onConnectSFTP && <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />}
+        {onConnectSFTP && <SftpButton authType={profile.authType} ssm={profile.ssm} onOpen={() => onConnectSFTP(profile)} />}
         <button
           aria-label="Edit profile"
           type="button"

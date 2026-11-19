@@ -61,6 +61,11 @@ export function isValidSsoConfig(value: unknown): value is AwsSsoConfig {
   return true;
 }
 
+/** True for a profile that opens a Session Manager shell (no SSH): file manager, SFTP and tunnels do not apply. */
+export function isSsmShellProfile(profile: { ssm?: Pick<SshSsmConfig, 'enabled' | 'mode'> }): boolean {
+  return profile.ssm?.enabled === true && profile.ssm.mode === 'shell';
+}
+
 /** First problem with an SSM config as a short message, or undefined when it is usable. */
 export function validateSsmConfig(ssm: SshSsmConfig, host: unknown): string | undefined {
   if (!isValidInstanceId(host)) return 'Instance ID must look like i-0123456789abcdef0 (or mi-… for a hybrid node)';

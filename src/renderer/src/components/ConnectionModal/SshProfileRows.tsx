@@ -82,7 +82,7 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
         </button>
       )}
       {onConnectSFTP && (
-          <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} /> 
+          <SftpButton authType={profile.authType} ssm={profile.ssm} onOpen={() => onConnectSFTP(profile)} /> 
         )}
       {/* UX audit finding #11: this row used to stop at Connect/SFTP
           while the identical profile, shown again below in its folder,
@@ -177,7 +177,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
         </button>
       )}
       {onConnectSFTP && (
-          <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} /> 
+          <SftpButton authType={profile.authType} ssm={profile.ssm} onOpen={() => onConnectSFTP(profile)} /> 
         )}
       <button
         aria-label="Edit profile"
