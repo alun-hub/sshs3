@@ -1158,6 +1158,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
       <ConnectionManagerModal
         open={connectionPickerOpen}
         onClose={() => setConnectionPickerOpen(false)}
+        needsSsh
         onConnectSSH={(config) => void handleConnectTargetSSH(config)}
         onConnectS3={(config) => void handleConnectTargetS3(config)}
       />

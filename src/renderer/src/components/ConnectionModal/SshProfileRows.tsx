@@ -1,3 +1,4 @@
+import { isSsmShellProfile } from '@shared/ssm';
 import { profileTarget } from '../../lib/ssmProfile';
 import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -102,8 +103,13 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
       </button>
         <OverflowMenu
         items={[
-          { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
-          { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+          // A Session Manager shell has no SSH connection: key install and tunnels do not apply.
+          ...(isSsmShellProfile(profile)
+            ? []
+            : [
+                { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
+                { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+              ]),
           { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
           { label: 'Delete profile', icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, separated: true, onSelect: () => void handleDeleteSSH(profile.id, profile.name) },
         ]}
@@ -193,8 +199,13 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
       </button>
         <OverflowMenu
         items={[
-          { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
-          { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+          // A Session Manager shell has no SSH connection: key install and tunnels do not apply.
+          ...(isSsmShellProfile(profile)
+            ? []
+            : [
+                { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
+                { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+              ]),
           { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
           { label: 'Delete profile', icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, separated: true, onSelect: () => void handleDeleteSSH(profile.id, profile.name) },
         ]}

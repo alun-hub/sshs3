@@ -93,7 +93,7 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 - sshs3's own sign-in has no refresh token: sign in again when the Identity Center session ends (the AWS button turns amber). CLI profiles with an `sso-session` refresh on their own.
 - On Windows every connection opens its own SSM session (no connection sharing).
 - SSM profiles are not exported to `~/.ssh/config`, and the performance bar does not show a TCP ping.
-- A Session Manager shell is terminal only (no file manager, editor, tunnels or key install), has no automatic reconnect, and logs in as the account AWS gives its sessions (`ssm-user` unless configured otherwise in Session Manager preferences).
+- A Session Manager shell is terminal only (no file manager, editor, tunnels or key install; the **SFTP** button, tunnel and key menu entries, and the file manager and sync pickers hide these profiles), has no automatic reconnect, and logs in as the account AWS gives its sessions (`ssm-user` unless configured otherwise in Session Manager preferences).
 - Custom SSM documents and port forwarding through Session Manager are not available yet.
 
 ## 7. Troubleshooting & Diagnostics

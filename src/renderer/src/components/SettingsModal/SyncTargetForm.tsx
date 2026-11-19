@@ -1,3 +1,4 @@
+import { isSsmShellProfile } from '@shared/ssm';
 import React, { useEffect, useState } from 'react';
 import { pkcs11PlaceholderPath } from '../../lib/smartcard';
 import {
@@ -424,7 +425,9 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
     }
   };
 
-  const hasProfiles = savedProfiles.ssh.length > 0 || savedProfiles.s3.length > 0;
+  // Session Manager shell profiles have no SSH connection, so they cannot be a sync target.
+  const sftpProfiles = savedProfiles.ssh.filter((p) => !isSsmShellProfile(p));
+  const hasProfiles = sftpProfiles.length > 0 || savedProfiles.s3.length > 0;
 
   return (
     <div className="space-y-3">
@@ -443,9 +446,9 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
             className="w-full rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500"
           >
             <option value="">-- Choose an existing profile --</option>
-            {savedProfiles.ssh.length > 0 && (
+            {sftpProfiles.length > 0 && (
               <optgroup label="SFTP / SSH Profiles">
-                {savedProfiles.ssh.map((p) => (
+                {sftpProfiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.username}@{p.host})
                   </option>

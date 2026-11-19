@@ -728,6 +728,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         onClose={() => {
           if (!connecting) setConnectionRequest(null);
         }}
+        needsSsh
         onConnectSSH={connecting ? undefined : (config) => void connectPaneToSSH(config)}
         onConnectS3={connecting ? undefined : (config) => void connectPaneToS3(config)}
         onBrowseK8sFiles={connecting ? undefined : (target) => void connectPaneToK8s(target)}

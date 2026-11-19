@@ -7,6 +7,7 @@ import {
   groupProfiles,
   mostRecentlyUsed,
   parseAdHocTarget,
+  withoutSsmShell,
 } from '../../src/renderer/src/components/ConnectionModal/connectionGrouping';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { S3Config } from '../../src/shared/types/storage';
@@ -102,5 +103,18 @@ describe('connectionGrouping', () => {
       2
     );
     expect(recent.map((p) => p.id)).toEqual(['new', 'mid']);
+  });
+});
+
+describe('withoutSsmShell', () => {
+  const p = (id: string, ssm?: SSHConnectionConfig['ssm']) => ({ id, name: id, host: id, username: 'u', ssm }) as SSHConnectionConfig;
+  const list = [p('plain'), p('over-ssh', { enabled: true }), p('shell', { enabled: true, mode: 'shell' })];
+
+  it('hides Session Manager shell profiles when SSH is required (file manager, directory sync)', () => {
+    expect(withoutSsmShell(list, true).map((x) => x.id)).toEqual(['plain', 'over-ssh']);
+  });
+
+  it('keeps every profile otherwise', () => {
+    expect(withoutSsmShell(list, false)).toBe(list);
   });
 });
