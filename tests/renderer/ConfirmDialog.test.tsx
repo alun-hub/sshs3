@@ -3,7 +3,7 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import { ConfirmProvider, useConfirm } from '../../src/renderer/src/components/ConfirmDialog';
+import { ConfirmProvider, useConfirm, useNotice } from '../../src/renderer/src/components/ConfirmDialog';
 
 // LOW finding (code review): replaces window.confirm() for destructive
 // actions, which is trivially dismissed by a stray Enter/Space press.
@@ -200,5 +200,38 @@ describe('ConfirmDialog', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<BareComponent />)).toThrow(/must be used within a ConfirmProvider/);
     spy.mockRestore();
+  });
+});
+
+describe('useNotice (in-app replacement for window.alert)', () => {
+  afterEach(() => cleanup());
+
+  const Notify: React.FC<{ onDone: () => void }> = ({ onDone }) => {
+    const notice = useNotice();
+    return <button onClick={async () => { await notice('AWS SSO session expired: sign in again, then reconnect.'); onDone(); }}>Go</button>;
+  };
+
+  it('shows the message in the app dialog with a single, focused OK button and resolves on OK', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const done = vi.fn();
+    render(<ConfirmProvider><Notify onDone={done} /></ConfirmProvider>);
+    fireEvent.click(screen.getByText('Go'));
+    const dialog = await screen.findByTestId('confirm-dialog');
+    expect(within(dialog).getByText(/session expired/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Cancel' })).toBeNull();
+    const ok = within(dialog).getByRole('button', { name: 'OK' });
+    expect(ok).toHaveFocus();
+    fireEvent.click(ok);
+    await waitFor(() => expect(done).toHaveBeenCalled());
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('falls back to the native alert outside a provider', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    render(<Notify onDone={() => {}} />);
+    fireEvent.click(screen.getByText('Go'));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('AWS SSO session expired: sign in again, then reconnect.'));
+    alertSpy.mockRestore();
   });
 });

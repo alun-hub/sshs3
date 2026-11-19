@@ -19,6 +19,8 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   /** Styles the confirm button red and swaps the icon for a warning triangle. Default true. */
   danger?: boolean;
+  /** A notice with a single OK button (the in-app replacement for window.alert()). */
+  notice?: boolean;
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -97,16 +99,19 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
               {/* Autofocused, so a stray Enter/Space press (or the same key
                   that just confirmed a previous, unrelated dialog) cancels
                   rather than confirms. */}
+              {!pending.notice && (
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => settle(false)}
+                  className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                >
+                  {pending.cancelLabel ?? 'Cancel'}
+                </button>
+              )}
               <button
                 type="button"
-                autoFocus
-                onClick={() => settle(false)}
-                className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-              >
-                {pending.cancelLabel ?? 'Cancel'}
-              </button>
-              <button
-                type="button"
+                autoFocus={pending.notice}
                 onClick={() => settle(true)}
                 className={
                   'rounded-lg px-3.5 py-1.5 text-xs font-medium text-white shadow-sm transition-colors ' +
@@ -130,4 +135,23 @@ export function useConfirm(): (options: ConfirmOptions) => Promise<boolean> {
     throw new Error('useConfirm must be used within a ConfirmProvider');
   }
   return ctx;
+}
+
+/**
+ * In-app replacement for window.alert(): shows the message in the app's own dialog with a single OK button.
+ * Outside a ConfirmProvider (isolated component tests) it falls back to the native alert.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- companion hook for context provider in same file
+export function useNotice(): (message: React.ReactNode, title?: string) => Promise<void> {
+  const ctx = useContext(ConfirmContext);
+  return useCallback(
+    async (message, title) => {
+      if (!ctx) {
+        window.alert(typeof message === 'string' ? message : '');
+        return;
+      }
+      await ctx({ title, message, notice: true, danger: false, confirmLabel: 'OK' });
+    },
+    [ctx]
+  );
 }

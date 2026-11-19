@@ -58,7 +58,7 @@ import { createSystemActions } from '../../lib/systemActions';
 import { usePersonalBulkEdit } from '../../lib/usePersonalBulkEdit';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
-import { useConfirm } from '../ConfirmDialog';
+import { useConfirm, useNotice } from '../ConfirmDialog';
 
 export type { Tab };
 
@@ -111,6 +111,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const confirm = useConfirm();
+  const notice = useNotice();
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -572,7 +573,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     try {
       const result = await window.multissh.profilesImportSshConfig();
       if (!result.profiles || result.profiles.length === 0) {
-        window.alert(`No Host entries found in ~/.ssh/config`);
+        notice(`No Host entries found in ~/.ssh/config`);
         return;
       }
       setImportCandidates(result.profiles);
@@ -611,7 +612,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     try {
       const res = await window.multissh.profilesExportJson();
       if (res) {
-        window.alert(`Successfully exported ${res.count} profiles to ${res.filePath}`);
+        notice(`Successfully exported ${res.count} profiles to ${res.filePath}`);
       }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to export profiles'));
@@ -624,7 +625,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       const res = await window.multissh.profilesImportJson();
       if (res && res.count > 0) {
         await load();
-        window.alert(`Successfully imported ${res.count} profiles!`);
+        notice(`Successfully imported ${res.count} profiles!`);
       }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to import profiles'));

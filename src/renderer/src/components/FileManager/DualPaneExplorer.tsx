@@ -20,6 +20,7 @@ import { useModalDismiss } from '../../lib/useModalDismiss';
 import { updateSession } from '../../lib/sessionUpdate';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { createRendererLogger } from '../../lib/log';
+import { useNotice } from '../ConfirmDialog';
 import { registerFileManager, type FileManagerSnapshot } from '../../lib/fileManagerState';
 const log = createRendererLogger('DualPaneExplorer');
 
@@ -77,6 +78,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
   onToggleHiddenFiles,
   gitIntegrationEnabled = true,
 }) => {
+  const notice = useNotice();
   const [panes, setPanes] = useState<Record<PaneSide, PaneState>>({
     left: { source: DEFAULT_SOURCE.left, path: '/' },
     right: { source: DEFAULT_SOURCE.right, path: '/' },
@@ -369,7 +371,7 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
 
       const unavailableReason = sftpUnavailableReason(config.authType);
       if (unavailableReason) {
-        window.alert(unavailableReason);
+        notice(unavailableReason);
         setConnectionRequest(null);
         return;
       }
@@ -412,12 +414,12 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         setPasswordPrompt(null);
       } catch (err) {
         const msg = describeIpcError(err, 'Could not connect to the SFTP server');
-        window.alert(msg);
+        notice(msg);
       } finally {
         setConnecting(false);
       }
     },
-    [connectionRequest, passwordPrompt]
+    [connectionRequest, passwordPrompt, notice]
   );
 
   const handlePasswordPromptSubmit = async (e: React.FormEvent) => {
@@ -455,12 +457,12 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         });
         setConnectionRequest(null);
       } catch (err) {
-        window.alert(describeIpcError(err, 'Could not connect to S3'));
+        notice(describeIpcError(err, 'Could not connect to S3'));
       } finally {
         setConnecting(false);
       }
     },
-    [connectionRequest]
+    [connectionRequest, notice]
   );
 
   const connectPaneToK8s = useCallback(
@@ -503,12 +505,12 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
         });
         setConnectionRequest(null);
       } catch (err) {
-        window.alert(describeIpcError(err, 'Could not connect to Kubernetes pod'));
+        notice(describeIpcError(err, 'Could not connect to Kubernetes pod'));
       } finally {
         setConnecting(false);
       }
     },
-    [connectionRequest]
+    [connectionRequest, notice]
   );
 
   useEffect(() => {
@@ -575,12 +577,12 @@ export const DualPaneExplorer: React.FC<DualPaneExplorerProps> = ({
       const profiles = await window.multissh.profilesGet?.();
       const sshProfile = profiles?.ssh?.find((p) => p.id === sshId);
       if (!sshProfile) {
-        window.alert('Could not find SSH profile for this SFTP connection');
+        notice('Could not find SSH profile for this SFTP connection');
         return;
       }
       onOpenTerminal(sshProfile, path);
     },
-    [onOpenTerminal, onOpenK8sTerminal]
+    [onOpenTerminal, onOpenK8sTerminal, notice]
   );
 
   const handleTransferRequested = useCallback(
