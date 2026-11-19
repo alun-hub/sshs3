@@ -84,6 +84,25 @@ describe('AwsSsoSignInPanel', () => {
     expect(screen.getByText('Role Name')).toBeInTheDocument();
   });
 
+  it('explains why the lists could not be read, and points at the saved profile when the form has its own proxy/CA', async () => {
+    status = { status: 'valid', expiresAt: '2030-05-06T07:08:00' };
+    api.awsSsoListAccountsCached.mockRejectedValueOnce(new Error('connect ETIMEDOUT'));
+    render(<Harness initial={{ startUrl: URL_ }} network={{ customCaPath: '/etc/corp-ca.pem' } as never} />);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('connect ETIMEDOUT');
+    expect(alert).toHaveTextContent('type the account and role instead');
+    expect(alert).toHaveTextContent('save this profile first');
+  });
+
+  it('gives only the reason and the typing hint when there is no form-level proxy/CA', async () => {
+    status = { status: 'valid', expiresAt: '2030-05-06T07:08:00' };
+    api.awsSsoListAccountsCached.mockRejectedValueOnce(new Error('not allowed'));
+    render(<Harness initial={{ startUrl: URL_ }} />);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('not allowed');
+    expect(alert).not.toHaveTextContent('save this profile first');
+  });
+
   it('shows a sign-in failure; only the sign-in itself carries the profile network options, never the cached lists', async () => {
     api.awsSsoLogin.mockRejectedValueOnce(new Error('AWS SSO login was cancelled'));
     render(<Harness initial={{ startUrl: URL_ }} network={{ rejectUnauthorized: false }} />);

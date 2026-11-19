@@ -77,9 +77,13 @@ export function useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAcc
       setAccounts(list);
       const current = valueRef.current.accountId;
       if (current) void loadRoles(current);
-    } catch {
-      // Some permission sets cannot list accounts/roles through the portal API: fall back to typing them in.
+    } catch (err) {
+      // Some permission sets cannot list accounts/roles through the portal API: fall back to typing them in, and say why.
       setManualEntry(true);
+      const detail = describeIpcError(err, 'Could not list the accounts');
+      // Listing goes through the proxy/CA of Settings -> AWS or of the SAVED profile, never one typed in this form.
+      const hasOwnNetwork = Boolean(networkRef.current?.proxy || networkRef.current?.customCaPath);
+      setError(`${detail} You can type the account and role instead.${hasOwnNetwork && !s3ProfileId ? ' Account lists use the proxy and CA from Settings → AWS; save this profile first to use its own.' : ''}`);
     }
   }, [startUrl, region, s3ProfileId, loadRoles]);
 
