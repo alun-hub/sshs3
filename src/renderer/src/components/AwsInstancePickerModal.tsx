@@ -129,7 +129,10 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
   // Roles per selected account, loaded as accounts are ticked (a few at a time) and preselected sensibly.
   const rolePrefs = useRef<Array<string | undefined>>([]);
   rolePrefs.current = [role, signIns.find((x) => x.id === savedId)?.lastRoleName];
+  // Bumped when the sign-in changes so answers for the old one are dropped.
+  const roleGeneration = useRef(0);
   useEffect(() => {
+    roleGeneration.current += 1;
     setRolesByAccount({});
     setRoleByAccount({});
   }, [sso.startUrl, sso.region]);
@@ -139,16 +142,18 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
     const batch = [...selectedAccounts].filter((id) => rolesByAccount[id] === undefined).slice(0, Math.max(0, 4 - loading));
     if (batch.length === 0) return;
     setRolesByAccount((r) => ({ ...r, ...Object.fromEntries(batch.map((id) => [id, 'loading' as const])) }));
+    const generation = roleGeneration.current;
     for (const id of batch) {
       window.multissh
         .awsSsoListRolesCached({ startUrl: normalizeStartUrl(sso.startUrl), region: sso.region.trim(), accountId: id })
         .then((list) => {
+          if (generation !== roleGeneration.current) return;
           const names = list.map((r) => r.roleName);
           setRolesByAccount((r) => ({ ...r, [id]: names }));
           const pick = defaultRole(names, rolePrefs.current);
           if (pick) setRoleByAccount((cur) => (cur[id] ? cur : { ...cur, [id]: pick }));
         })
-        .catch(() => setRolesByAccount((r) => ({ ...r, [id]: 'error' })));
+        .catch(() => generation === roleGeneration.current && setRolesByAccount((r) => ({ ...r, [id]: 'error' })));
     }
   }, [kind, signedIn, signInState.manualEntry, selectedAccounts, rolesByAccount, sso.startUrl, sso.region]);
 

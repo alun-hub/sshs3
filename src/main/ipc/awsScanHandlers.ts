@@ -16,6 +16,8 @@ import { buildCredentialProvider } from '../aws/awsCredentials';
 import { listAwsCliProfiles } from '../aws/awsProfiles';
 import { scanInstances } from '../aws/awsScanService';
 import { locateTools } from '../aws/AwsSsmToolchain';
+import { getAwsNetworkSettings } from '../aws/awsNetworkSettings';
+import { networkEnvFor } from '../ssh/ssmProxy';
 import { isFeatureAllowed } from '../policy/policyApply';
 import type { IpcBridge } from '../IpcBridge';
 
@@ -62,15 +64,16 @@ export function registerAwsScanHandlers(bridge: AwsScanHost): void {
       if (pendingScans.has(req.scanId)) throw new Error('This scan is already running');
       const request = normalizeScanRequest(req.request);
 
-      // Sign-ins that are gone fail fast with the "session expired" prefix the UI offers a sign-in for.
-      for (const url of new Set(request.targets.flatMap((t) => (t.source.kind === 'sso' ? [t.source.sso.startUrl] : [])))) {
-        if ((await bridge.awsSsoAuthService.getTokenStatus(url)) !== 'valid') throw new Error(`${AWS_SSO_EXPIRED_PREFIX}: sign in again to continue.`);
-      }
-
+      // Registered before any await so a cancel or a duplicate id cannot slip into the token checks below.
       const controller = new AbortController();
       pendingScans.set(req.scanId, controller);
       const sender = (event as { sender?: unknown } | undefined)?.sender as Parameters<AwsScanHost['sendToSender']>[0];
       try {
+        // Sign-ins that are gone fail fast with the "session expired" prefix the UI offers a sign-in for.
+        for (const url of new Set(request.targets.flatMap((t) => (t.source.kind === 'sso' ? [t.source.sso.startUrl] : [])))) {
+          if ((await bridge.awsSsoAuthService.getTokenStatus(url)) !== 'valid') throw new Error(`${AWS_SSO_EXPIRED_PREFIX}: sign in again to continue.`);
+        }
+        if (controller.signal.aborted) return { searched: 0, skipped: [], instances: [], truncated: false };
         return await scanInstances(request, {
           network: globalAwsNetwork(),
           signal: controller.signal,
@@ -121,7 +124,7 @@ export function registerAwsScanHandlers(bridge: AwsScanHost): void {
     return await new Promise<AwsProfileLoginResult>((resolve) => {
       // Fixed arguments plus a profile name validated above and found in the user's own configuration; no shell.
       // nosemgrep: javascript.lang.security.detect-child-process -- see above
-      execFile(aws, ['sso', 'login', '--profile', profile], { timeout: PROFILE_LOGIN_TIMEOUT_MS, windowsHide: true, maxBuffer: 64 * 1024 }, (err) => {
+      execFile(aws, ['sso', 'login', '--profile', profile], { timeout: PROFILE_LOGIN_TIMEOUT_MS, windowsHide: true, maxBuffer: 64 * 1024, env: { ...process.env, ...networkEnvFor(getAwsNetworkSettings(), process.env, process.platform) } }, (err) => {
         resolve(err ? { ok: false, message: 'The AWS CLI sign-in did not complete. Try again, or run "aws sso login" in a terminal.' } : { ok: true });
       });
     });

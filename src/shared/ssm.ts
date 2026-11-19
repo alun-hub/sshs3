@@ -46,6 +46,11 @@ export function isValidInstanceId(value: unknown): value is string {
   return typeof value === 'string' && INSTANCE_ID.test(value);
 }
 
+/** A well-formed IAM Identity Center start URL (https, no query or fragment). */
+export function isValidStartUrl(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 512 && START_URL.test(value);
+}
+
 export function isValidSsoConfig(value: unknown): value is AwsSsoConfig {
   if (typeof value !== 'object' || value === null) return false;
   const s = value as Record<string, unknown>;

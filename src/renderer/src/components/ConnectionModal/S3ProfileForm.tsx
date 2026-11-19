@@ -248,7 +248,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
             idPrefix="s3-sso"
             value={{
               startUrl: config.sso?.startUrl ?? '',
-              region: config.sso?.region ?? config.region,
+              region: config.sso?.region || config.region || 'us-east-1',
               accountId: config.sso?.accountId,
               roleName: config.sso?.roleName,
             }}
