@@ -4,6 +4,11 @@ import type { AwsSsoAuthService } from '../aws/AwsSsoAuthService';
 import type { PolicyDocument } from '../../shared/types/policy';
 import { isFeatureAllowed } from '../policy/policyApply';
 
+/** The `awsSsm` policy switch for the AWS IPC handlers (scan, CLI profiles, cached sign-in lists). */
+export function assertAwsAllowed(policy: PolicyDocument): void {
+  if (!isFeatureAllowed(policy, 'awsSsm')) throw new Error('AWS features are disabled by your administrator');
+}
+
 /**
  * Before connecting an SSM profile that uses sshs3's own SSO sign-in: fail fast with the
  * "session expired" prefix when the cached token is gone or lapsed, so the UI can offer a

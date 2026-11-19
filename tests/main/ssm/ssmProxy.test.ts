@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm, setSsmAllowed, networkEnvFor, buildSsmShellSpawn, isSsmShell, SSM_SHELL_NO_SSH_MESSAGE } from '../../../src/main/ssh/ssmProxy';
+import { buildSsmProxyCommand, buildSsmEnv, assertValidSsm, setSsmAllowed, networkEnvFor, buildSsmShellSpawn, SSM_SHELL_NO_SSH_MESSAGE } from '../../../src/main/ssh/ssmProxy';
+import { isSsmShellProfile } from '../../../src/shared/ssm';
 import { buildSsoConfigFile, ensureSsoConfigFile, ssoProfileName } from '../../../src/main/aws/ssoConfigFile';
 import { candidateDirs, findExecutable, pathDirs, pluginStatusFromVersion, toolDirsMissingFromPath } from '../../../src/main/aws/AwsSsmToolchain';
 import { SmartcardDetector } from '../../../src/main/smartcard/SmartcardDetector';
@@ -219,10 +220,10 @@ describe('Session Manager shell mode', () => {
   const shell = (ssm: NonNullable<SSHConnectionConfig['ssm']>, over: Partial<SSHConnectionConfig> = {}) => base({ ssm: { mode: 'shell', ...ssm }, ...over });
 
   it('is recognised only for enabled SSM profiles with mode shell', () => {
-    expect(isSsmShell(shell({ enabled: true }))).toBe(true);
-    expect(isSsmShell(base())).toBe(false);
-    expect(isSsmShell(base({ ssm: { enabled: true, mode: 'ssh' } }))).toBe(false);
-    expect(isSsmShell(base({ ssm: undefined }))).toBe(false);
+    expect(isSsmShellProfile(shell({ enabled: true }))).toBe(true);
+    expect(isSsmShellProfile(base())).toBe(false);
+    expect(isSsmShellProfile(base({ ssm: { enabled: true, mode: 'ssh' } }))).toBe(false);
+    expect(isSsmShellProfile(base({ ssm: undefined }))).toBe(false);
   });
 
   it('builds the aws command for each credential source with validated arguments only', () => {

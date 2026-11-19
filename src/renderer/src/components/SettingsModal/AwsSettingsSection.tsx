@@ -8,7 +8,7 @@ import { AwsSsoSignInPanel } from '../AwsSsoSignInPanel';
 import { AwsToolsPanel } from '../aws/AwsToolsPanel';
 import { describeSsoStatus } from '../../lib/awsSsoStatus';
 import { useAwsSignInStatuses } from '../../lib/useAwsSignInStatuses';
-import { describeIpcError } from '../../lib/format';
+import { useAwsRowSignIn } from '../../lib/useAwsRowSignIn';
 import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
 import { FeatureBlockedNotice, ManagedGroup } from './Managed';
 import type { SettingsForm } from './useSettingsForm';
@@ -41,8 +41,6 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
   const rows = allSignIns(awsSignIns, awsManagedSignIns);
   const { statuses, refresh } = useAwsSignInStatuses(rows, enableAws);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<AwsCliProfile[] | null>(null);
 
   useEffect(() => {
@@ -58,6 +56,7 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
   }, [enableAws]);
 
   const network = awsNetworkToOptions(awsNetwork);
+  const { busyId, error, signIn } = useAwsRowSignIn(refresh, network);
   const regionList = parseRegionList(awsRegions);
   const ignoredRegions = awsRegions.split(/[\s,;]+/).filter((r) => r && !regionList.includes(r));
   const draftValid = !!draft && draft.name.trim() !== '' && isValidSsoConfig({ startUrl: normalizeStartUrl(draft.startUrl), region: draft.region.trim() });
@@ -67,19 +66,6 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
     const entry: AwsSignIn = { id: draft.id ?? `signin-${Date.now().toString(36)}`, name: draft.name.trim(), startUrl: normalizeStartUrl(draft.startUrl), region: draft.region.trim() };
     setAwsSignIns(draft.id ? awsSignIns.map((s) => (s.id === draft.id ? { ...s, ...entry } : s)) : [...awsSignIns, entry]);
     setDraft(null);
-  };
-
-  const signIn = async (row: AwsSignIn) => {
-    setBusyId(row.id);
-    setError(null);
-    try {
-      await window.multissh.awsSsoLogin(row.startUrl, row.region, network);
-      refresh();
-    } catch (err) {
-      setError(describeIpcError(err, 'AWS SSO login failed'));
-    } finally {
-      setBusyId(null);
-    }
   };
 
   return (

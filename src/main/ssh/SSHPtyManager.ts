@@ -5,7 +5,8 @@ import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
 import path from 'node:path';
 import fs from 'node:fs';
-import { buildSsmShellSpawn, isSsmShell, ssmReconnectBlocked } from './ssmProxy';
+import { isSsmShellProfile } from '../../shared/ssm';
+import { buildSsmShellSpawn, ssmReconnectBlocked } from './ssmProxy';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
@@ -201,7 +202,7 @@ export class InternalSSHPtySession implements SSHPtySession {
     const shouldReconnect =
       !this.disposed &&
       !changedKey &&
-      Boolean(this.config.autoReconnect) && !isSsmShell(this.config) && // a Session Manager shell is never respawned
+      Boolean(this.config.autoReconnect) && !isSsmShellProfile(this.config) && // a Session Manager shell is never respawned
       // 255 is ssh's own "the connection failed or dropped" code; any other non-zero code is the remote shell or
       // command ending (e.g. `exit 1`), which is not a reason to connect again. node-pty reports signal 0 (not
       // undefined) for a normal exit, so only a real signal counts.
@@ -550,7 +551,7 @@ export class SSHPtyManager extends EventEmitter {
 
   /** Reconnects an existing session by spawning a new underlying SSH process. */
   public async reconnectSession(session: InternalSSHPtySession): Promise<boolean> {
-    if (isSsmShell(session.config) || (await ssmReconnectBlocked(session.config))) return false; // shell ends with its process; lapsed SSO sign-in
+    if (isSsmShellProfile(session.config) || (await ssmReconnectBlocked(session.config))) return false; // shell ends with its process; lapsed SSO sign-in
     const config = session.config;
     const options = this.sessionOptions.get(session.sessionId);
     const cols = session.cols;
@@ -610,7 +611,7 @@ export class SSHPtyManager extends EventEmitter {
     config: SSHConnectionConfig,
     options?: PtyOptions
   ): Promise<SSHPtySession> {
-    if (isSsmShell(config)) return this.createSsmShellSession(config, options);
+    if (isSsmShellProfile(config)) return this.createSsmShellSession(config, options);
     const sessionId = config.id || `ssh-${crypto.randomUUID()}`;
     this.sessionOptions.set(sessionId, options);
     const cols = options?.cols ?? 80;

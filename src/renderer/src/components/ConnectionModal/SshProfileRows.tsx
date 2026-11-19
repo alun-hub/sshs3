@@ -50,8 +50,8 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
           </span>
         )}
         {profile.ssm?.enabled && (
-          <span title={profile.ssm.mode === 'shell' ? 'Session Manager shell, no SSH (experimental)' : 'Connects through AWS Systems Manager (experimental)'} className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
-            {profile.ssm.mode === 'shell' ? 'SSM shell' : 'SSM'}
+          <span title={isSsmShellProfile(profile) ? 'Session Manager shell, no SSH (experimental)' : 'Connects through AWS Systems Manager (experimental)'} className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
+            {isSsmShellProfile(profile) ? 'SSM shell' : 'SSM'}
           </span>
         )}
         {profile.group && (

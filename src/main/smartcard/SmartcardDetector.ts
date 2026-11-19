@@ -4,7 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
 import { isAllowedExtraOption } from '../ssh/blockedSshDirectives';
-import { assertValidSsm, isSsmShell, SSM_SHELL_NO_SSH_MESSAGE, ssmEnvOverlay, ssmProxyOption } from '../ssh/ssmProxy';
+import { isSsmShellProfile } from '../../shared/ssm';
+import { assertValidSsm, SSM_SHELL_NO_SSH_MESSAGE, ssmEnvOverlay, ssmProxyOption } from '../ssh/ssmProxy';
 import { createLogger } from '../log';
 const smartcardLog = createLogger('smartcard');
 
@@ -236,7 +237,7 @@ export class SmartcardDetector {
 
     // SSH over AWS SSM: host is an instance id; combining with a proxy/jump host is rejected here.
     assertValidSsm(config);
-    if (isSsmShell(config)) throw new Error(SSM_SHELL_NO_SSH_MESSAGE);
+    if (isSsmShellProfile(config)) throw new Error(SSM_SHELL_NO_SSH_MESSAGE);
 
     const port = config.port ?? 22;
     if (!Number.isInteger(port) || port < 1 || port > 65535) {

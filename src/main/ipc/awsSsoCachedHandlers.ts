@@ -3,15 +3,13 @@ import { IPC_CHANNELS } from '../../shared/types/ipc';
 import { isValidRegion, isValidStartUrl, normalizeStartUrl } from '../../shared/ssm';
 import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoNetworkOptions } from '../../shared/types/aws';
 import type { AwsSsoCachedRequest, AwsSsoStatusInfo } from '../../shared/types/awsScan';
-import { isFeatureAllowed } from '../policy/policyApply';
+import { assertAwsAllowed } from './ssmPreflight';
 import type { IpcBridge } from '../IpcBridge';
 
 /** The part of IpcBridge this handler group may use. */
 export type AwsSsoCachedHost = Pick<IpcBridge, 'awsSsoAuthService' | 'policy' | 'registerHandler'> & Partial<Pick<IpcBridge, 'profileStore'>>;
 
-function checkPolicy(bridge: AwsSsoCachedHost): void {
-  if (!isFeatureAllowed(bridge.policy.policy, 'awsSsm')) throw new Error('AWS features are disabled by your administrator');
-}
+const checkPolicy = (bridge: AwsSsoCachedHost): void => assertAwsAllowed(bridge.policy.policy);
 
 function checkRequest(req: unknown, needsAccount: boolean): AwsSsoCachedRequest {
   const r = req as AwsSsoCachedRequest | undefined;

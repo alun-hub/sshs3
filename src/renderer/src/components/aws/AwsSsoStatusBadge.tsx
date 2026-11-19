@@ -5,7 +5,7 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { useAwsEnabled } from '../../lib/awsEnabled';
 import { badgeTitle, badgeTone, buildBadgeRows, type BadgeRow } from '../../lib/awsBadge';
 import { describeSsoStatus } from '../../lib/awsSsoStatus';
-import { describeIpcError } from '../../lib/format';
+import { useAwsRowSignIn } from '../../lib/useAwsRowSignIn';
 import { useAwsSignInStatuses } from '../../lib/useAwsSignInStatuses';
 import { AwsImportFlow } from './AwsImportFlow';
 
@@ -28,8 +28,6 @@ export const AwsSsoStatusBadge: React.FC<Props> = ({ onOpenAwsSettings }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [settings, setSettings] = useState<AppSettings | undefined>();
   const [profiles, setProfiles] = useState<SSHConnectionConfig[]>([]);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -55,6 +53,7 @@ export const AwsSsoStatusBadge: React.FC<Props> = ({ onOpenAwsSettings }) => {
 
   const rows: BadgeRow[] = buildBadgeRows(settings, profiles);
   const { statuses, refresh } = useAwsSignInStatuses(rows, awsEnabled);
+  const { busyId, error, signIn } = useAwsRowSignIn(refresh);
   const tone = badgeTone(rows, statuses);
 
   useEffect(() => {
@@ -77,19 +76,6 @@ export const AwsSsoStatusBadge: React.FC<Props> = ({ onOpenAwsSettings }) => {
   }, [isOpen, importing]);
 
   if (!awsEnabled) return null;
-
-  const signIn = async (row: BadgeRow) => {
-    setBusyId(row.id);
-    setError(null);
-    try {
-      await window.multissh.awsSsoLogin(row.startUrl, row.region);
-      refresh();
-    } catch (err) {
-      setError(describeIpcError(err, 'AWS SSO login failed').replace(/^Error:\s*/, ''));
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   return (
     <div className="relative">

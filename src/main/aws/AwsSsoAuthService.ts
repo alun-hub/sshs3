@@ -307,15 +307,21 @@ export class AwsSsoAuthService extends EventEmitter {
   }
 
   /**
+   * The token cache file of a start URL. SHA-1 only because the AWS CLI/SDK name the file sha1(startUrl): it is a lookup
+   * key over a public URL, not a security function, and the file must have exactly this name to be found.
+   * (CodeQL js/weak-cryptographic-algorithm: false positive.)
+   */
+  private tokenCacheFile(startUrl: string): string {
+    return path.join(this.ssoCacheDir(), `${crypto.createHash('sha1').update(startUrl).digest('hex')}.json`);
+  }
+
+  /**
    * Reads the cached SSO token for a start URL (`~/.aws/sso/cache/<sha1(startUrl)>.json`). The access token is returned
    * only to callers inside the main process; IPC handlers must expose just `status` and `expiresAt`.
    */
   private async readCachedToken(startUrl: string): Promise<{ status: AwsSsoTokenStatus; expiresAt?: string; accessToken?: string }> {
-    // SHA-1 only because the AWS CLI/SDK name the token cache file sha1(startUrl); it is a lookup key over a public URL,
-    // not a security function, and the file must have exactly this name to be found. (CodeQL js/weak-cryptographic-algorithm: false positive.)
-    const key = crypto.createHash('sha1').update(startUrl).digest('hex');
     try {
-      const raw = await fs.readFile(path.join(this.ssoCacheDir(), `${key}.json`), 'utf-8');
+      const raw = await fs.readFile(this.tokenCacheFile(startUrl), 'utf-8');
       const data = JSON.parse(raw) as { accessToken?: unknown; expiresAt?: unknown };
       const status = parseSsoTokenCache(data, Date.now());
       if (status === 'missing') return { status };
@@ -374,8 +380,7 @@ export class AwsSsoAuthService extends EventEmitter {
     }
   ): Promise<void> {
     const cacheDir = this.ssoCacheDir();
-    const cacheKey = crypto.createHash('sha1').update(startUrl).digest('hex');
-    const filePath = path.join(cacheDir, `${cacheKey}.json`);
+    const filePath = this.tokenCacheFile(startUrl);
     await fs.mkdir(cacheDir, { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(token, null, 2), { encoding: 'utf-8', mode: 0o600 });
     try {

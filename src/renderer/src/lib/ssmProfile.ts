@@ -1,3 +1,4 @@
+import { isSsmShellProfile } from '@shared/ssm';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { SshSsmConfig } from '@shared/types/ssm';
 import { validateSsmConfig } from '@shared/ssm';
@@ -44,11 +45,11 @@ export function trimProfileFields<T extends { host: string; username: string }>(
 
 /** Whether the SSH username is filled in; a Session Manager shell has no SSH login, so it may be empty. */
 export function usernameOk(config: Pick<SSHConnectionConfig, 'username' | 'ssm'>): boolean {
-  return config.username.trim() !== '' || (config.ssm?.enabled === true && config.ssm.mode === 'shell');
+  return config.username.trim() !== '' || isSsmShellProfile(config);
 }
 
 /** The `user@host:port · auth` line of a profile row; a Session Manager shell shows what it is instead. */
 export function profileTarget(p: Pick<SSHConnectionConfig, 'username' | 'host' | 'port' | 'authType' | 'ssm'>, suffix: string): string {
-  if (p.ssm?.enabled && p.ssm.mode === 'shell') return `Session Manager shell · ${p.host}${suffix}`;
+  if (isSsmShellProfile(p)) return `Session Manager shell · ${p.host}${suffix}`;
   return `${p.username}@${p.host}:${p.port ?? 22}${suffix}`;
 }

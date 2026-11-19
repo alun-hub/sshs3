@@ -18,7 +18,7 @@ import { scanInstances } from '../aws/awsScanService';
 import { locateTools } from '../aws/AwsSsmToolchain';
 import { getAwsNetworkSettings } from '../aws/awsNetworkSettings';
 import { networkEnvFor } from '../ssh/ssmProxy';
-import { isFeatureAllowed } from '../policy/policyApply';
+import { assertAwsAllowed } from './ssmPreflight';
 import type { IpcBridge } from '../IpcBridge';
 
 /** The part of IpcBridge this handler group may use. */
@@ -50,9 +50,7 @@ async function requireProfile(name: unknown, kind?: AwsCliProfile['kind']): Prom
 }
 
 export function registerAwsScanHandlers(bridge: AwsScanHost): void {
-  const checkPolicy = (): void => {
-    if (!isFeatureAllowed(bridge.policy.policy, 'awsSsm')) throw new Error('AWS features are disabled by your administrator');
-  };
+  const checkPolicy = (): void => assertAwsAllowed(bridge.policy.policy);
 
   bridge.registerHandler(
     IPC_CHANNELS.AWS_SSM_SCAN,

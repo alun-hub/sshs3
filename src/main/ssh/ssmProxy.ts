@@ -9,7 +9,7 @@ import { getAwsNetworkSettings } from '../aws/awsNetworkSettings';
 import type { AwsNetworkSettings } from '../../shared/types/aws';
 import { locateTools, toolDirsMissingFromPath } from '../aws/AwsSsmToolchain';
 import { ensureSsoConfigFile, ssoProfileName } from '../aws/ssoConfigFile';
-import { SSM_START_SESSION_POSIX, SSM_START_SESSION_WINDOWS, validateSsmConfig } from '../../shared/ssm';
+import { SSM_START_SESSION_POSIX, SSM_START_SESSION_WINDOWS, isSsmShellProfile, validateSsmConfig } from '../../shared/ssm';
 
 /**
  * Credential variables that would silently change which AWS identity the session uses. Scrubbed only
@@ -74,11 +74,6 @@ function ssmCliFlags(ssm: SshSsmConfig, profileName?: string): string[] {
   return flags;
 }
 
-/** True when the profile opens a Session Manager shell (IAM only, no SSH) instead of SSH over SSM. */
-export function isSsmShell(config: Pick<SSHConnectionConfig, 'ssm'>): boolean {
-  return config.ssm?.enabled === true && config.ssm.mode === 'shell';
-}
-
 export const SSM_SHELL_NO_SSH_MESSAGE =
   'This profile opens a Session Manager shell (no SSH). Files, tunnels, key install and the other SSH features need the connection type "SSH over SSM".';
 
@@ -88,7 +83,7 @@ export const SSM_SHELL_NO_SSH_MESSAGE =
  * involved because node-pty runs the file directly.
  */
 export function buildSsmShellSpawn(config: SSHConnectionConfig, extraEnv: Record<string, string> = {}): { file: string; args: string[]; env: Record<string, string> } {
-  if (!isSsmShell(config)) throw new Error('This profile does not use a Session Manager shell');
+  if (!isSsmShellProfile(config)) throw new Error('This profile does not use a Session Manager shell');
   assertValidSsm(config);
   const ssm = config.ssm!;
   const profile = ssm.sso ? ssoProfileName(ssm.sso) : undefined;
