@@ -12,9 +12,12 @@ const PLUGIN_NAMES = { win32: 'session-manager-plugin.exe', other: 'session-mana
 export function candidateDirs(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): { aws: string[]; plugin: string[] } {
   if (platform === 'win32') {
     const pf = env.ProgramFiles ?? env.PROGRAMFILES ?? 'C:\\Program Files';
+    const pf86 = env['ProgramFiles(x86)'] ?? env['PROGRAMFILES(X86)'];
+    // Machine installs first (the MSI default); then a 32-bit Program Files and a per-user folder, in case of a custom install.
+    const roots = [pf, ...(pf86 ? [pf86] : []), ...(env.LOCALAPPDATA ? [path.win32.join(env.LOCALAPPDATA, 'Programs')] : [])];
     return {
-      aws: [path.win32.join(pf, 'Amazon', 'AWSCLIV2')],
-      plugin: [path.win32.join(pf, 'Amazon', 'SessionManagerPlugin', 'bin')],
+      aws: roots.map((r) => path.win32.join(r, 'Amazon', 'AWSCLIV2')),
+      plugin: roots.map((r) => path.win32.join(r, 'Amazon', 'SessionManagerPlugin', 'bin')),
     };
   }
   const common = ['/usr/local/bin', '/usr/bin', '/snap/bin', path.posix.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/home/linuxbrew/.linuxbrew/bin'];
@@ -96,7 +99,7 @@ let locateCache: { key: string; at: number; value: Located2 } | undefined;
  * settings poll: a result is reused for a moment (an install is still noticed within seconds).
  */
 function locate(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): Located2 {
-  const key = JSON.stringify([platform, home, pathDirs(env, platform), env.ProgramFiles ?? env.PROGRAMFILES]);
+  const key = JSON.stringify([platform, home, pathDirs(env, platform), env.ProgramFiles ?? env.PROGRAMFILES, env['ProgramFiles(x86)'] ?? env['PROGRAMFILES(X86)'], env.LOCALAPPDATA]);
   if (locateCache && locateCache.key === key && Date.now() - locateCache.at < LOCATE_TTL_MS) return locateCache.value;
   const value = locateUncached(platform, env, home);
   locateCache = { key, at: Date.now(), value };
