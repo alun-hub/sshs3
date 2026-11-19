@@ -21,12 +21,12 @@ function matchesTag(tags: string[] | undefined, query: string): boolean {
   return needle !== '' && !!tags?.some((tag) => tag.toLowerCase().includes(needle));
 }
 
-/** `query` is already trimmed and lower-cased. */
 /** Drops Session Manager shell profiles (no SSH connection) when `needsSsh` is set, e.g. in file manager pickers. */
 export function withoutSsmShell(profiles: SSHConnectionConfig[], needsSsh: boolean): SSHConnectionConfig[] {
   return needsSsh ? profiles.filter((p) => !isSsmShellProfile(p)) : profiles;
 }
 
+/** `query` is already trimmed and lower-cased. */
 export function filterSshProfiles(profiles: SSHConnectionConfig[], query: string): SSHConnectionConfig[] {
   if (!query) return profiles;
   return profiles.filter(

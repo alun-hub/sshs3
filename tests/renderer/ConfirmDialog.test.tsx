@@ -3,7 +3,8 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import { ConfirmProvider, useConfirm, useNotice } from '../../src/renderer/src/components/ConfirmDialog';
+import { ConfirmProvider, useConfirm } from '../../src/renderer/src/components/ConfirmDialog';
+import { useNotice } from '../../src/renderer/src/lib/confirmContext';
 
 // LOW finding (code review): replaces window.confirm() for destructive
 // actions, which is trivially dismissed by a stray Enter/Space press.

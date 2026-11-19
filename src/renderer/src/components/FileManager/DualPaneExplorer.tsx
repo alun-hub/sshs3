@@ -20,7 +20,7 @@ import { useModalDismiss } from '../../lib/useModalDismiss';
 import { updateSession } from '../../lib/sessionUpdate';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { createRendererLogger } from '../../lib/log';
-import { useNotice } from '../ConfirmDialog';
+import { useNotice } from '../../lib/confirmContext';
 import { registerFileManager, type FileManagerSnapshot } from '../../lib/fileManagerState';
 const log = createRendererLogger('DualPaneExplorer');
 

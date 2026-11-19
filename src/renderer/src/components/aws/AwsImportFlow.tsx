@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { buildProfilesFromPicks } from '@shared/ssmProfileFactory';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { AwsInstancePickerModal, type AwsPickResult } from '../AwsInstancePickerModal';
+import { alreadyAdded } from '../../lib/awsGuide';
 
 interface Props {
   /** Saved SSH profiles: nodes that already have an SSM profile are not imported twice (instance ids are unique in AWS). */
@@ -19,7 +20,7 @@ export const AwsImportFlow: React.FC<Props> = ({ profiles, onDone }) => {
   const savedIds = useRef(new Set<string>());
 
   const save = async (r: AwsPickResult) => {
-    const existing = new Set([...profiles.filter((p) => p.ssm?.enabled).map((p) => p.host), ...savedIds.current]);
+    const existing = new Set([...alreadyAdded(profiles), ...savedIds.current]);
     const created = buildProfilesFromPicks(r.items, { existing });
     for (const folder of new Set(created.map((p) => p.group).filter((g): g is string => !!g))) {
       await window.multissh.profilesSaveFolder(folder).catch(() => {});

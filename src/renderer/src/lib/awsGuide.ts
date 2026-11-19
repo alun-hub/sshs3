@@ -69,12 +69,10 @@ export function buildPickItems(
   connect: Pick<AwsPickItem, 'mode' | 'authType' | 'privateKeyPath'> = {}
 ): AwsPickItem[] {
   const byFolder = new Map<string, ScannedInstance[]>();
-  const folderOf = new Map<string, string>();
   for (const i of chosen) {
     const target = targets.get(i.targetId);
     if (!target) continue;
     const folder = scanFolder(target.accountName || target.label, i.region);
-    folderOf.set(`${i.targetId}\u0000${i.region}\u0000${i.instanceId}`, folder);
     byFolder.set(folder, [...(byFolder.get(folder) ?? []), i]);
   }
   const items: AwsPickItem[] = [];

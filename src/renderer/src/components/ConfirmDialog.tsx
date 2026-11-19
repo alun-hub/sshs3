@@ -1,7 +1,8 @@
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import React, { useCallback, useContext, useRef, useState } from 'react';
 import { AlertTriangle, HelpCircle } from 'lucide-react';
 import { useModalDismiss } from '../lib/useModalDismiss';
 import { useDialogFocus } from '../lib/useDialogFocus';
+import { ConfirmContext } from '../lib/confirmContext';
 
 /**
  * In-app replacement for window.confirm() for destructive/consequential
@@ -27,7 +28,6 @@ interface PendingConfirm extends ConfirmOptions {
   resolve: (value: boolean) => void;
 }
 
-const ConfirmContext = createContext<((options: ConfirmOptions) => Promise<boolean>) | null>(null);
 
 export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [pending, setPending] = useState<PendingConfirm | null>(null);
@@ -135,23 +135,4 @@ export function useConfirm(): (options: ConfirmOptions) => Promise<boolean> {
     throw new Error('useConfirm must be used within a ConfirmProvider');
   }
   return ctx;
-}
-
-/**
- * In-app replacement for window.alert(): shows the message in the app's own dialog with a single OK button.
- * Outside a ConfirmProvider (isolated component tests) it falls back to the native alert.
- */
-// eslint-disable-next-line react-refresh/only-export-components -- companion hook for context provider in same file
-export function useNotice(): (message: React.ReactNode, title?: string) => Promise<void> {
-  const ctx = useContext(ConfirmContext);
-  return useCallback(
-    async (message, title) => {
-      if (!ctx) {
-        window.alert(typeof message === 'string' ? message : '');
-        return;
-      }
-      await ctx({ title, message, notice: true, danger: false, confirmLabel: 'OK' });
-    },
-    [ctx]
-  );
 }

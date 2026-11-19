@@ -50,7 +50,8 @@ import { createSystemActions } from '../../lib/systemActions';
 import { usePersonalBulkEdit } from '../../lib/usePersonalBulkEdit';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
-import { useConfirm, useNotice } from '../ConfirmDialog';
+import { useConfirm } from '../ConfirmDialog';
+import { useNotice } from '../../lib/confirmContext';
 
 export type { Tab };
 
