@@ -1,13 +1,13 @@
 import { globalAwsNetwork } from '../aws/awsNetworkSettings';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import { isValidRegion, isValidStartUrl } from '../../shared/ssm';
-import type { AwsSsoAccount, AwsSsoAccountRole } from '../../shared/types/aws';
+import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoNetworkOptions } from '../../shared/types/aws';
 import type { AwsSsoCachedRequest, AwsSsoStatusInfo } from '../../shared/types/awsScan';
 import { isFeatureAllowed } from '../policy/policyApply';
 import type { IpcBridge } from '../IpcBridge';
 
 /** The part of IpcBridge this handler group may use. */
-export type AwsSsoCachedHost = Pick<IpcBridge, 'awsSsoAuthService' | 'policy' | 'registerHandler'>;
+export type AwsSsoCachedHost = Pick<IpcBridge, 'awsSsoAuthService' | 'policy' | 'registerHandler'> & Partial<Pick<IpcBridge, 'profileStore'>>;
 
 function checkPolicy(bridge: AwsSsoCachedHost): void {
   if (!isFeatureAllowed(bridge.policy.policy, 'awsSsm')) throw new Error('AWS features are disabled by your administrator');
@@ -21,11 +21,19 @@ function checkRequest(req: unknown, needsAccount: boolean): AwsSsoCachedRequest 
   return r;
 }
 
+/** Network for a listing: a saved S3 profile's own proxy/CA when its id is given, otherwise the AWS settings. */
+async function networkFor(bridge: AwsSsoCachedHost, r: AwsSsoCachedRequest): Promise<AwsSsoNetworkOptions | undefined> {
+  if (typeof r.s3ProfileId !== 'string' || !bridge.profileStore) return globalAwsNetwork();
+  const saved = (await bridge.profileStore.getProfiles()).s3?.find((p) => p.id === r.s3ProfileId);
+  if (!saved || (!saved.proxy && !saved.customCaPath && saved.rejectUnauthorized === undefined)) return globalAwsNetwork();
+  return { customCaPath: saved.customCaPath, rejectUnauthorized: saved.rejectUnauthorized, proxy: saved.proxy };
+}
+
 /**
  * Sign-in state and account/role listing for a start URL, using the token cache in the main process.
  * SECURITY: the access token never crosses IPC; results are status, expiry and the lists AWS returned. The renderer
- * cannot choose where the token is sent: proxy and CA come only from the AWS settings (`globalAwsNetwork`), never from
- * the request, so a compromised renderer cannot point the token at a host of its own or switch off TLS verification.
+ * cannot choose where the token is sent: proxy and CA come only from the AWS settings (`globalAwsNetwork`) or from a
+ * saved S3 profile the main process looks up by id, never from values in the request, so a compromised renderer cannot point the token at a host of its own or switch off TLS verification.
  */
 export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
   bridge.registerHandler(IPC_CHANNELS.AWS_SSO_STATUS, async (_event, startUrl: string): Promise<AwsSsoStatusInfo> => {
@@ -38,7 +46,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
     async (_event, req: AwsSsoCachedRequest): Promise<AwsSsoAccount[]> => {
       checkPolicy(bridge);
       const r = checkRequest(req, false);
-      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, globalAwsNetwork());
+      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, await networkFor(bridge, r));
     }
   );
 
@@ -51,7 +59,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
         r.startUrl,
         r.region,
         r.accountId!,
-        globalAwsNetwork()
+        await networkFor(bridge, r)
       );
     }
   );

@@ -21,6 +21,7 @@ registerAwsSsoCachedHandlers({
   registerHandler: (c: string, h: (...a: unknown[]) => Promise<unknown>) => { handlers.set(c, h); },
   awsSsoAuthService: svc,
   get policy() { return { policy: { settings: {}, features } }; },
+  profileStore: { getProfiles: async () => ({ s3: [{ id: 's3-saved', proxy: { enabled: true, type: 'http', host: 'saved.proxy', port: 3128 }, rejectUnauthorized: true }, { id: 's3-plain' }] }) },
 } as never);
 const call = (c: string, ...a: unknown[]) => handlers.get(c)!({}, ...a);
 const writeToken = (expiresAt: string) =>
@@ -83,5 +84,17 @@ describe('cached SSO handlers', () => {
     await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ROLES_CACHED, { startUrl: URL_, region: 'us-east-1', accountId: '12' })).rejects.toThrow(/account id/);
     features = { awsSsm: false };
     await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1' })).rejects.toThrow(/disabled by your administrator/);
+  });
+
+  it('uses the proxy of a SAVED S3 profile (looked up by id in main), falling back to the AWS settings', async () => {
+    writeToken(new Date(Date.now() + 3600_000).toISOString());
+    await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', s3ProfileId: 's3-saved' });
+    expect((accounts.mock.calls.at(-1)!.at(-1) as { proxy?: { host: string } }).proxy?.host).toBe('saved.proxy');
+    for (const id of ['s3-plain', 'unknown']) {
+      setAwsNetworkSettings({ httpsProxy: 'http://proxy.corp:8080' });
+      await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1', s3ProfileId: id });
+      expect((accounts.mock.calls.at(-1)!.at(-1) as { proxy?: { host: string } }).proxy?.host).toBe('proxy.corp');
+    }
+    setAwsNetworkSettings(undefined);
   });
 });

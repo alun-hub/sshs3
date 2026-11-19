@@ -32,7 +32,7 @@ AWS features are off until you switch them on, so they stay out of the way if yo
 |---------|--------------|
 | **AWS sign-ins** | Saved IAM Identity Center sign-ins (name, start URL, region) with their status and a **Sign in** button. Sign-ins from your organization's policy are shown locked. |
 | **Regions to search** | Regions used by **Add from AWS**, comma separated. Empty means you choose each time. |
-| **Network** | HTTPS proxy, custom CA certificate and TLS verification, used for sign-in, listing and searching, and passed to the `aws` CLI as `HTTPS_PROXY` and `AWS_CA_BUNDLE`. A proxy that needs a login is not supported for the CLI. |
+| **Network** | HTTPS proxy, custom CA certificate and TLS verification, used for sign-in, listing and searching, and passed to the `aws` CLI as `HTTPS_PROXY` and `AWS_CA_BUNDLE`. A proxy that needs a login is not supported for the CLI. `aws sso login` for a CLI profile uses the same settings. An S3 profile that is already saved lists its SSO accounts and roles through its own proxy and CA; the main process reads them from the saved profile, never from the dialog. |
 | **Tools and AWS CLI profiles** | Whether the AWS CLI and the plugin are installed, and how many AWS CLI profiles sshs3 found. |
 
 With AWS features on, an **AWS** button appears in the top bar next to the SSH CA button: green when you are signed in, amber when a sign-in used by your profiles has expired. Click it to sign in, to add instances or to open **Settings → AWS**.

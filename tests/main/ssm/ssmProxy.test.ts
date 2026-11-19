@@ -252,3 +252,16 @@ describe('Session Manager shell mode', () => {
     expect(() => SmartcardDetector.buildSSHArguments(shell({ enabled: true }))).toThrow(SSM_SHELL_NO_SSH_MESSAGE);
   });
 });
+
+describe('ssmReconnectBlocked', () => {
+  it('blocks an automatic reconnect only for an SSM profile whose own SSO sign-in has lapsed', async () => {
+    const { ssmReconnectBlocked, setSsoSignedInCheck } = await import('../../../src/main/ssh/ssmProxy');
+    const sso = { enabled: true as const, region: 'eu-north-1', sso: { startUrl: 'https://d-1.awsapps.com/start', region: 'us-east-1' } };
+    setSsoSignedInCheck(async () => false);
+    expect(await ssmReconnectBlocked({ ssm: sso })).toBe(true);
+    expect(await ssmReconnectBlocked({ ssm: { enabled: true as const, awsProfile: 'p' } })).toBe(false);
+    expect(await ssmReconnectBlocked({})).toBe(false);
+    setSsoSignedInCheck(async () => true);
+    expect(await ssmReconnectBlocked({ ssm: sso })).toBe(false);
+  });
+});

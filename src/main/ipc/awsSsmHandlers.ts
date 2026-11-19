@@ -3,7 +3,7 @@ import type { AwsSsmTools } from '../../shared/types/ssm';
 import { detectAwsSsmTools } from '../aws/AwsSsmToolchain';
 import { isFeatureAllowed } from '../policy/policyApply';
 import { setAwsNetworkSettings } from '../aws/awsNetworkSettings';
-import { setSsmAllowed } from '../ssh/ssmProxy';
+import { setSsmAllowed, setSsoSignedInCheck } from '../ssh/ssmProxy';
 import { registerAwsScanHandlers } from './awsScanHandlers';
 import { registerAwsSsoCachedHandlers } from './awsSsoCachedHandlers';
 import type { IpcBridge } from '../IpcBridge';
@@ -14,6 +14,7 @@ export type AwsSsmHost = Pick<IpcBridge, 'awsSsoAuthService' | 'policy' | 'regis
 export function registerAwsSsmHandlers(bridge: AwsSsmHost): void {
   // The machine policy only changes with an app restart, so it is applied once, before any connection.
   setSsmAllowed(isFeatureAllowed(bridge.policy.policy, 'awsSsm'));
+  setSsoSignedInCheck(async (url) => (await bridge.awsSsoAuthService.getTokenStatus(url)) === 'valid');
   void bridge.settingsStore.getSettings().then((s) => setAwsNetworkSettings(s.awsNetwork)).catch(() => {});
   registerAwsScanHandlers(bridge);
   registerAwsSsoCachedHandlers(bridge);

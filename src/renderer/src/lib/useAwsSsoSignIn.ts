@@ -16,6 +16,8 @@ interface Options {
   onChange: (patch: Partial<AwsSsoValue>) => void;
   /** Proxy / CA of the profile this sign-in belongs to. */
   network?: AwsSsoNetworkOptions;
+  /** Saved S3 profile whose proxy/CA the account and role lists should use (looked up in the main process). */
+  s3ProfileId?: string;
   /** false = only sign in (no account/role lists). */
   pickAccountRole?: boolean;
 }
@@ -27,7 +29,7 @@ const STATUS_DEBOUNCE_MS = 400;
  * `pickAccountRole`) lists accounts and roles. The access token stays in the main process; only status and the lists
  * come back (`awsSsoStatus`, `awsSsoList*Cached`).
  */
-export function useAwsSsoSignIn({ value, onChange, network, pickAccountRole = true }: Options) {
+export function useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAccountRole = true }: Options) {
   const startUrl = normalizeStartUrl(value.startUrl);
   const region = value.region.trim();
   const ready = isValidSsoConfig({ startUrl, region });
@@ -51,27 +53,27 @@ export function useAwsSsoSignIn({ value, onChange, network, pickAccountRole = tr
       if (!accountId || !ready) return;
       setLoadingRoles(true);
       try {
-        setRoles(await window.multissh.awsSsoListRolesCached({ startUrl, region, accountId }));
+        setRoles(await window.multissh.awsSsoListRolesCached({ startUrl, region, accountId, s3ProfileId }));
       } catch (err) {
         setError(describeIpcError(err, 'Failed to list roles for this account'));
       } finally {
         setLoadingRoles(false);
       }
     },
-    [ready, startUrl, region]
+    [ready, startUrl, region, s3ProfileId]
   );
 
   const loadAccounts = useCallback(async () => {
     try {
       setManualEntry(false);
-      setAccounts(await window.multissh.awsSsoListAccountsCached({ startUrl, region }));
+      setAccounts(await window.multissh.awsSsoListAccountsCached({ startUrl, region, s3ProfileId }));
       const current = valueRef.current.accountId;
       if (current) void loadRoles(current);
     } catch {
       // Some permission sets cannot list accounts/roles through the portal API: fall back to typing them in.
       setManualEntry(true);
     }
-  }, [startUrl, region, loadRoles]);
+  }, [startUrl, region, s3ProfileId, loadRoles]);
 
   const refreshStatus = useCallback(async (): Promise<AwsSsoStatusInfo | null> => {
     if (!ready) {

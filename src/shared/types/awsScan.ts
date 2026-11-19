@@ -93,6 +93,11 @@ export interface AwsSsoCachedRequest {
   startUrl: string;
   region: string;
   accountId?: string;
+  /**
+   * Id of a SAVED S3 profile whose own proxy/CA the listing should use. Only an id: the main process reads the
+   * network settings from its own profile store, so the renderer cannot choose where the token is sent.
+   */
+  s3ProfileId?: string;
 }
 
 export interface AwsScanIpcRequest {

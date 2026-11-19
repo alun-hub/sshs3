@@ -5,7 +5,7 @@ import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
 import path from 'node:path';
 import fs from 'node:fs';
-import { buildSsmShellSpawn, isSsmShell } from './ssmProxy';
+import { buildSsmShellSpawn, isSsmShell, ssmReconnectBlocked } from './ssmProxy';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
@@ -547,7 +547,7 @@ export class SSHPtyManager extends EventEmitter {
    * Reconnects an existing session by spawning a new underlying SSH process.
    */
   public async reconnectSession(session: InternalSSHPtySession): Promise<boolean> {
-    if (isSsmShell(session.config)) return false; // a Session Manager shell ends with its process
+    if (isSsmShell(session.config) || (await ssmReconnectBlocked(session.config))) return false; // shell ends with its process; lapsed SSO sign-in
     const config = session.config;
     const options = this.sessionOptions.get(session.sessionId);
     const cols = session.cols;

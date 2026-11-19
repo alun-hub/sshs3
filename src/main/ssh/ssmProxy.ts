@@ -27,6 +27,17 @@ export function setSsmAllowed(allowed: boolean): void {
   ssmAllowed = allowed;
 }
 
+let ssoSignedIn: (startUrl: string) => Promise<boolean> = async () => true;
+/** Set at startup: tells whether sshs3's own SSO sign-in is still valid (the ssh layer has no auth service). */
+export function setSsoSignedInCheck(check: (startUrl: string) => Promise<boolean>): void {
+  ssoSignedIn = check;
+}
+/** True when an automatic reconnect would only fail: an SSM profile on sshs3's SSO sign-in whose session has lapsed. */
+export async function ssmReconnectBlocked(config: Pick<SSHConnectionConfig, 'ssm'>): Promise<boolean> {
+  const sso = config.ssm?.enabled ? config.ssm.sso : undefined;
+  return sso !== undefined && !(await ssoSignedIn(sso.startUrl));
+}
+
 /**
  * Throws when the SSM settings cannot be used. Called from buildSSHArguments, the single point
  * of use, so a hostile synced/imported profile can never reach the shell-run ProxyCommand.

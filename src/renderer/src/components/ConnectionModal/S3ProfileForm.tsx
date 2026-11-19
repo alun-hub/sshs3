@@ -254,6 +254,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
             }}
             onChange={updateSso}
             network={ssoNetworkOptions()}
+            s3ProfileId={initial ? config.id : undefined}
           />
         </div>
       )}

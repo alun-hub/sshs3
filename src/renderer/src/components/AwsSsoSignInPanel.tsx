@@ -11,6 +11,7 @@ interface Props {
   value: AwsSsoValue;
   onChange: (patch: Partial<AwsSsoValue>) => void;
   network?: AwsSsoNetworkOptions;
+  s3ProfileId?: string;
   /** false = start URL, region and the sign-in button only. */
   pickAccountRole?: boolean;
   /** Prefix for element ids and test ids when a page shows more than one panel. */
@@ -91,8 +92,8 @@ export const AwsSsoSignInFields: React.FC<{
  * in, account and role pickers. Shared by the S3 profile form, the AWS sign-in list, the SSM profile form and the
  * instance import dialog so that signing in looks and behaves the same everywhere.
  */
-export const AwsSsoSignInPanel: React.FC<Props> = ({ value, onChange, network, pickAccountRole = true, idPrefix = 'aws-sso' }) => {
-  const s = useAwsSsoSignIn({ value, onChange, network, pickAccountRole });
+export const AwsSsoSignInPanel: React.FC<Props> = ({ value, onChange, network, s3ProfileId, pickAccountRole = true, idPrefix = 'aws-sso' }) => {
+  const s = useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAccountRole });
   const signedIn = s.status?.status === 'valid';
 
   return (
