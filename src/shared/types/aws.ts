@@ -46,6 +46,9 @@ export interface AwsSsoLoginResult {
   expiresAt: string;
 }
 
+/** What the renderer learns from a sign-in: the access token itself never leaves the main process. */
+export type AwsSsoLoginInfo = Pick<AwsSsoLoginResult, 'expiresAt'>;
+
 export interface AwsSsoAccount {
   accountId: string;
   accountName?: string;

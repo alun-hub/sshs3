@@ -13,8 +13,7 @@ import {
 import type { StorageConnectConfig } from '@shared/types/ipc';
 import type { SSHAuthType, SSHConnectionConfig, DetectedSmartcardLib } from '@shared/types/ssh';
 import type { SFTPConfig, S3Config, S3AuthMode, S3SsoConfig } from '@shared/types/storage';
-import type { AwsSsoAccount, AwsSsoAccountRole } from '@shared/types/aws';
-import { describeIpcError } from '../../lib/format';
+import { AwsSsoSignInPanel } from '../AwsSsoSignInPanel';
 
 export interface SyncTargetDraft {
   type: 'sftp' | 's3';
@@ -227,15 +226,6 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // AWS SSO state
-  const [ssoLoggingIn, setSsoLoggingIn] = useState(false);
-  const [ssoAccessToken, setSsoAccessToken] = useState<string | null>(null);
-  const [ssoAccounts, setSsoAccounts] = useState<AwsSsoAccount[]>([]);
-  const [ssoRoles, setSsoRoles] = useState<AwsSsoAccountRole[]>([]);
-  const [loadingRoles, setLoadingRoles] = useState(false);
-  const [ssoError, setSsoError] = useState<string | null>(null);
-  const [ssoManualEntry, setSsoManualEntry] = useState(false);
-
   useEffect(() => {
     let mounted = true;
     void window.multissh?.profilesGet?.()
@@ -323,49 +313,6 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
       });
       setTestResult(null);
       return;
-    }
-  };
-
-  const handleAwsSsoLogin = async () => {
-    const startUrl = draft.sso?.startUrl?.trim();
-    const region = draft.sso?.region?.trim() || draft.region || 'us-east-1';
-    if (!startUrl) return;
-
-    setSsoError(null);
-    setSsoAccounts([]);
-    setSsoRoles([]);
-    setSsoAccessToken(null);
-    setSsoManualEntry(false);
-    setSsoLoggingIn(true);
-    try {
-      const { accessToken } = await window.multissh.awsSsoLogin(startUrl, region);
-      setSsoAccessToken(accessToken);
-      try {
-        const accounts = await window.multissh.awsSsoListAccounts(accessToken, region);
-        setSsoAccounts(accounts);
-      } catch {
-        setSsoManualEntry(true);
-      }
-    } catch (err) {
-      setSsoError(describeIpcError(err, 'AWS SSO login failed'));
-    } finally {
-      setSsoLoggingIn(false);
-    }
-  };
-
-  const handleSelectAccount = async (accountId: string) => {
-    updateSso({ accountId, roleName: undefined });
-    setSsoRoles([]);
-    if (!ssoAccessToken || !accountId) return;
-    const region = draft.sso?.region?.trim() || draft.region || 'us-east-1';
-    setLoadingRoles(true);
-    try {
-      const roles = await window.multissh.awsSsoListRoles(ssoAccessToken, region, accountId);
-      setSsoRoles(roles);
-    } catch (err) {
-      setSsoError(describeIpcError(err, 'Failed to list roles for this account'));
-    } finally {
-      setLoadingRoles(false);
     }
   };
 
@@ -805,122 +752,16 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
             </div>
           ) : (
             <div className="space-y-2.5 rounded-lg border border-border-subtle bg-app/50 p-3">
-              <div className="grid grid-cols-2 gap-2.5">
-                <Field label="SSO Start URL">
-                  {(id) => (
-                    <input
-                      id={id}
-                      type="text"
-                      disabled={disabled}
-                      value={draft.sso?.startUrl ?? ''}
-                      onChange={(e) => updateSso({ startUrl: e.target.value })}
-                      placeholder="https://my-sso.awsapps.com/start"
-                      className={`${inputClass} font-mono`}
-                    />
-                  )}
-                </Field>
-                <Field label="SSO Region">
-                  {(id) => (
-                    <input
-                      id={id}
-                      type="text"
-                      disabled={disabled}
-                      value={draft.sso?.region ?? draft.region}
-                      onChange={(e) => updateSso({ region: e.target.value })}
-                      placeholder="us-east-1"
-                      className={`${inputClass} font-mono`}
-                    />
-                  )}
-                </Field>
-              </div>
-
-              <button
-                type="button"
-                disabled={!draft.sso?.startUrl?.trim() || ssoLoggingIn || disabled}
-                onClick={() => void handleAwsSsoLogin()}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
-              >
-                {ssoLoggingIn && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {ssoLoggingIn ? 'Signing in…' : ssoAccessToken ? 'Sign in again' : 'Sign in with AWS SSO'}
-              </button>
-
-              {ssoError && (
-                <p role="alert" className="rounded-lg border border-red-800/60 bg-red-950/40 px-2.5 py-1.5 text-xs text-red-300">
-                  {ssoError}
-                </p>
-              )}
-
-              {ssoAccessToken && !ssoManualEntry && (
-                <div className="grid grid-cols-2 gap-2.5">
-                  <Field label="Account">
-                    {(id) => (
-                      <select
-                        id={id}
-                        disabled={disabled}
-                        value={draft.sso?.accountId ?? ''}
-                        onChange={(e) => void handleSelectAccount(e.target.value)}
-                        className={inputClass}
-                      >
-                        <option value="">Select an account…</option>
-                        {ssoAccounts.map((a) => (
-                          <option key={a.accountId} value={a.accountId}>
-                            {a.accountName ? `${a.accountName} (${a.accountId})` : a.accountId}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </Field>
-                  <Field label="Role">
-                    {(id) => (
-                      <select
-                        id={id}
-                        disabled={!draft.sso?.accountId || loadingRoles || disabled}
-                        value={draft.sso?.roleName ?? ''}
-                        onChange={(e) => updateSso({ roleName: e.target.value })}
-                        className={inputClass}
-                      >
-                        <option value="">{loadingRoles ? 'Loading…' : 'Select a role…'}</option>
-                        {ssoRoles.map((r) => (
-                          <option key={r.roleName} value={r.roleName}>
-                            {r.roleName}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </Field>
-                </div>
-              )}
-
-              {(ssoManualEntry || (!ssoAccessToken && (draft.sso?.accountId || draft.sso?.roleName))) && (
-                <div className="grid grid-cols-2 gap-2.5">
-                  <Field label="Account ID">
-                    {(id) => (
-                      <input
-                        id={id}
-                        type="text"
-                        disabled={disabled}
-                        value={draft.sso?.accountId ?? ''}
-                        onChange={(e) => updateSso({ accountId: e.target.value })}
-                        placeholder="123456789012"
-                        className={inputClass}
-                      />
-                    )}
-                  </Field>
-                  <Field label="Role Name">
-                    {(id) => (
-                      <input
-                        id={id}
-                        type="text"
-                        disabled={disabled}
-                        value={draft.sso?.roleName ?? ''}
-                        onChange={(e) => updateSso({ roleName: e.target.value })}
-                        placeholder="AdministratorAccess"
-                        className={inputClass}
-                      />
-                    )}
-                  </Field>
-                </div>
-              )}
+              <AwsSsoSignInPanel
+                idPrefix="sync-sso"
+                value={{
+                  startUrl: draft.sso?.startUrl ?? '',
+                  region: draft.sso?.region || draft.region || 'us-east-1',
+                  accountId: draft.sso?.accountId,
+                  roleName: draft.sso?.roleName,
+                }}
+                onChange={updateSso}
+              />
             </div>
           )}
 

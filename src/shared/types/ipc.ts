@@ -44,10 +44,8 @@ import type {
   VolumeInfo,
 } from './storage';
 import type {
-  AwsSsoAccount,
-  AwsSsoAccountRole,
   AwsSsoDevicePrompt,
-  AwsSsoLoginResult,
+  AwsSsoLoginInfo,
   AwsSsoNetworkOptions,
 } from './aws';
 import type { SessionData } from './session';
@@ -310,8 +308,6 @@ export const IPC_CHANNELS = {
   AWS_SSO_LOGIN_CANCEL: 'aws-sso:login-cancel',
   AWS_SSO_PROMPT: 'aws-sso:prompt',
   AWS_SSO_PROMPT_DONE: 'aws-sso:prompt-done',
-  AWS_SSO_LIST_ACCOUNTS: 'aws-sso:list-accounts',
-  AWS_SSO_LIST_ROLES: 'aws-sso:list-roles',
   AWS_SSO_RELOGIN_PROVIDER: 'aws-sso:relogin-provider',
 
   // SSH over AWS Systems Manager
@@ -888,24 +884,13 @@ export interface MultiSSHApi extends AwsScanElectronApi {
   testS3Connection(config: S3Config): Promise<{ success: boolean; error?: string }>;
 
   // AWS SSO login (device-authorization flow)
-  awsSsoLogin(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginResult>;
+  awsSsoLogin(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginInfo>;
   /** Detects the `aws` CLI and `session-manager-plugin` needed for SSH over AWS SSM. */
   awsSsmCheckTools(): Promise<AwsSsmTools>;
   awsSsoCancelLogin(id: string): Promise<void>;
   onAwsSsoPrompt(callback: (event: AwsSsoPromptEvent) => void): () => void;
   /** Fires with the prompt id once a login attempt has ended (approved, failed, expired or cancelled). */
   onAwsSsoPromptDone(callback: (id: string) => void): () => void;
-  awsSsoListAccounts(
-    accessToken: string,
-    region: string,
-    network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoAccount[]>;
-  awsSsoListRoles(
-    accessToken: string,
-    region: string,
-    accountId: string,
-    network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoAccountRole[]>;
   /** Signs an already-connected S3 provider in again with the SSO settings of its own profile. */
   awsSsoReloginProvider(providerId: string): Promise<void>;
 

@@ -1279,10 +1279,8 @@ describe('IpcBridge', () => {
       expect(promptEvent?.args[0].id).toBeDefined();
 
       resolveLogin({ accessToken: 'access-token-1', expiresAt: '2099-01-01T00:00:00.000Z' });
-      await expect(loginPromise).resolves.toEqual({
-        accessToken: 'access-token-1',
-        expiresAt: '2099-01-01T00:00:00.000Z',
-      });
+      // The access token stays in the main process: the renderer only learns when the sign-in is valid until.
+      await expect(loginPromise).resolves.toEqual({ expiresAt: '2099-01-01T00:00:00.000Z' });
     });
 
     it('AWS_SSO_LOGIN_CANCEL aborts the pending login', async () => {
@@ -1386,16 +1384,6 @@ describe('IpcBridge', () => {
       mockStorageRegistry.providers.set('sftp-1', { id: 'sftp-1', type: 'sftp', list });
 
       await expect(mockIpc.invoke(IPC_CHANNELS.STORAGE_LIST, 'sftp-1', '/')).rejects.toThrow('boom');
-    });
-
-    it('lists accounts and roles via the injected AwsSsoAuthService', async () => {
-      const accounts = await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, 'token', 'us-east-1');
-      expect(accounts).toEqual([{ accountId: '123', accountName: 'Prod' }]);
-      expect(mockAwsSsoAuthService.listAccounts).toHaveBeenCalledWith('token', 'us-east-1', undefined);
-
-      const roles = await mockIpc.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, 'token', 'us-east-1', '123');
-      expect(roles).toEqual([{ roleName: 'Admin' }]);
-      expect(mockAwsSsoAuthService.listAccountRoles).toHaveBeenCalledWith('token', 'us-east-1', '123', undefined);
     });
   });
 

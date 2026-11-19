@@ -53,7 +53,7 @@ import type {
 } from '../shared/types/sshCa';
 import type { AwsSsmTools } from '../shared/types/ssm';
 import { awsScanApi } from './awsScanApi';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
+import type { AwsSsoLoginInfo, AwsSsoNetworkOptions } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
   DotfilePool,
@@ -697,7 +697,7 @@ export const api: MultiSSHApi = {
     startUrl: string,
     region: string,
     network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoLoginResult> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region, network),
+  ): Promise<AwsSsoLoginInfo> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region, network),
 
   awsSsoCancelLogin: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN_CANCEL, id),
@@ -717,21 +717,6 @@ export const api: MultiSSHApi = {
       ipcRenderer.removeListener(IPC_CHANNELS.AWS_SSO_PROMPT_DONE, listener);
     };
   },
-
-  awsSsoListAccounts: (
-    accessToken: string,
-    region: string,
-    network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoAccount[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, accessToken, region, network),
-
-  awsSsoListRoles: (
-    accessToken: string,
-    region: string,
-    accountId: string,
-    network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoAccountRole[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, accessToken, region, accountId, network),
 
   awsSsmCheckTools: (): Promise<AwsSsmTools> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSM_CHECK_TOOLS),
   ...awsScanApi,

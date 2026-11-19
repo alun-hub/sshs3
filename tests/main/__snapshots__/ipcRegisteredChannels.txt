@@ -17,9 +17,7 @@ aws-ssm:profile-login
 aws-ssm:profile-status
 aws-ssm:scan
 aws-ssm:scan-cancel
-aws-sso:list-accounts
 aws-sso:list-accounts-cached
-aws-sso:list-roles
 aws-sso:list-roles-cached
 aws-sso:login
 aws-sso:login-cancel

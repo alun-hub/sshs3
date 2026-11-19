@@ -3,12 +3,7 @@ import crypto from 'node:crypto';
 import { shell as electronShell } from 'electron';
 import { AwsSsoLoginCancelledError } from '../aws/AwsSsoAuthService';
 import { IPC_CHANNELS, type AwsSsoPromptEvent } from '../../shared/types/ipc';
-import type {
-  AwsSsoAccount,
-  AwsSsoAccountRole,
-  AwsSsoLoginResult,
-  AwsSsoNetworkOptions,
-} from '../../shared/types/aws';
+import type { AwsSsoLoginInfo, AwsSsoNetworkOptions } from '../../shared/types/aws';
 import type { IpcBridge } from '../IpcBridge';
 import type { S3StorageProvider } from '../storage/S3StorageProvider';
 
@@ -24,7 +19,7 @@ async function runSsoLogin(
   startUrl: string,
   region: string,
   network?: AwsSsoNetworkOptions
-): Promise<AwsSsoLoginResult> {
+): Promise<AwsSsoLoginInfo> {
   if (!startUrl?.trim() || !region?.trim()) {
     throw new Error('Start URL and region are required');
   }
@@ -35,7 +30,8 @@ async function runSsoLogin(
   bridge.pendingAwsSsoLogins.set(id, { cancel: () => controller.abort() });
 
   try {
-    return await bridge.awsSsoAuthService.login(startUrl, region, {
+    // The access token stays in the main process (the token cache); the renderer only learns when the sign-in ends.
+    const { expiresAt } = await bridge.awsSsoAuthService.login(startUrl, region, {
       network,
       onPrompt: (prompt) => {
         const urlToOpen = prompt.verificationUriComplete || prompt.verificationUri;
@@ -51,6 +47,7 @@ async function runSsoLogin(
       },
       signal: controller.signal,
     });
+    return { expiresAt };
   } catch (err) {
     if (err instanceof AwsSsoLoginCancelledError) {
       throw new Error('AWS SSO login was cancelled', { cause: err });
@@ -73,7 +70,7 @@ async function runSsoLogin(
 export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.AWS_SSO_LOGIN,
-    async (event, startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginResult> =>
+    async (event, startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginInfo> =>
       // Callers that carry their own proxy/CA (S3 profiles) pass it; everyone else gets the AWS page's network settings.
       runSsoLogin(bridge, event, startUrl, region, network ?? globalAwsNetwork())
   );
@@ -100,29 +97,4 @@ export function registerAwsSsoHandlers(bridge: AwsSsoHost): void {
     const pending = bridge.pendingAwsSsoLogins.get(id);
     pending?.cancel();
   });
-
-  bridge.registerHandler(
-    IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS,
-    async (
-      _event,
-      accessToken: string,
-      region: string,
-      network?: AwsSsoNetworkOptions
-    ): Promise<AwsSsoAccount[]> => {
-      return await bridge.awsSsoAuthService.listAccounts(accessToken, region, network);
-    }
-  );
-
-  bridge.registerHandler(
-    IPC_CHANNELS.AWS_SSO_LIST_ROLES,
-    async (
-      _event,
-      accessToken: string,
-      region: string,
-      accountId: string,
-      network?: AwsSsoNetworkOptions
-    ): Promise<AwsSsoAccountRole[]> => {
-      return await bridge.awsSsoAuthService.listAccountRoles(accessToken, region, accountId, network);
-    }
-  );
 }
