@@ -723,6 +723,33 @@ describe('SSHPtyManager', () => {
       vi.useRealTimers();
     });
 
+    it('stops with one sign-in hint, instead of retrying, when the SSM profile\'s own SSO sign-in has lapsed', async () => {
+      vi.useFakeTimers();
+      const { setSsoSignedInCheck } = await import('../../src/main/ssh/ssmProxy');
+      setSsoSignedInCheck(async () => false);
+      try {
+        const session = await manager.createSession({
+          id: 'sess-sso-lapsed', name: 'SSM', host: 'i-0123456789abcdef0', username: 'ec2-user', authType: 'agent',
+          autoReconnect: true, maxReconnectAttempts: 3, reconnectDelayMs: 50,
+          ssm: { enabled: true, region: 'eu-north-1', sso: { startUrl: 'https://d-1.awsapps.com/start', region: 'us-east-1', accountId: '123456789012', roleName: 'Dev' } },
+        } as SSHConnectionConfig);
+        const out: string[] = [];
+        manager.on('data', (e: { data: string }) => out.push(e.data));
+        const exitSpy = vi.fn();
+        manager.on('exit', exitSpy);
+        mockPtyInstances[0].emitExit(255);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(out.filter((m) => m.includes('reconnecting'))).toHaveLength(1);
+        expect(out.some((m) => m.includes('AWS SSO session expired: sign in again'))).toBe(true);
+        expect(exitSpy).toHaveBeenCalledTimes(1);
+        expect(mockPtyInstances).toHaveLength(1);
+        expect(session.isReconnecting?.()).toBe(false);
+      } finally {
+        setSsoSignedInCheck(async () => true);
+        vi.useRealTimers();
+      }
+    });
+
     // Low finding (code review 2026-11-03): any non-zero exit reconnected, including `exit 1` typed in the shell or
     // a remote command failing. ssh itself ends with 255 when the connection fails.
     it('does not reconnect when the session ended with an ordinary non-zero exit code', async () => {

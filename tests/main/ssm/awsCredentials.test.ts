@@ -27,6 +27,19 @@ describe('shareCredentials', () => {
   });
 });
 
+describe('shareCredentials after a failed refresh', () => {
+  it('does not keep serving the failed refresh: the next call asks the provider again', async () => {
+    const provider = vi.fn()
+      .mockResolvedValueOnce({ expiration: new Date(Date.now() + 60_000) }) // inside the refresh margin
+      .mockRejectedValueOnce(new Error('token expired')) // the refresh fails
+      .mockResolvedValueOnce({ expiration: new Date(Date.now() + 3600_000), accessKeyId: 'fresh' });
+    const shared = shareCredentials(provider);
+    await shared().then(() => undefined, () => undefined); // the first call triggers the refresh that fails
+    await expect(shared()).resolves.toMatchObject({ accessKeyId: 'fresh' });
+    expect(provider).toHaveBeenCalledTimes(3);
+  });
+});
+
 describe('shareCredentials single flight', () => {
   it('runs one refresh when many callers see expiring credentials at once', async () => {
     let calls = 0;

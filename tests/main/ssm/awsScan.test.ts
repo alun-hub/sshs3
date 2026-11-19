@@ -140,6 +140,8 @@ describe('scanInstances', () => {
 describe('classifyScanError', () => {
   it('maps DNS failures and unknown errors', () => {
     expect(classifyScanError(Object.assign(new Error('x'), { code: 'ENOTFOUND' })).reason).toBe('region-disabled');
+    // Rejected credentials look the same as a disabled region to AWS, so the message names both causes.
+    expect(classifyScanError(Object.assign(new Error('x'), { name: 'UnrecognizedClientException' })).message).toMatch(/region may not be enabled.*sign-in is no longer valid/);
     expect(classifyScanError(new Error('boom'))).toEqual({ reason: 'error', message: 'boom' });
     expect(classifyScanError(Object.assign(new Error('Could not load credentials'), { name: 'CredentialsProviderError' })).reason).toBe('credentials');
   });

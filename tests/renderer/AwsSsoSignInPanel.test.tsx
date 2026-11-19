@@ -93,4 +93,22 @@ describe('AwsSsoSignInPanel', () => {
     expect(api.awsSsoLogin).toHaveBeenCalledWith(URL_, 'us-east-1', { rejectUnauthorized: false });
     for (const call of api.awsSsoListAccountsCached.mock.calls) expect(JSON.stringify(call)).not.toContain('rejectUnauthorized');
   });
+
+  it('shows the roles of the account chosen last, even when an earlier answer arrives afterwards', async () => {
+    status = { status: 'valid', expiresAt: '2030-05-06T07:08:00' };
+    let releaseA!: (r: Array<{ roleName: string }>) => void;
+    api.awsSsoListRolesCached.mockImplementation((async (r: { accountId: string }) =>
+      r.accountId === '123456789012' ? await new Promise((res) => { releaseA = res as never; }) : [{ roleName: 'ReadOnly' }]) as never);
+    render(<Harness initial={{ startUrl: URL_ }} />);
+    const account = await screen.findByTestId('aws-sso-account');
+    await waitFor(() => expect(account.querySelectorAll('option')).toHaveLength(3));
+    fireEvent.change(account, { target: { value: '123456789012' } }); // slow answer
+    fireEvent.change(account, { target: { value: '210987654321' } }); // answered at once
+    await waitFor(() => expect(screen.getByRole('option', { name: 'ReadOnly' })).toBeInTheDocument());
+    releaseA([{ roleName: 'OnlyInProd' }]); // the first answer arrives late
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole('option', { name: 'OnlyInProd' })).toBeNull();
+    expect(screen.getByRole('option', { name: 'ReadOnly' })).toBeInTheDocument();
+    api.awsSsoListRolesCached.mockImplementation((async () => [{ roleName: 'Admin' }, { roleName: 'ReadOnly' }]) as never);
+  });
 });

@@ -39,7 +39,7 @@ export function classifyScanError(err: unknown): Pick<AwsScanSkip, 'reason' | 'm
   if (isAwsSsoSessionError(err)) return { reason: 'expired', message: `${AWS_SSO_EXPIRED_PREFIX}: sign in again to continue.` };
   const name = err instanceof Error ? err.name : '';
   if (ACCESS_DENIED.has(name)) return { reason: 'access-denied', message: 'Not allowed to call ssm:DescribeInstanceInformation.' };
-  if (REGION_DISABLED.has(name)) return { reason: 'region-disabled', message: 'The region is not enabled for this account.' };
+  if (REGION_DISABLED.has(name)) return { reason: 'region-disabled', message: 'AWS rejected the credentials here: the region may not be enabled for this account, or the sign-in is no longer valid.' };
   if (isAwsCredentialsError(err)) {
     const detail = err instanceof Error ? err.message.replace(/^Error:\s*/, '') : String(err);
     return { reason: 'credentials', message: detail };

@@ -133,6 +133,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
   const roleGeneration = useRef(0);
   useEffect(() => {
     roleGeneration.current += 1;
+    setSelectedAccounts(new Set()); // accounts of the previous sign-in do not belong to the new one
     setRolesByAccount({});
     setRoleByAccount({});
   }, [sso.startUrl, sso.region]);

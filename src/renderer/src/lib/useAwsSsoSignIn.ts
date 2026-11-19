@@ -43,6 +43,9 @@ export function useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAcc
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [manualEntry, setManualEntry] = useState(false);
   const generation = useRef(0);
+  // Latest account / role request: answers for an older one (another account or sign-in was chosen meanwhile) are dropped.
+  const rolesReq = useRef(0);
+  const accountsReq = useRef(0);
   const networkRef = useRef(network);
   networkRef.current = network;
   const valueRef = useRef(value);
@@ -51,13 +54,15 @@ export function useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAcc
   const loadRoles = useCallback(
     async (accountId: string) => {
       if (!accountId || !ready) return;
+      const mine = ++rolesReq.current;
       setLoadingRoles(true);
       try {
-        setRoles(await window.multissh.awsSsoListRolesCached({ startUrl, region, accountId, s3ProfileId }));
+        const list = await window.multissh.awsSsoListRolesCached({ startUrl, region, accountId, s3ProfileId });
+        if (mine === rolesReq.current) setRoles(list);
       } catch (err) {
-        setError(describeIpcError(err, 'Failed to list roles for this account'));
+        if (mine === rolesReq.current) setError(describeIpcError(err, 'Failed to list roles for this account'));
       } finally {
-        setLoadingRoles(false);
+        if (mine === rolesReq.current) setLoadingRoles(false);
       }
     },
     [ready, startUrl, region, s3ProfileId]
@@ -66,7 +71,10 @@ export function useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAcc
   const loadAccounts = useCallback(async () => {
     try {
       setManualEntry(false);
-      setAccounts(await window.multissh.awsSsoListAccountsCached({ startUrl, region, s3ProfileId }));
+      const mine = ++accountsReq.current;
+      const list = await window.multissh.awsSsoListAccountsCached({ startUrl, region, s3ProfileId });
+      if (mine !== accountsReq.current) return;
+      setAccounts(list);
       const current = valueRef.current.accountId;
       if (current) void loadRoles(current);
     } catch {
@@ -98,6 +106,8 @@ export function useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAcc
 
   // Re-check (debounced) whenever the start URL or region changes, including on first render.
   useEffect(() => {
+    accountsReq.current++;
+    rolesReq.current++;
     setAccounts([]);
     setRoles([]);
     setError(null);

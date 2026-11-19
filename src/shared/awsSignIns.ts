@@ -102,7 +102,8 @@ export function parseHttpsProxy(value: string | undefined): { host: string; port
   const secure = url.protocol === 'https:';
   const port = url.port ? Number(url.port) : secure ? 443 : 80;
   if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined;
-  return { host: url.hostname, port, secure };
+  // URL keeps the brackets of an IPv6 literal; callers add them where a URL needs them.
+  return { host: url.hostname.replace(/^\[|\]$/g, ''), port, secure };
 }
 
 /** The options for sshs3's own AWS calls (sign-in, listing, scanning). */

@@ -63,6 +63,9 @@ describe('regions and network', () => {
   it('accepts only credential-free http(s) proxies', () => {
     expect(parseHttpsProxy('http://proxy.corp:3128')).toEqual({ host: 'proxy.corp', port: 3128, secure: false });
     expect(parseHttpsProxy('https://proxy.corp')).toEqual({ host: 'proxy.corp', port: 443, secure: true });
+    // An IPv6 literal is stored without brackets and bracketed exactly once where a URL needs it.
+    expect(parseHttpsProxy('http://[::1]:8080')).toEqual({ host: '::1', port: 8080, secure: false });
+    expect(awsNetworkEnv({ httpsProxy: 'http://[::1]:8080' }).HTTPS_PROXY).toBe('http://[::1]:8080');
     for (const bad of ['', 'socks5://p:1', 'http://user:pw@p:1', 'http://p:1/path', 'ftp://p', 'nonsense', 'http://p:99999']) expect(parseHttpsProxy(bad)).toBeUndefined(); // pragma: allowlist secret
   });
   it('maps settings to sshs3 options and CLI environment without secrets', () => {
