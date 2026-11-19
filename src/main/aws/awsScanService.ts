@@ -1,4 +1,4 @@
-import { SSMClient, paginateDescribeInstanceInformation, type SSMClientConfig } from '@aws-sdk/client-ssm';
+import type { SSMClientConfig } from '@aws-sdk/client-ssm';
 import { MAX_SCAN_INSTANCES, MAX_SCAN_JOBS, dedupeInstances } from '../../shared/awsScan';
 import { isValidRegion, mapInstances } from '../../shared/ssm';
 import type { AwsSsoNetworkOptions } from '../../shared/types/aws';
@@ -85,6 +85,8 @@ export async function scanInstances(req: AwsScanRequest, opts: ScanOptions = {})
   let done = 0;
   let next = 0;
 
+  // Loaded when the first search starts, not at app startup.
+  const { SSMClient, paginateDescribeInstanceInformation } = await import('@aws-sdk/client-ssm');
   const searchOne = async (target: AwsScanTarget, region: string): Promise<void> => {
     const creds = credsFor(target);
     if (creds instanceof Error) {

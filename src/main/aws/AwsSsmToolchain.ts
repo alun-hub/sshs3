@@ -87,7 +87,23 @@ interface Located {
   viaPath: boolean;
 }
 
-function locate(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): { aws?: Located; plugin?: Located } {
+type Located2 = { aws?: Located; plugin?: Located };
+const LOCATE_TTL_MS = 2000;
+let locateCache: { key: string; at: number; value: Located2 } | undefined;
+
+/**
+ * `locate` walks every PATH directory with synchronous fs calls, and is asked several times per connection and by the
+ * settings poll: a result is reused for a moment (an install is still noticed within seconds).
+ */
+function locate(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): Located2 {
+  const key = JSON.stringify([platform, home, env.PATH, env.Path, env.path, env.ProgramFiles, env.PROGRAMFILES]);
+  if (locateCache && locateCache.key === key && Date.now() - locateCache.at < LOCATE_TTL_MS) return locateCache.value;
+  const value = locateUncached(platform, env, home);
+  locateCache = { key, at: Date.now(), value };
+  return value;
+}
+
+function locateUncached(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): Located2 {
   const cand = candidateDirs(platform, env, home);
   const onPath = pathDirs(env, platform);
   const names = (n: typeof AWS_NAMES) => (platform === 'win32' ? n.win32 : n.other);
