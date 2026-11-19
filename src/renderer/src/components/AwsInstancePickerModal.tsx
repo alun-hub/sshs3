@@ -7,7 +7,7 @@ import { offersAwsSsoSignIn } from '@shared/types/aws';
 import type { AwsCliProfile, AwsPickItem, AwsProfileStatus, AwsScanTarget } from '@shared/types/awsScan';
 import type { AppSettings } from '@shared/types/settings';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
-import { alreadyAdded, buildPickItems, defaultTargets, initialRegions, instanceKey, parseAccountIds, profileTargets, ssoTargets, takenNamesByFolder } from '../lib/awsGuide';
+import { accountsWithoutRole, alreadyAdded, applyCommonRole, buildPickItems, commonRoleOptions, defaultRole, defaultTargets, initialRegions, instanceKey, parseAccountIds, profileTargets, ssoTargets, ssoTargetsByRole, takenNamesByFolder, type AccountRoles } from '../lib/awsGuide';
 import { describeIpcError } from '../lib/format';
 import { toggleSelection } from '../lib/ssmInstancePicker';
 import { useAwsScan } from '../lib/useAwsScan';
@@ -60,7 +60,8 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
   // Steps 2-3: scope.
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [role, setRole] = useState('');
-  const [roleOptions, setRoleOptions] = useState<string[]>([]);
+  const [rolesByAccount, setRolesByAccount] = useState<AccountRoles>({});
+  const [roleByAccount, setRoleByAccount] = useState<Record<string, string | undefined>>({});
   const [manualText, setManualText] = useState('');
   const [regions, setRegions] = useState<string[]>([]);
   const regionsTouched = useRef(false);
@@ -125,24 +126,31 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
     setSelectedAccounts(new Set());
   };
 
-  // Role suggestions come from the first selected account.
-  const firstAccount = [...selectedAccounts][0];
+  // Roles per selected account, loaded as accounts are ticked (a few at a time) and preselected sensibly.
+  const rolePrefs = useRef<Array<string | undefined>>([]);
+  rolePrefs.current = [role, signIns.find((x) => x.id === savedId)?.lastRoleName];
   useEffect(() => {
-    if (kind !== 'sso' || !signedIn || !firstAccount) return;
-    let alive = true;
-    window.multissh
-      .awsSsoListRolesCached({ startUrl: normalizeStartUrl(sso.startUrl), region: sso.region.trim(), accountId: firstAccount })
-      .then((roles) => {
-        if (!alive) return;
-        const names = roles.map((r) => r.roleName);
-        setRoleOptions(names);
-        setRole((current) => current || (names.length === 1 ? names[0] : ''));
-      })
-      .catch(() => alive && setRoleOptions([]));
-    return () => {
-      alive = false;
-    };
-  }, [kind, signedIn, firstAccount, sso.startUrl, sso.region]);
+    setRolesByAccount({});
+    setRoleByAccount({});
+  }, [sso.startUrl, sso.region]);
+  useEffect(() => {
+    if (kind !== 'sso' || !signedIn || signInState.manualEntry) return;
+    const loading = Object.values(rolesByAccount).filter((v) => v === 'loading').length;
+    const batch = [...selectedAccounts].filter((id) => rolesByAccount[id] === undefined).slice(0, Math.max(0, 4 - loading));
+    if (batch.length === 0) return;
+    setRolesByAccount((r) => ({ ...r, ...Object.fromEntries(batch.map((id) => [id, 'loading' as const])) }));
+    for (const id of batch) {
+      window.multissh
+        .awsSsoListRolesCached({ startUrl: normalizeStartUrl(sso.startUrl), region: sso.region.trim(), accountId: id })
+        .then((list) => {
+          const names = list.map((r) => r.roleName);
+          setRolesByAccount((r) => ({ ...r, [id]: names }));
+          const pick = defaultRole(names, rolePrefs.current);
+          if (pick) setRoleByAccount((cur) => (cur[id] ? cur : { ...cur, [id]: pick }));
+        })
+        .catch(() => setRolesByAccount((r) => ({ ...r, [id]: 'error' })));
+    }
+  }, [kind, signedIn, signInState.manualEntry, selectedAccounts, rolesByAccount, sso.startUrl, sso.region]);
 
   const checkProfile = async (name: string) => {
     setProfileStatus((s) => ({ ...s, [name]: 'checking' }));
@@ -175,12 +183,15 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
         const typed = parseAccountIds(manualText);
         return ssoTargets(start, typed, new Set(typed.map((a) => a.accountId)), role);
       }
-      return ssoTargets(start, signInState.accounts, selectedAccounts, role);
+      return ssoTargetsByRole(start, signInState.accounts, selectedAccounts, roleByAccount);
     }
     if (kind === 'profile') return profileTargets([...chosenProfiles]);
     return defaultTargets();
-  }, [kind, sso, signInState.accounts, selectedAccounts, role, chosenProfiles, manualAccounts, manualText]);
-  const canSearch = regions.length > 0 && targets.length > 0 && (kind !== 'sso' || (signedIn && role.trim() !== '')) && scan.state.phase !== 'running';
+  }, [kind, sso, signInState.accounts, selectedAccounts, role, roleByAccount, chosenProfiles, manualAccounts, manualText]);
+  const needRole = kind === 'sso' && !manualAccounts ? accountsWithoutRole(selectedAccounts, roleByAccount) : [];
+  const rolesLoading = kind === 'sso' && !manualAccounts && [...selectedAccounts].some((id) => rolesByAccount[id] === 'loading' || rolesByAccount[id] === undefined);
+  const canSearch =
+    regions.length > 0 && targets.length > 0 && (kind !== 'sso' || (signedIn && (manualAccounts ? role.trim() !== '' : needRole.length === 0 && !rolesLoading))) && scan.state.phase !== 'running';
 
   const search = () => {
     lastTargets.current = new Map(targets.map((t) => [t.id, t]));
@@ -251,9 +262,11 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
             selectedAccounts={selectedAccounts}
             onToggleAccount={(id) => setSelectedAccounts((cur) => toggleSelection(cur, id, false))}
             onSelectAccounts={(ids) => setSelectedAccounts(new Set(ids))}
-            role={role}
-            onRole={setRole}
-            roleOptions={roleOptions}
+            rolesByAccount={rolesByAccount}
+            roleByAccount={roleByAccount}
+            onRoleFor={(id, r) => setRoleByAccount((cur) => ({ ...cur, [id]: r || undefined }))}
+            commonOptions={commonRoleOptions(selectedAccounts, rolesByAccount)}
+            onApplyCommon={(r) => setRoleByAccount((cur) => applyCommonRole(r, selectedAccounts, rolesByAccount, cur))}
             regions={regions}
             onRegions={(r) => { regionsTouched.current = true; setRegions(r); }}
           />
@@ -271,7 +284,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
           </button>
           {!canSearch && scan.state.phase !== 'running' && (
             <span className="text-txt-muted">
-              {kind === 'sso' && !signedIn ? 'Sign in first.' : targets.length === 0 ? (kind === 'sso' ? (manualAccounts ? 'Enter at least one account ID.' : 'Select at least one account.') : 'Choose a profile.') : kind === 'sso' && !role.trim() ? 'Enter the role name.' : 'Select at least one region.'}
+              {kind === 'sso' && !signedIn ? 'Sign in first.' : targets.length === 0 ? (kind === 'sso' ? (manualAccounts ? 'Enter at least one account ID.' : selectedAccounts.size > 0 ? (rolesLoading ? 'Loading roles…' : 'Choose a role for each selected account.') : 'Select at least one account.') : 'Choose a profile.') : kind === 'sso' && manualAccounts && !role.trim() ? 'Enter the role name.' : 'Select at least one region.'}
             </span>
           )}
         </div>

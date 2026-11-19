@@ -44,7 +44,7 @@ Press **Add from AWS…** in the SSH tab of the connection manager (or in the AW
 | Step | Details |
 |------|---------|
 | **Credentials** | **AWS sign-in (SSO)** uses a saved sign-in or a start URL you type (the access portal URL `https://d-….awsapps.com/start`, or for newer instances `https://identitycenter.amazonaws.com/ssoins-…`). **AWS CLI profiles** lists the profiles in `~/.aws/config` and `~/.aws/credentials` (SSO, assume-role, access keys, `aws login`, credential process); **Check** shows whether one can produce credentials and **Sign in** runs `aws sso login --profile` for an SSO profile. **Default credentials** uses environment variables, your default profile or an instance role. |
-| **Accounts and role** | For SSO: tick the accounts and enter one role name used in all of them. Accounts without that role are skipped. |
+| **Accounts and role** | For SSO: tick the accounts. Each ticked account shows a drop-down with its own roles (loaded when you tick it; a single role is preselected, otherwise your last used one), and **Same role everywhere** applies one role to all ticked accounts that have it. Search starts once every ticked account has a role. If the portal cannot list accounts or roles, type the account IDs and role names instead. |
 | **Regions** | Tick the regions to search. The list from **Settings → AWS** (or policy) is preselected. |
 | **Connect with** | Appears once instances are found: **SSH over SSM** (with **SSH agent** or a **Private key file**) or **Session Manager shell (no SSH)**. It applies to all instances you import in this run. |
 | **Instances** | **Find instances** searches every account and region at once, shows progress and can be cancelled. Results are grouped by account and region; nodes that already have a profile are marked **Already added**. Set the SSH login per instance (suggested from the platform) and press **Import selected**. |
@@ -79,7 +79,7 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 
 | Need | How |
 |------|-----|
-| Many accounts | Tick the accounts and a role name; sshs3 searches them in parallel with a small limit and skips what is denied. |
+| Many accounts | Tick the accounts and pick a role per account (or one for all); sshs3 searches them in parallel with a small limit and skips what is denied. |
 | Preconfigured sign-ins | Policy `awsManagedSignIns` adds locked sign-ins for everyone; policy `awsRegions` sets the regions; policy `enableAws` turns the features on or off; policy `awsSsm` blocks SSH over SSM entirely. See [Enterprise deployment](/docs/reference/enterprise-deployment/). |
 | Corporate proxy or TLS inspection | **Settings → AWS → Network**. |
 | Names that mean something | Tag instances with `Name` and allow `ec2:DescribeInstances`. |

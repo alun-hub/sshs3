@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { parseRegionList } from '@shared/awsSignIns';
 import { AWS_DEFAULT_REGIONS } from '@shared/awsScan';
 import type { AwsSsoAccount } from '@shared/types/aws';
+import type { AccountRoles } from '../../../lib/awsGuide';
 
 const input = 'rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500';
 const link = 'text-xs text-sky-400 hover:underline';
@@ -14,9 +15,12 @@ interface Props {
   selectedAccounts?: ReadonlySet<string>;
   onToggleAccount?: (id: string) => void;
   onSelectAccounts?: (ids: string[]) => void;
-  role?: string;
-  onRole?: (role: string) => void;
-  roleOptions?: readonly string[];
+  /** Roles per account (list mode) and the role chosen for each. */
+  rolesByAccount?: AccountRoles;
+  roleByAccount?: Readonly<Record<string, string | undefined>>;
+  onRoleFor?: (accountId: string, role: string) => void;
+  commonOptions?: Array<{ role: string; count: number; total: number }>;
+  onApplyCommon?: (role: string) => void;
   regions: readonly string[];
   onRegions: (regions: string[]) => void;
 }
@@ -58,47 +62,76 @@ export const AwsGuideScope: React.FC<Props> = (p) => {
           </label>
           <label className="flex flex-col gap-1 text-txt-secondary">
             Role
-            <input data-testid="guide-role" value={p.role ?? ''} onChange={(e) => p.onRole?.(e.target.value.trim())} placeholder="e.g. ReadOnlyAccess" className={`${input} font-mono`} />
+            <input data-testid="guide-role" value={p.manualAccounts.role ?? ''} onChange={(e) => p.manualAccounts?.onRole?.(e.target.value.trim())} placeholder="e.g. ReadOnlyAccess" className={`${input} font-mono`} />
           </label>
         </section>
       )}
 
       {p.accounts && !p.manualAccounts && (
         <section className="flex flex-col gap-2" aria-label="Accounts and role">
-          <div className="flex items-end justify-between gap-3">
-            <label className="flex min-w-0 flex-1 flex-col gap-1 text-txt-secondary">
-              Role (the same name is used in every selected account)
-              <input
-                data-testid="guide-role"
-                list="guide-role-options"
-                value={p.role ?? ''}
-                onChange={(e) => p.onRole?.(e.target.value.trim())}
-                placeholder="e.g. ReadOnlyAccess"
-                className={`${input} font-mono`}
-              />
-              <datalist id="guide-role-options">
-                {(p.roleOptions ?? []).map((r) => <option key={r} value={r} />)}
-              </datalist>
-            </label>
-          </div>
           <div className="flex items-center gap-2">
             <input aria-label="Filter accounts" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter accounts" className={`${input} flex-1`} />
             <button type="button" className={link} onClick={() => p.onSelectAccounts?.(visible.map((a) => a.accountId))}>Select shown</button>
             <button type="button" className={link} onClick={() => p.onSelectAccounts?.([])}>None</button>
           </div>
-          <ul aria-label="Accounts" className="max-h-40 space-y-0.5 overflow-y-auto rounded-lg border border-border-subtle bg-app-card p-1">
+          <ul aria-label="Accounts" className="max-h-56 space-y-0.5 overflow-y-auto rounded-lg border border-border-subtle bg-app-card p-1">
             {visible.length === 0 && <li className="px-2 py-1.5 text-txt-muted">{p.accounts.length === 0 ? 'No accounts found for this sign-in.' : 'No account matches the filter.'}</li>}
-            {visible.map((a) => (
-              <li key={a.accountId}>
-                <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 hover:bg-app-surface-hover">
-                  <input type="checkbox" checked={p.selectedAccounts?.has(a.accountId) ?? false} onChange={() => p.onToggleAccount?.(a.accountId)} className="h-3.5 w-3.5 text-sky-600" />
-                  <span className="truncate font-medium text-txt-primary">{a.accountName || a.accountId}</span>
-                  {a.accountName && <span className="font-mono text-txt-muted">{a.accountId}</span>}
-                </label>
-              </li>
-            ))}
+            {visible.map((a) => {
+              const on = p.selectedAccounts?.has(a.accountId) ?? false;
+              const roles = p.rolesByAccount?.[a.accountId];
+              const label = a.accountName || a.accountId;
+              return (
+                <li key={a.accountId} className="flex items-center justify-between gap-3 rounded-md px-2 py-1 hover:bg-app-surface-hover">
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                    <input type="checkbox" checked={on} onChange={() => p.onToggleAccount?.(a.accountId)} className="h-3.5 w-3.5 text-sky-600" />
+                    <span className="truncate font-medium text-txt-primary">{label}</span>
+                    {a.accountName && <span className="font-mono text-txt-muted">{a.accountId}</span>}
+                  </label>
+                  {on && (
+                    <span className="shrink-0">
+                      {roles === 'loading' || roles === undefined ? (
+                        <span className="text-txt-muted">Loading roles…</span>
+                      ) : roles === 'error' ? (
+                        <input
+                          aria-label={`Role for ${label}`}
+                          value={p.roleByAccount?.[a.accountId] ?? ''}
+                          onChange={(e) => p.onRoleFor?.(a.accountId, e.target.value.trim())}
+                          placeholder="Role name"
+                          className={`${input} w-40 font-mono`}
+                        />
+                      ) : roles.length === 0 ? (
+                        <span className="text-amber-300">No role available</span>
+                      ) : (
+                        <select
+                          aria-label={`Role for ${label}`}
+                          value={p.roleByAccount?.[a.accountId] ?? ''}
+                          onChange={(e) => p.onRoleFor?.(a.accountId, e.target.value)}
+                          className={`${input} w-44 py-1`}
+                        >
+                          {!p.roleByAccount?.[a.accountId] && <option value="">Choose a role…</option>}
+                          {roles.map((r) => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      )}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
-          <p className="text-txt-muted">{p.selectedAccounts?.size ?? 0} of {p.accounts.length} selected.</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-txt-muted">{p.selectedAccounts?.size ?? 0} of {p.accounts.length} selected.</p>
+            {(p.commonOptions?.length ?? 0) > 0 && (
+              <label className="flex items-center gap-2 text-txt-secondary">
+                Same role everywhere
+                <select data-testid="guide-common-role" value="" onChange={(e) => e.target.value && p.onApplyCommon?.(e.target.value)} className={`${input} py-1`}>
+                  <option value="">Apply to all selected…</option>
+                  {p.commonOptions!.map((o) => (
+                    <option key={o.role} value={o.role}>{o.role} ({o.count} of {o.total})</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
         </section>
       )}
 

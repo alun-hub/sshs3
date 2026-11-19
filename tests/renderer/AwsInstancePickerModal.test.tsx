@@ -57,7 +57,7 @@ describe('AwsInstancePickerModal (SSO sign-in)', () => {
     await waitFor(() => expect(screen.getByTestId('guide-sso-status')).toHaveTextContent('Signed in until 2030-05-06 07:08'));
     expect(screen.getByTestId('guide-saved-signin')).toHaveValue('s1');
     await chooseAccount();
-    await waitFor(() => expect(screen.getByTestId('guide-role')).toHaveValue('Dev'));
+    await waitFor(() => expect(screen.getByLabelText('Role for Prod')).toHaveValue('Dev'));
     expect(screen.getByLabelText('eu-north-1')).toBeChecked();
     fireEvent.click(screen.getByTestId('guide-search'));
     await screen.findByRole('listbox', { name: 'SSM-managed instances' });
@@ -120,6 +120,66 @@ describe('AwsInstancePickerModal (SSO sign-in)', () => {
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Sign in again above.');
+  });
+});
+
+describe('AwsInstancePickerModal (a role per account)', () => {
+  const tickAll = async () => {
+    const list = await screen.findByRole('list', { name: 'Accounts' });
+    fireEvent.click(await within(list).findByLabelText(/Prod/));
+    fireEvent.click(await within(list).findByLabelText(/Dev/));
+  };
+
+  it('loads roles per ticked account, preselects a sensible one and lets each account have its own', async () => {
+    api.awsSsoListRolesCached.mockImplementation((async (r: { accountId: string }) =>
+      r.accountId === '111111111111' ? [{ roleName: 'Dev' }, { roleName: 'Admin' }] : [{ roleName: 'ReadOnly' }]) as never);
+    open();
+    await tickAll();
+    await waitFor(() => expect(screen.getByLabelText('Role for Prod')).toHaveValue('Dev')); // the saved sign-in's last role
+    await waitFor(() => expect(screen.getByLabelText('Role for Dev')).toHaveValue('ReadOnly')); // its only role
+    fireEvent.change(screen.getByLabelText('Role for Prod'), { target: { value: 'Admin' } });
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('guide-search'));
+    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    const req = (api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: Array<{ id: string; source: { sso: { roleName: string } } }> } }])[0].request;
+    expect(req.targets.map((t) => [t.id, t.source.sso.roleName])).toEqual([['acct-111111111111', 'Admin'], ['acct-222222222222', 'ReadOnly']]);
+    api.awsSsoListRolesCached.mockResolvedValue([{ roleName: 'Dev' }, { roleName: 'Admin' }] as never);
+  });
+
+  it('applies one role to every account that has it with "Same role everywhere"', async () => {
+    api.awsSsoListRolesCached.mockResolvedValue([{ roleName: 'Dev' }, { roleName: 'Admin' }] as never);
+    open();
+    await tickAll();
+    await waitFor(() => expect(screen.getByLabelText('Role for Dev')).toHaveValue('Dev'));
+    const common = await screen.findByTestId('guide-common-role');
+    expect(within(common).getByRole('option', { name: 'Admin (2 of 2)' })).toBeInTheDocument();
+    fireEvent.change(common, { target: { value: 'Admin' } });
+    expect(screen.getByLabelText('Role for Prod')).toHaveValue('Admin');
+    expect(screen.getByLabelText('Role for Dev')).toHaveValue('Admin');
+  });
+
+  it('keeps the search disabled with a reason until every selected account has a role', async () => {
+    api.awsSsoListRolesCached.mockResolvedValue([{ roleName: 'Admin' }, { roleName: 'Other' }] as never); // no preferred role, more than one
+    open();
+    await chooseAccount();
+    await waitFor(() => expect(screen.getByLabelText('Role for Prod')).toHaveValue(''));
+    expect(screen.getByTestId('guide-search')).toBeDisabled();
+    expect(screen.getByText('Choose a role for each selected account.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Role for Prod'), { target: { value: 'Other' } });
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    api.awsSsoListRolesCached.mockResolvedValue([{ roleName: 'Dev' }, { roleName: 'Admin' }] as never);
+  });
+
+  it('lets the user type a role when the roles of an account cannot be listed', async () => {
+    api.awsSsoListRolesCached.mockRejectedValue(new Error('denied'));
+    open();
+    await chooseAccount();
+    const field = await screen.findByLabelText('Role for Prod');
+    expect(field.tagName).toBe('INPUT');
+    expect(screen.getByTestId('guide-search')).toBeDisabled();
+    fireEvent.change(field, { target: { value: 'ReadOnlyAccess' } });
+    await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
+    api.awsSsoListRolesCached.mockResolvedValue([{ roleName: 'Dev' }, { roleName: 'Admin' }] as never);
   });
 });
 
