@@ -10,7 +10,8 @@ describe('locateTools result reuse', () => {
   it('reuses a result for a moment (no repeated PATH walk), then looks again so an install is noticed', () => {
     vi.useFakeTimers();
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tool-cache-'));
-    const aws = path.join(dir, 'aws');
+    // The 'linux' platform joins with '/', so build the expected path the same way (also correct when run on Windows).
+    const aws = path.posix.join(dir, 'aws');
     fs.writeFileSync(aws, '#!/bin/sh\n', { mode: 0o755 });
     const env = { PATH: dir } as NodeJS.ProcessEnv;
     expect(locateTools('linux', env, dir).aws).toBe(aws);

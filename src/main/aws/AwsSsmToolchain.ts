@@ -96,7 +96,7 @@ let locateCache: { key: string; at: number; value: Located2 } | undefined;
  * settings poll: a result is reused for a moment (an install is still noticed within seconds).
  */
 function locate(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): Located2 {
-  const key = JSON.stringify([platform, home, env.PATH, env.Path, env.path, env.ProgramFiles, env.PROGRAMFILES]);
+  const key = JSON.stringify([platform, home, pathDirs(env, platform), env.ProgramFiles ?? env.PROGRAMFILES]);
   if (locateCache && locateCache.key === key && Date.now() - locateCache.at < LOCATE_TTL_MS) return locateCache.value;
   const value = locateUncached(platform, env, home);
   locateCache = { key, at: Date.now(), value };
