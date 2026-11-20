@@ -131,7 +131,7 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
           </label>
           {ssm.mode === 'shell' && (
             <p role="note" className="text-xs text-txt-muted">
-              Opens a shell through Session Manager like the AWS console: IAM decides who may connect, and the instance needs no SSH daemon or key. Terminal only: the file manager, tunnels and key install need SSH. The SSH user and authentication below are not used.
+              Opens a shell through Session Manager like the AWS console: IAM decides who may connect, and the instance needs no SSH daemon or key. Terminal only: the file manager, tunnels and key install need SSH.
             </p>
           )}
 
