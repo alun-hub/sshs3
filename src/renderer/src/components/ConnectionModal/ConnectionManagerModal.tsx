@@ -35,18 +35,11 @@ import { BulkActionBar } from './BulkActionBar';
 import { SystemAwareRows } from './SystemAwareRows';
 import { alignSystemMembers, systemMembersOf, systemNameOf, systemNames } from '../../lib/systemGrouping';
 import { TeamProfileTreeList } from './TeamProfileTreeList';
-import {
-  collectFolderNames,
-  filterS3Profiles,
-  filterSshProfiles,
-  folderNamesForTab,
-  groupProfiles,
-  mostRecentlyUsed,
-  parseAdHocTarget,
-} from './connectionGrouping';
+import { collectFolderNames, filterS3Profiles, filterSshProfiles, withoutSsmShell, folderNamesForTab, groupProfiles, mostRecentlyUsed, parseAdHocTarget } from './connectionGrouping';
 import { ProfileFolderHeader } from './ProfileFolderHeader';
 import { EmptyFolderDropZone } from './EmptyFolderDropZone';
 import { ImportCandidatesModal } from './ImportCandidatesModal';
+import { AwsAddButton } from '../aws/AwsAddButton';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
 import { formatDateTime, describeIpcError } from '../../lib/format';
@@ -58,6 +51,7 @@ import { usePersonalBulkEdit } from '../../lib/usePersonalBulkEdit';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
+import { useNotice } from '../../lib/confirmContext';
 
 export type { Tab };
 
@@ -72,6 +66,8 @@ interface ConnectionManagerModalProps {
   /** When set, opens SFTP dual-pane file manager for the given SSH profile. */
   onConnectSFTP?: (config: SSHConnectionConfig) => void;
   onConnectS3?: (config: S3Config) => void;
+  /** SSH is required (file manager, directory sync): Session Manager shell profiles are hidden. */
+  needsSsh?: boolean;
   /** Connects to every server of a system ("Connect all"); `source` is 'personal' or the Team Vault id. Omit to hide the button. */
   onConnectSystem?: (members: SSHConnectionConfig[], source: string) => void;
   onConnectK8s?: (target: K8sTerminalTarget) => void;
@@ -95,6 +91,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   onConnectSSH,
   onConnectSFTP,
   onConnectS3,
+  needsSsh = false,
   onConnectSystem,
   onConnectK8s,
   onViewK8sLogs,
@@ -110,6 +107,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const confirm = useConfirm();
+  const notice = useNotice();
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<EditingState | null>(null);
@@ -571,7 +569,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     try {
       const result = await window.multissh.profilesImportSshConfig();
       if (!result.profiles || result.profiles.length === 0) {
-        window.alert(`No Host entries found in ~/.ssh/config`);
+        notice(`No Host entries found in ~/.ssh/config`);
         return;
       }
       setImportCandidates(result.profiles);
@@ -610,7 +608,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     try {
       const res = await window.multissh.profilesExportJson();
       if (res) {
-        window.alert(`Successfully exported ${res.count} profiles to ${res.filePath}`);
+        notice(`Successfully exported ${res.count} profiles to ${res.filePath}`);
       }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to export profiles'));
@@ -623,7 +621,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
       const res = await window.multissh.profilesImportJson();
       if (res && res.count > 0) {
         await load();
-        window.alert(`Successfully imported ${res.count} profiles!`);
+        notice(`Successfully imported ${res.count} profiles!`);
       }
     } catch (err) {
       setError(describeIpcError(err, 'Failed to import profiles'));
@@ -639,7 +637,8 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     [tab, source, searchQuery]
   );
 
-  const filteredSSH = useMemo(() => filterSshProfiles(sshProfiles, query), [sshProfiles, query]);
+  const visibleSsh = useMemo(() => withoutSsmShell(sshProfiles, needsSsh), [needsSsh, sshProfiles]);
+  const filteredSSH = useMemo(() => filterSshProfiles(visibleSsh, query), [visibleSsh, query]);
   const filteredS3 = useMemo(() => filterS3Profiles(s3Profiles, query), [s3Profiles, query]);
 
   // Which team the currently open edit form's profile belongs to (see `editingTeamVaultId`
@@ -669,7 +668,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
 
   // A system lives in one folder: its servers are drawn there even if their own folder differs.
   // A system's folder comes from all of its servers, so align before the search narrows the list.
-  const alignedSSH = useMemo(() => filterSshProfiles(alignSystemMembers(sshProfiles), query), [sshProfiles, query]);
+  const alignedSSH = useMemo(() => filterSshProfiles(alignSystemMembers(visibleSsh), query), [visibleSsh, query]);
   const groupedSSH = useMemo(() => groupProfiles(sshFolderNames, alignedSSH, query), [alignedSSH, sshFolderNames, query]);
   const groupedS3 = useMemo(() => groupProfiles(s3FolderNames, filteredS3, query), [filteredS3, s3FolderNames, query]);
 
@@ -739,7 +738,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
     });
   }, []);
 
-  const recentSSH = useMemo(() => mostRecentlyUsed(sshProfiles), [sshProfiles]);
+  const recentSSH = useMemo(() => mostRecentlyUsed(visibleSsh), [visibleSsh]);
   const recentS3 = useMemo(() => mostRecentlyUsed(s3Profiles), [s3Profiles]);
 
   // M12 (code review): only enabled for the list view, not while a form is
@@ -1040,6 +1039,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                         New Profile
                       </button>
                     )}
+                    {source === 'personal' && tab === 'ssh' && <AwsAddButton profiles={sshProfiles} onDone={() => void load()} />}
 
                     {source === 'personal' && (
                       <>
@@ -1301,6 +1301,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                           New Profile
                         </button>
                       )}
+                      {!query && <AwsAddButton profiles={sshProfiles} onDone={() => void load()} />}
                     </div>
                   ) : (
                     groupedSSH.map(([groupName, profiles]) => {

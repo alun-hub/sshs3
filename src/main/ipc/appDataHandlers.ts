@@ -1,3 +1,4 @@
+import { setAwsNetworkSettings } from '../aws/awsNetworkSettings';
 import { SNIPPET_MAX_NAME_CHARS } from '../../shared/types/snippets';
 import { resolveLogLevel, setLogLevel } from '../log/Logger';
 import { IPC_CHANNELS, type TabHandoff, type WindowInfo } from '../../shared/types/ipc';
@@ -121,6 +122,7 @@ export function registerSettingsHandlers(bridge: AppDataHost): void {
     async (_event, settings: Partial<AppSettings>): Promise<AppSettings> => {
       const saved = await bridge.settingsStore.saveSettings(settings);
       if ('logLevel' in settings) setLogLevel(resolveLogLevel(saved.logLevel));
+      if ('awsNetwork' in settings) setAwsNetworkSettings(saved.awsNetwork);
       // autoSync refreshes the agent block itself afterwards (and removes it when turned off).
       if ('autoSyncLocalSshConfig' in settings) void bridge.profileSyncService.autoSyncLocalSshConfig();
       else if ('smartcardAuthMode' in settings) bridge.smartcard.refreshAgentSshConfig();

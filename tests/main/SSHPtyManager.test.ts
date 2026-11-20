@@ -106,6 +106,38 @@ describe('SSHPtyManager', () => {
     await manager.killAll();
   });
 
+  describe('createSession for a Session Manager shell', () => {
+    const shellConfig = (over: Partial<SSHConnectionConfig> = {}): SSHConnectionConfig => ({
+      id: 'ssm-1', name: 'Cloud', host: 'i-0123456789abcdef0', port: 22, username: '', authType: 'agent',
+      ssm: { enabled: true, mode: 'shell', region: 'eu-north-1', awsProfile: 'corp' }, ...over,
+    });
+
+    it('runs `aws ssm start-session` in the PTY instead of ssh', async () => {
+      const session = await manager.createSession(shellConfig(), { cols: 100, rows: 40, cwd: '/tmp', env: { CUSTOM_VAR: 'xyz' } });
+      expect(session.cols).toBe(100);
+      const { file, args, options } = (mockPtyInstances[0] as any)._spawnArgs;
+      expect(file).toMatch(/(^|[/\\])aws(\.exe)?$/);
+      expect(args).toEqual(['ssm', 'start-session', '--target', 'i-0123456789abcdef0', '--region', 'eu-north-1', '--profile', 'corp']);
+      expect(options).toMatchObject({ cols: 100, rows: 40, cwd: '/tmp' });
+      expect(options.env.TERM).toBe('xterm-256color');
+      expect(options.env.CUSTOM_VAR).toBe('xyz');
+      expect(args.join(' ')).not.toContain('ssh');
+    });
+
+    it('does not reconnect: a closed shell ends the session', async () => {
+      const session = (await manager.createSession(shellConfig({ autoReconnect: true }))) as any;
+      await expect(manager.reconnectSession(session)).resolves.toBe(false);
+      expect(mockPtyInstances).toHaveLength(1);
+    });
+
+    it('refuses invalid SSM settings before spawning anything', async () => {
+      await expect(manager.createSession(shellConfig({ host: 'example.com' }))).rejects.toThrow(/Instance ID/);
+      await expect(manager.createSession(shellConfig({ ssm: { enabled: true, mode: 'shell', region: 'x;id' } }))).rejects.toThrow(/region/);
+      await expect(manager.createSession(shellConfig({ proxyJump: 'a@b' }))).rejects.toThrow(/jump host/);
+      expect(mockPtyInstances).toHaveLength(0);
+    });
+  });
+
   describe('createSession', () => {
     it('should spawn OpenSSH with correct args, dims and env', async () => {
       const config: SSHConnectionConfig = {
@@ -689,6 +721,54 @@ describe('SSHPtyManager', () => {
       expect(manager.getSession('sess-reconnect')).toBeDefined();
 
       vi.useRealTimers();
+    });
+
+    it('stops with one sign-in hint, instead of retrying, when the SSM profile\'s own SSO sign-in has lapsed', async () => {
+      vi.useFakeTimers();
+      const { setSsoSignedInCheck } = await import('../../src/main/ssh/ssmProxy');
+      setSsoSignedInCheck(async () => false);
+      try {
+        const session = await manager.createSession({
+          id: 'sess-sso-lapsed', name: 'SSM', host: 'i-0123456789abcdef0', username: 'ec2-user', authType: 'agent',
+          autoReconnect: true, maxReconnectAttempts: 3, reconnectDelayMs: 50,
+          ssm: { enabled: true, region: 'eu-north-1', sso: { startUrl: 'https://d-1.awsapps.com/start', region: 'us-east-1', accountId: '123456789012', roleName: 'Dev' } },
+        } as SSHConnectionConfig);
+        const out: string[] = [];
+        manager.on('data', (e: { data: string }) => out.push(e.data));
+        const exitSpy = vi.fn();
+        manager.on('exit', exitSpy);
+        mockPtyInstances[0].emitExit(255);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(out.filter((m) => m.includes('reconnecting'))).toHaveLength(1);
+        expect(out.some((m) => m.includes('AWS SSO session expired: sign in again'))).toBe(true);
+        expect(exitSpy).toHaveBeenCalledTimes(1);
+        expect(mockPtyInstances).toHaveLength(1);
+        expect(session.isReconnecting?.()).toBe(false);
+      } finally {
+        setSsoSignedInCheck(async () => true);
+        vi.useRealTimers();
+      }
+    });
+
+    it('a failing sign-in check does not leave the session stuck: the reconnect budget is used up and the session exits', async () => {
+      vi.useFakeTimers();
+      const { setSsoSignedInCheck } = await import('../../src/main/ssh/ssmProxy');
+      setSsoSignedInCheck(async () => { throw new Error('token cache unreadable'); });
+      try {
+        await manager.createSession({
+          id: 'sess-check-throws', name: 'SSM', host: 'i-0123456789abcdef0', username: 'ec2-user', authType: 'agent',
+          autoReconnect: true, maxReconnectAttempts: 1, reconnectDelayMs: 50,
+          ssm: { enabled: true, region: 'eu-north-1', sso: { startUrl: 'https://d-1.awsapps.com/start', region: 'us-east-1', accountId: '123456789012', roleName: 'Dev' } },
+        } as SSHConnectionConfig);
+        const exitSpy = vi.fn();
+        manager.on('exit', exitSpy);
+        mockPtyInstances[0].emitExit(255);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(exitSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        setSsoSignedInCheck(async () => true);
+        vi.useRealTimers();
+      }
     });
 
     // Low finding (code review 2026-11-03): any non-zero exit reconnected, including `exit 1` typed in the shell or

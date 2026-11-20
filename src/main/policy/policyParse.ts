@@ -35,8 +35,9 @@ function validate(def: PolicyDefinition, value: unknown): { ok: true; value: boo
       ? { ok: true, value }
       : { ok: false, reason: `expected one of ${def.values.join(', ')}` };
   }
-  if (value.length > MAX_STRING_LENGTH || CONTROL_CHARS.test(value)) {
-    return { ok: false, reason: `expected up to ${MAX_STRING_LENGTH} characters without control characters` };
+  const maxLength = def.type === 'string' && def.maxLength ? def.maxLength : MAX_STRING_LENGTH;
+  if (value.length > maxLength || CONTROL_CHARS.test(value)) {
+    return { ok: false, reason: `expected up to ${maxLength} characters without control characters` };
   }
   return { ok: true, value };
 }

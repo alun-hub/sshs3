@@ -5,6 +5,8 @@ import * as nodePty from 'node-pty';
 import type { IPty } from 'node-pty';
 import path from 'node:path';
 import fs from 'node:fs';
+import { isSsmShellProfile } from '../../shared/ssm';
+import { buildSsmShellSpawn, ssmReconnectBlocked } from './ssmProxy';
 import { SmartcardDetector } from '../smartcard/SmartcardDetector';
 import { AskpassServer } from '../smartcard/AskpassServer';
 import { AgentLifecycleManager } from './AgentLifecycleManager';
@@ -200,7 +202,7 @@ export class InternalSSHPtySession implements SSHPtySession {
     const shouldReconnect =
       !this.disposed &&
       !changedKey &&
-      Boolean(this.config.autoReconnect) &&
+      Boolean(this.config.autoReconnect) && !isSsmShellProfile(this.config) && // a Session Manager shell is never respawned
       // 255 is ssh's own "the connection failed or dropped" code; any other non-zero code is the remote shell or
       // command ending (e.g. `exit 1`), which is not a reason to connect again. node-pty reports signal 0 (not
       // undefined) for a normal exit, so only a real signal counts.
@@ -215,14 +217,16 @@ export class InternalSSHPtySession implements SSHPtySession {
       const delay = this.config.reconnectDelayMs ?? 1000;
 
       this.manager.emit('reconnecting', { sessionId: this.sessionId, attempt, maxAttempts });
-      const msg = `\r\n\x1b[33m[sshs3: connection dropped, reconnecting (${attempt}/${maxAttempts})...]\x1b[0m\r\n`;
-      this.appendScrollback(msg);
-      for (const listener of this.dataListeners) listener(msg);
-      this.manager.emit('data', { sessionId: this.sessionId, data: msg });
+      this.announce(`\r\n\x1b[33m[sshs3: connection dropped, reconnecting (${attempt}/${maxAttempts})...]\x1b[0m\r\n`);
 
       this.reconnectTimer = setTimeout(async () => {
         if (this.disposed) return;
         try {
+          if (await ssmReconnectBlocked(this.config)) { // retrying cannot work until the user signs in again: say so once, give up
+            this.announce(`\r\n\x1b[31m[sshs3: AWS SSO session expired: sign in again, then reconnect]\x1b[0m\r\n`);
+            [this.reconnecting, this.reconnectAttempts] = [false, maxAttempts];
+            return this.handlePtyExit(event);
+          }
           const success = await this.manager.reconnectSession(this);
           if (success) {
             this.reconnecting = false;
@@ -234,10 +238,7 @@ export class InternalSSHPtySession implements SSHPtySession {
               this.reconnectStableTimer = undefined;
             }, InternalSSHPtySession.RECONNECT_STABLE_MS);
             this.reconnectStableTimer.unref?.();
-            const okMsg = `\r\n\x1b[32m[sshs3: reconnected successfully]\x1b[0m\r\n`;
-            this.appendScrollback(okMsg);
-            for (const listener of this.dataListeners) listener(okMsg);
-            this.manager.emit('data', { sessionId: this.sessionId, data: okMsg });
+            this.announce(`\r\n\x1b[32m[sshs3: reconnected successfully]\x1b[0m\r\n`);
             this.manager.emit('reconnected', { sessionId: this.sessionId });
             return;
           }
@@ -261,6 +262,12 @@ export class InternalSSHPtySession implements SSHPtySession {
       signal: event.signal,
     });
     void this.cleanup();
+  }
+
+  private announce(text: string): void { // a status line in the terminal, kept in the scrollback
+    this.appendScrollback(text);
+    for (const listener of this.dataListeners) listener(text);
+    this.manager.emit('data', { sessionId: this.sessionId, data: text });
   }
 
   public async reconnect(): Promise<boolean> {
@@ -542,10 +549,9 @@ export class SSHPtyManager extends EventEmitter {
     });
   }
 
-  /**
-   * Reconnects an existing session by spawning a new underlying SSH process.
-   */
+  /** Reconnects an existing session by spawning a new underlying SSH process. */
   public async reconnectSession(session: InternalSSHPtySession): Promise<boolean> {
+    if (isSsmShellProfile(session.config) || (await ssmReconnectBlocked(session.config))) return false; // shell ends with its process; lapsed SSO sign-in
     const config = session.config;
     const options = this.sessionOptions.get(session.sessionId);
     const cols = session.cols;
@@ -605,6 +611,7 @@ export class SSHPtyManager extends EventEmitter {
     config: SSHConnectionConfig,
     options?: PtyOptions
   ): Promise<SSHPtySession> {
+    if (isSsmShellProfile(config)) return this.createSsmShellSession(config, options);
     const sessionId = config.id || `ssh-${crypto.randomUUID()}`;
     this.sessionOptions.set(sessionId, options);
     const cols = options?.cols ?? 80;
@@ -768,6 +775,16 @@ export class SSHPtyManager extends EventEmitter {
     return session;
   }
 
+  /** A Session Manager shell: `aws ssm start-session` in a PTY instead of `ssh` (no askpass, mux or tunnels; IAM decides). */
+  private async createSsmShellSession(config: SSHConnectionConfig, options?: PtyOptions): Promise<SSHPtySession> {
+    const sessionId = config.id || `ssm-${crypto.randomUUID()}`;
+    const { file, args, env } = buildSsmShellSpawn(config, options?.env);
+    const [cols, rows] = [options?.cols ?? 80, options?.rows ?? 24];
+    const pty = getSpawn()(file, args, { cols, rows, cwd: options?.cwd ?? (process.env.HOME || process.env.USERPROFILE || process.cwd()), env });
+    const session = new InternalSSHPtySession({ sessionId, config, pty, cols, rows, manager: this });
+    this.sessions.set(sessionId, session);
+    return session;
+  }
   /**
    * Spawns a local shell PTY session (e.g. bash or powershell/cmd).
    */
@@ -916,9 +933,7 @@ export class SSHPtyManager extends EventEmitter {
     }
   }
 
-  /**
-   * Kills an active session.
-   */
+  /** Kills an active session. */
   public kill(sessionId: string, signal?: string): void {
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -926,9 +941,7 @@ export class SSHPtyManager extends EventEmitter {
     }
   }
 
-  /**
-   * Returns the current working directory of an active local shell session, or null if unknown.
-   */
+  /** Returns the current working directory of an active local shell session, or null if unknown. */
   public getSessionCwd(sessionId: string): string | null {
     const session = this.sessions.get(sessionId);
     return session && 'getCwd' in session ? (session as any).getCwd() : null;
@@ -940,9 +953,7 @@ export class SSHPtyManager extends EventEmitter {
     return session && 'hasSshClient' in session ? Boolean((session as any).hasSshClient()) : false;
   }
 
-  /**
-   * Terminates all active sessions.
-   */
+  /** Terminates all active sessions. */
   public async killAll(): Promise<void> {
     const activeSessions = Array.from(this.sessions.values());
     for (const session of activeSessions) {

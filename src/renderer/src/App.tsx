@@ -12,6 +12,7 @@ import { GlobalOverlays } from './components/GlobalOverlays';
 import { LandingView } from './components/LandingView';
 import { PaneTreeView } from './components/PaneTree';
 import { ConfirmProvider, useConfirm } from './components/ConfirmDialog';
+import { AwsEnabledContext } from './lib/awsEnabled';
 import { DualPaneExplorer } from './components/FileManager/DualPaneExplorer';
 import { DirSyncSavedProfilesModal } from './components/FileManager/DirSyncSavedProfilesModal';
 import { DirectorySyncModal } from './components/FileManager/DirectorySyncModal';
@@ -395,6 +396,7 @@ const AppContent: React.FC = () => {
   }, [settingsModalOpen]);
 
   return (
+    <AwsEnabledContext.Provider value={settings.enableAws === true}>
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-app text-txt-primary">
       {/* Top Bar with Brand, TabBar, and Quick Connect. select-none here only
           (not on the whole app, see UX review #5) so tab titles, toolbar
@@ -438,6 +440,7 @@ const AppContent: React.FC = () => {
             onOpenProfiles={handleOpenProfiles}
             onOpenGlobalSearch={globalSearchEnabled ? handleOpenGlobalSearch : undefined}
             onOpenSettings={handleOpenSettings}
+            onOpenAwsSettings={() => { setSettingsCategory('aws'); handleOpenSettings(); }}
             onOpenTunnels={handleOpenTunnels}
             onOpenDirSyncProfiles={() => openTopLevelModal(() => setDirSyncProfilesOpen(true))}
             showLockSmartcardButton={settings.smartcardAuthMode === 'agent-global'}
@@ -721,6 +724,7 @@ const AppContent: React.FC = () => {
         runProfile={dirSyncRunProfile}
       />
     </div>
+    </AwsEnabledContext.Provider>
   );
 };
 

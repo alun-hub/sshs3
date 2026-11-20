@@ -7,6 +7,8 @@ import { SftpButton } from '../SftpButton';
 import { OverflowMenu } from '../ui/OverflowMenu';
 import { TagChips } from '../ui/TagChips';
 import { ProfileRowCheckbox } from './ProfileRowCheckbox';
+import { SsmBadge } from './SsmBadge';
+import { authSuffix, profileTarget } from '../../lib/ssmProfile';
 import type { EditingState, RowSelect } from './types';
 
 interface TeamSshProfileRowProps {
@@ -50,11 +52,10 @@ export const TeamSshProfileRow: React.FC<TeamSshProfileRowProps> = ({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-txt-primary">{profile.name}</span>
+          <SsmBadge profile={profile} />
           <TagChips tags={profile.tags} />
         </div>
-        <div className="truncate text-xs text-txt-muted">
-          {profile.username}@{profile.host}:{profile.port ?? 22} · {profile.authType}
-        </div>
+        <div className="truncate text-xs text-txt-muted">{profileTarget(profile, authSuffix(profile))}</div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {onConnectSSH && (
@@ -67,7 +68,7 @@ export const TeamSshProfileRow: React.FC<TeamSshProfileRowProps> = ({
             Connect
           </button>
         )}
-        {onConnectSFTP && <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />}
+        {onConnectSFTP && <SftpButton authType={profile.authType} ssm={profile.ssm} onOpen={() => onConnectSFTP(profile)} />}
         <button
           aria-label="Edit profile"
           type="button"

@@ -1,3 +1,6 @@
+import { isSsmShellProfile } from '@shared/ssm';
+import { authSuffix, profileTarget } from '../../lib/ssmProfile';
+import { SsmBadge } from './SsmBadge';
 import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Cable, Copy, Folder, KeyRound, Pencil, Trash2 } from 'lucide-react';
@@ -47,6 +50,7 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
             Agent Fwd
           </span>
         )}
+        <SsmBadge profile={profile} />
         {profile.group && (
           <span
             title={`In folder "${profile.group}"`}
@@ -58,7 +62,7 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
         )}
       </div>
       <div className="truncate text-xs text-txt-muted">
-        {profile.username}@{profile.host}:{profile.port ?? 22} · Last connected:{' '}
+        {profileTarget(profile, ' · Last connected: ')}
         {profile.lastUsedAt}
       </div>
     </div>
@@ -76,7 +80,7 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
         </button>
       )}
       {onConnectSFTP && (
-          <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} /> 
+          <SftpButton authType={profile.authType} ssm={profile.ssm} onOpen={() => onConnectSFTP(profile)} /> 
         )}
       {/* UX audit finding #11: this row used to stop at Connect/SFTP
           while the identical profile, shown again below in its folder,
@@ -96,8 +100,13 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
       </button>
         <OverflowMenu
         items={[
-          { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
-          { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+          // A Session Manager shell has no SSH connection: key install and tunnels do not apply.
+          ...(isSsmShellProfile(profile)
+            ? []
+            : [
+                { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
+                { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+              ]),
           { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
           { label: 'Delete profile', icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, separated: true, onSelect: () => void handleDeleteSSH(profile.id, profile.name) },
         ]}
@@ -135,6 +144,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
         <span className="truncate text-sm text-txt-primary font-medium">
           {profile.name}
         </span>
+        <SsmBadge profile={profile} />
         <TagChips tags={profile.tags} />
         {profile.proxyJump && (
           <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
@@ -153,7 +163,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
         )}
       </div>
       <div className="truncate text-xs text-txt-muted">
-        {profile.username}@{profile.host}:{profile.port ?? 22} · {profile.authType}
+        {profileTarget(profile, authSuffix(profile))}
       </div>
     </div>
     <div className="flex shrink-0 items-center gap-1.5">
@@ -171,7 +181,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
         </button>
       )}
       {onConnectSFTP && (
-          <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} /> 
+          <SftpButton authType={profile.authType} ssm={profile.ssm} onOpen={() => onConnectSFTP(profile)} /> 
         )}
       <button
         aria-label="Edit profile"
@@ -187,8 +197,13 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
       </button>
         <OverflowMenu
         items={[
-          { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
-          { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+          // A Session Manager shell has no SSH connection: key install and tunnels do not apply.
+          ...(isSsmShellProfile(profile)
+            ? []
+            : [
+                { label: 'Install public key', icon: <KeyRound className="h-3.5 w-3.5" />, onSelect: () => setInstallKeyProfile(profile) },
+                { label: 'Manage tunnels', icon: <Cable className="h-3.5 w-3.5" />, onSelect: () => setTunnelsProfile(profile) },
+              ]),
           { label: 'Duplicate profile', icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void handleCloneSSH(profile) },
           { label: 'Delete profile', icon: <Trash2 className="h-3.5 w-3.5" />, danger: true, separated: true, onSelect: () => void handleDeleteSSH(profile.id, profile.name) },
         ]}

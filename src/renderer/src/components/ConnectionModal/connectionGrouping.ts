@@ -1,3 +1,4 @@
+import { isSsmShellProfile } from '@shared/ssm';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { systemNameOf } from '../../lib/systemGrouping';
@@ -18,6 +19,11 @@ export function parseAdHocTarget(searchQuery: string): { username: string; host:
 function matchesTag(tags: string[] | undefined, query: string): boolean {
   const needle = query.replace(/^#/, '');
   return needle !== '' && !!tags?.some((tag) => tag.toLowerCase().includes(needle));
+}
+
+/** Drops Session Manager shell profiles (no SSH connection) when `needsSsh` is set, e.g. in file manager pickers. */
+export function withoutSsmShell(profiles: SSHConnectionConfig[], needsSsh: boolean): SSHConnectionConfig[] {
+  return needsSsh ? profiles.filter((p) => !isSsmShellProfile(p)) : profiles;
 }
 
 /** `query` is already trimmed and lower-cased. */

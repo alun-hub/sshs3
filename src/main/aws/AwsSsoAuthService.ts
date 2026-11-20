@@ -20,6 +20,7 @@ import type {
   AwsSsoLoginResult,
   AwsSsoNetworkOptions,
 } from '../../shared/types/aws';
+import { AWS_SSO_EXPIRED_PREFIX, parseSsoTokenCache, type AwsSsoTokenStatus } from '../../shared/types/aws';
 import { encryptSecretValue, decryptSecretValue } from '../crypto/SecretFieldCrypto';
 import { buildAwsNodeHttpHandler } from './buildAwsNodeHttpHandler';
 
@@ -306,6 +307,62 @@ export class AwsSsoAuthService extends EventEmitter {
   }
 
   /**
+   * The token cache file of a start URL. SHA-1 only because the AWS CLI/SDK name the file sha1(startUrl): it is a lookup
+   * key over a public URL, not a security function, and the file must have exactly this name to be found.
+   * (CodeQL js/weak-cryptographic-algorithm: false positive.)
+   */
+  private tokenCacheFile(startUrl: string): string {
+    return path.join(this.ssoCacheDir(), `${crypto.createHash('sha1').update(startUrl).digest('hex')}.json`);
+  }
+
+  /**
+   * Reads the cached SSO token for a start URL (`~/.aws/sso/cache/<sha1(startUrl)>.json`). The access token is returned
+   * only to callers inside the main process; IPC handlers must expose just `status` and `expiresAt`.
+   */
+  private async readCachedToken(startUrl: string): Promise<{ status: AwsSsoTokenStatus; expiresAt?: string; accessToken?: string }> {
+    try {
+      const raw = await fs.readFile(this.tokenCacheFile(startUrl), 'utf-8');
+      const data = JSON.parse(raw) as { accessToken?: unknown; expiresAt?: unknown };
+      const status = parseSsoTokenCache(data, Date.now());
+      if (status === 'missing') return { status };
+      return { status, expiresAt: typeof data.expiresAt === 'string' ? data.expiresAt : undefined, accessToken: String(data.accessToken) };
+    } catch {
+      return { status: 'missing' };
+    }
+  }
+
+  /** Offline status of the cached token for this start URL (see parseSsoTokenCache). */
+  public async getTokenStatus(startUrl: string): Promise<AwsSsoTokenStatus> {
+    return (await this.readCachedToken(startUrl)).status;
+  }
+
+  /** Status plus expiry for the UI; never the token. */
+  public async getTokenInfo(startUrl: string): Promise<{ status: AwsSsoTokenStatus; expiresAt?: string }> {
+    const { status, expiresAt } = await this.readCachedToken(startUrl);
+    return { status, expiresAt };
+  }
+
+  private async requireCachedToken(startUrl: string): Promise<string> {
+    const { status, accessToken } = await this.readCachedToken(startUrl);
+    if (status !== 'valid' || !accessToken) throw new Error(`${AWS_SSO_EXPIRED_PREFIX}: sign in again to continue.`);
+    return accessToken;
+  }
+
+  /** Accounts the signed-in user can access, using the cached token (which stays in this process). */
+  public async listAccountsCached(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoAccount[]> {
+    return this.listAccounts(await this.requireCachedToken(startUrl), region, network);
+  }
+
+  public async listAccountRolesCached(
+    startUrl: string,
+    region: string,
+    accountId: string,
+    network?: AwsSsoNetworkOptions
+  ): Promise<AwsSsoAccountRole[]> {
+    return this.listAccountRoles(await this.requireCachedToken(startUrl), region, accountId, network);
+  }
+
+  /**
    * Writes to the same `~/.aws/sso/cache/<sha1(startUrl)>.json` path and
    * schema that `aws sso login` uses, so `fromSSO()` (used by
    * `S3StorageProvider`) can read the token directly with no extra glue.
@@ -323,8 +380,7 @@ export class AwsSsoAuthService extends EventEmitter {
     }
   ): Promise<void> {
     const cacheDir = this.ssoCacheDir();
-    const cacheKey = crypto.createHash('sha1').update(startUrl).digest('hex');
-    const filePath = path.join(cacheDir, `${cacheKey}.json`);
+    const filePath = this.tokenCacheFile(startUrl);
     await fs.mkdir(cacheDir, { recursive: true });
     await fs.writeFile(filePath, JSON.stringify(token, null, 2), { encoding: 'utf-8', mode: 0o600 });
     try {

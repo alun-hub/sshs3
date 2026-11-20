@@ -13,14 +13,17 @@ export type PolicySettingId =
   | 'localTerminalAgentMode'
   | 'x11ServerMode'
   | 'x11ServerArgs'
-  | 'enableOpenShift';
+  | 'enableOpenShift'
+  | 'enableAws'
+  | 'awsRegions'
+  | 'awsManagedSignIns';
 
 /** Policy-only switches with no user setting behind them. Allowed unless the policy says `false`. */
-export type PolicyFeatureId = 'gitKeyFetch' | 'dotfileGitImport';
+export type PolicyFeatureId = 'gitKeyFetch' | 'dotfileGitImport' | 'awsSsm';
 
 export type PolicyValueType =
   | { type: 'boolean' }
-  | { type: 'string' }
+  | { type: 'string'; /** Longest accepted value; default 1024. */ maxLength?: number }
   | { type: 'enum'; values: readonly string[] };
 
 export type PolicyDefinition = PolicyValueType & {
@@ -72,6 +75,26 @@ export const POLICY_DEFINITIONS: readonly PolicyDefinition[] = [
     description: 'Enable OpenShift support and tools.',
   },
   {
+    id: 'enableAws',
+    target: 'setting',
+    type: 'boolean',
+    description: 'Turn AWS features (SSH over Systems Manager, importing instances, the AWS sign-in button) on or off.',
+  },
+  {
+    id: 'awsRegions',
+    target: 'setting',
+    type: 'string',
+    maxLength: 512,
+    description: 'Regions searched when importing AWS instances, comma separated (for example eu-north-1,eu-west-1).',
+  },
+  {
+    id: 'awsManagedSignIns',
+    target: 'setting',
+    type: 'string',
+    maxLength: 4096,
+    description: 'AWS IAM Identity Center sign-ins offered to every user, as Name|https://start-url|region entries separated by semicolons.',
+  },
+  {
     id: 'gitKeyFetch',
     target: 'feature',
     type: 'boolean',
@@ -82,6 +105,12 @@ export const POLICY_DEFINITIONS: readonly PolicyDefinition[] = [
     target: 'feature',
     type: 'boolean',
     description: 'Allow importing dotfiles from a Git repository.',
+  },
+  {
+    id: 'awsSsm',
+    target: 'feature',
+    type: 'boolean',
+    description: 'Allow SSH connections through AWS Systems Manager (SSM).',
   },
 ];
 

@@ -188,6 +188,35 @@ describe('SmartcardDetector', () => {
       expect(args.slice(-2)).toEqual(['--', 'alice@example.com']);
     });
 
+    describe('HostName pin for shell-run %h expansions', () => {
+      // ssh expands %h in a ProxyCommand / ProxyJump command from the HostName it RESOLVES; a synced ~/.ssh/config block can set
+      // that for the alias, so the validated host is pinned on the command line (which beats the config).
+      const base: SSHConnectionConfig = { id: 'h-1', name: 'H', host: 'db.example.com', username: 'alice', authType: 'agent' };
+      const pinned = (args: string[]) => args.some((a, i) => a === 'HostName=db.example.com' && args[i - 1] === '-o');
+
+      it('is added for a profile with an outgoing proxy, before the destination', () => {
+        const args = SmartcardDetector.buildSSHArguments({ ...base, proxy: { enabled: true, type: 'http', host: 'proxy.corp', port: 3128 } });
+        expect(pinned(args)).toBe(true);
+        expect(args.some((a) => a.startsWith('ProxyCommand=') && a.includes('%h'))).toBe(true);
+        expect(args.indexOf('HostName=db.example.com')).toBeLessThan(args.indexOf('--'));
+      });
+
+      it('is added for a ProxyJump', () => {
+        expect(pinned(SmartcardDetector.buildSSHArguments({ ...base, proxyJump: 'ops@bastion.example.com:2222' }))).toBe(true);
+      });
+
+      it('is not added for a plain connection (the user\'s own ssh_config alias resolution keeps working) or a disabled proxy', () => {
+        expect(pinned(SmartcardDetector.buildSSHArguments(base))).toBe(false);
+        expect(pinned(SmartcardDetector.buildSSHArguments({ ...base, proxy: { enabled: false, type: 'http', host: 'proxy.corp', port: 3128 } }))).toBe(false);
+        expect(pinned(SmartcardDetector.buildSSHArguments({ ...base, proxyJump: '   ' }))).toBe(false);
+      });
+
+      it('is added exactly once for an SSM profile (which has its own pin)', () => {
+        const args = SmartcardDetector.buildSSHArguments({ ...base, host: 'i-0123456789abcdef0', ssm: { enabled: true, region: 'eu-north-1' } });
+        expect(args.filter((a) => a.startsWith('HostName=')).length).toBe(1);
+      });
+    });
+
     it('should include -I <pkcs11LibPath> when authType is smartcard', () => {
       const config: SSHConnectionConfig = {
         id: 'sc-1',

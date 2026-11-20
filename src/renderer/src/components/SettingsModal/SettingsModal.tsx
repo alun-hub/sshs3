@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Activity, Search, Settings, X, Terminal, Keyboard, Sliders, Shield, FolderTree, RefreshCw, Boxes, GitBranch, Users } from 'lucide-react';
+import { Activity, Search, Settings, X, Terminal, Keyboard, Sliders, Shield, FolderTree, RefreshCw, Boxes, GitBranch, Users, Cloud } from 'lucide-react';
 import { type AppSettings } from '@shared/types/settings';
 import { DotfilePoolManagerModal } from './DotfilePoolManagerModal';
 import { SyncSettingsPanel } from './SyncSettingsPanel';
@@ -17,6 +17,7 @@ import { FilesSettingsSection } from './FilesSettingsSection';
 import { SecuritySettingsSection } from './SecuritySettingsSection';
 import { ShortcutsSettingsSection } from './ShortcutsSettingsSection';
 import { KubernetesSettingsSection } from './KubernetesSettingsSection';
+import { AwsSettingsSection } from './AwsSettingsSection';
 
 interface SettingsModalProps {
   open: boolean;
@@ -94,6 +95,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         { id: 'sync', label: 'Synchronization', icon: RefreshCw },
         { id: 'team-vault', label: 'Team Vault', icon: Users },
         { id: 'kubernetes', label: 'Kubernetes & Debug', icon: Boxes },
+        { id: 'aws', label: 'AWS', icon: Cloud },
       ],
     },
     {
@@ -291,6 +293,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               {/* Category: Kubernetes & Debug */}
               {activeCategory === 'kubernetes' && <KubernetesSettingsSection form={form} />}
+
+              {/* Category: AWS */}
+              {activeCategory === 'aws' && <AwsSettingsSection form={form} />}
             </div>
             {hasMoreBelow && (
               <div

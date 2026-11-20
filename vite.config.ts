@@ -66,6 +66,7 @@ export default defineConfig({
                 'node-pty',
                 'pkcs11js',
                 '@aws-sdk/client-s3',
+                '@aws-sdk/client-ec2',
                 '@aws-sdk/lib-storage',
                 '@kubernetes/client-node',
               ],

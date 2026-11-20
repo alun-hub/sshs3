@@ -52,6 +52,9 @@ The Settings modal features a real-time search filter at the top of the sidebar.
 ### 1.6 Kubernetes & Debug
 - Red Hat OpenShift support toggle, default diagnostic container presets for `kubectl debug` (Netshoot, RHEL Support Tools, BusyBox, Curl, Ubuntu).
 
+### 1.7 AWS
+- **Enable AWS features** switch (off by default), saved IAM Identity Center sign-ins with status and **Sign in**, regions to search, proxy and CA for AWS calls, and the AWS CLI and plugin status. The workflow is described in the page SSH over AWS Systems Manager.
+
 ---
 
 ## 2. 2D Spatial Keyboard Navigation & Mouse-Free Ergonomics

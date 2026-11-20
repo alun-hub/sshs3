@@ -1,3 +1,4 @@
+import { toSftpConfig } from '@shared/toSftpConfig';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -166,24 +167,7 @@ async function resolveProviderRef(ref: string): Promise<EndpointState> {
     const profiles = await window.multissh.profilesGet();
     const cfg = profiles.ssh.find((p) => p.id === id);
     if (!cfg) throw new Error(`Saved SSH profile not found (${id})`);
-    const sftpConfig: SFTPConfig = {
-      id: cfg.id,
-      name: cfg.name,
-      host: cfg.host,
-      port: cfg.port ?? 22,
-      username: cfg.username,
-      authType: cfg.authType,
-      password: cfg.password,
-      privateKeyPath: cfg.privateKeyPath,
-      passphrase: cfg.passphrase,
-      agentPath: cfg.agentPath,
-      pkcs11LibPath: cfg.pkcs11LibPath,
-      fido2Resident: cfg.fido2Resident,
-      initialPath: cfg.initialPath,
-      proxy: cfg.proxy,
-      proxyJump: cfg.proxyJump,
-      proxyJumpProfileId: cfg.proxyJumpProfileId,
-    };
+    const sftpConfig: SFTPConfig = toSftpConfig(cfg);
     await window.multissh.connectStorage({ id: ref, name: cfg.name, type: 'sftp', sftpConfig });
     return { providerId: ref, sourceType: 'sftp', label: cfg.name, path: cfg.initialPath?.trim() || '/' };
   }
@@ -392,24 +376,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
     setError(null);
     try {
       const providerId = `sftp-${config.id}`;
-      const sftpConfig: SFTPConfig = {
-        id: config.id,
-        name: config.name,
-        host: config.host,
-        port: config.port ?? 22,
-        username: config.username,
-        authType: config.authType,
-        password: config.password,
-        privateKeyPath: config.privateKeyPath,
-        passphrase: config.passphrase,
-        agentPath: config.agentPath,
-        pkcs11LibPath: config.pkcs11LibPath,
-        fido2Resident: config.fido2Resident,
-        initialPath: config.initialPath,
-        proxy: config.proxy,
-        proxyJump: config.proxyJump,
-        proxyJumpProfileId: config.proxyJumpProfileId,
-      };
+      const sftpConfig: SFTPConfig = toSftpConfig(config);
       await window.multissh.connectStorage({ id: providerId, name: config.name, type: 'sftp', sftpConfig });
       setTarget({ providerId, sourceType: 'sftp', label: config.name, path: config.initialPath?.trim() || '/' });
     } catch (err) {
@@ -1191,6 +1158,7 @@ export const DirectorySyncModal: React.FC<DirectorySyncModalProps> = ({
       <ConnectionManagerModal
         open={connectionPickerOpen}
         onClose={() => setConnectionPickerOpen(false)}
+        needsSsh
         onConnectSSH={(config) => void handleConnectTargetSSH(config)}
         onConnectS3={(config) => void handleConnectTargetS3(config)}
       />

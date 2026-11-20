@@ -279,7 +279,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                     >
                       Connect
                     </button>
-                    <SftpButton authType={profile.authType} onOpen={() => onConnectSFTP(profile)} />
+                    <SftpButton authType={profile.authType} ssm={profile.ssm} onOpen={() => onConnectSFTP(profile)} />
                   </div>
                 </div>
               ))}

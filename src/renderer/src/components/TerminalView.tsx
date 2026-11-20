@@ -1,3 +1,4 @@
+import { ssmRetry } from '../lib/ssmSignIn';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -815,11 +816,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
           })
         : k8sTarget
         ? window.multissh?.k8sTerminalCreate?.(k8sTarget, { cols, rows })
-        : window.multissh?.terminalCreate?.(
+        : ssmRetry(activeConfig?.ssm, () => window.multissh?.terminalCreate?.(
             local
               ? { local: true as const, ptyOptions: { cols, rows, shellType, wslDistro } }
               : { config: { ...(activeConfig as SSHConnectionConfig), id: crypto.randomUUID() }, ptyOptions: { cols, rows } }
-          );
+          ));
       createPromise
         ?.then(({ sessionId }) => {
           if (isDisposed) {

@@ -9,6 +9,22 @@ const ssh = (id: string, over: Partial<SSHConnectionConfig> = {}): SSHConnection
 const s3 = (id: string, over: Partial<S3Config> = {}): S3Config =>
   ({ id, name: id, region: 'eu-north-1', accessKeyId: 'AKIA', secretAccessKey: 'shh', ...over }) as S3Config; // pragma: allowlist secret
 
+describe('buildProfileEntries (Session Manager shell)', () => {
+  it('offers no SFTP for a shell profile, but does for SSH over SSM', () => {
+    const entries = buildProfileEntries([
+      {
+        source: 'personal',
+        ssh: [
+          ssh('shell', { authType: 'privateKey', ssm: { enabled: true, mode: 'shell', region: 'eu-north-1' } }),
+          ssh('over-ssh', { authType: 'privateKey', ssm: { enabled: true, region: 'eu-north-1' } }),
+        ],
+        s3: [],
+      },
+    ]);
+    expect(entries.map((e) => [e.ref, e.sftp])).toEqual([['shell', false], ['over-ssh', true]]);
+  });
+});
+
 describe('buildProfileEntries', () => {
   it('describes an SSH profile by name, user@host and folder, with its tags', () => {
     const [entry] = buildProfileEntries([

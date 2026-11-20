@@ -1,3 +1,5 @@
+import { assertSsmSignedIn } from './ssmPreflight';
+import { toSftpConfig } from '../../shared/toSftpConfig';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
@@ -12,7 +14,7 @@ import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 import type { IpcBridge } from '../IpcBridge';
 
 /** The part of IpcBridge this handler group may use. */
-export type ConnectionTestHost = Pick<IpcBridge, 'promptHostKeyTrust' | 'registerHandler'> & {
+export type ConnectionTestHost = Pick<IpcBridge, 'promptHostKeyTrust' | 'registerHandler'> & Partial<Pick<IpcBridge, 'awsSsoAuthService' | 'policy' | 'resolveProxyJumpConfig'>> & {
   smartcard: Pick<SmartcardCoordinator, 'prepareSftpSshCaConfig'>;
 };
 
@@ -60,22 +62,15 @@ export function registerConnectionTestHandlers(bridge: ConnectionTestHost): void
 
       try {
         const port = config.port ?? 22;
-        let sftpConfig: SFTPConfig = {
+        // Same preparation as a real connection: sign-in check for SSM, jump host profile resolved.
+        if (bridge.awsSsoAuthService) await assertSsmSignedIn(bridge.awsSsoAuthService, config.ssm, bridge.policy?.policy);
+        if (bridge.resolveProxyJumpConfig) config = await bridge.resolveProxyJumpConfig(config);
+        let sftpConfig: SFTPConfig = toSftpConfig(config, {
           id: `test-${crypto.randomUUID()}`,
           name: 'Test SSH',
-          host: config.host,
-          port,
-          username: config.username,
-          authType: config.authType,
-          password: config.password,
-          privateKeyPath: config.privateKeyPath,
-          passphrase: config.passphrase,
-          agentPath: config.agentPath,
           agentIdentityFiles: config.agentIdentityFiles,
-          pkcs11LibPath: config.pkcs11LibPath,
-          proxy: config.proxy,
           useSshCa: config.useSshCa,
-        };
+        });
         if (bridge.smartcard) {
           sftpConfig = await bridge.smartcard.prepareSftpSshCaConfig(sftpConfig);
         }

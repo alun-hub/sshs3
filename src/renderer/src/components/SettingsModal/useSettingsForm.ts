@@ -4,6 +4,7 @@ import { useUpdateState } from '../../lib/useUpdateState';
 import { DEFAULT_PERF_ITEMS, type PerfLayout, type PerfMetricId } from '@shared/types/perf';
 import { SHORTCUT_DEFINITIONS, DEFAULT_SHORTCUTS, type AppSettings, type AppTheme, type SessionExitAction, type SmartcardAuthMode } from '@shared/types/settings';
 import type { SshCaConfig } from '@shared/types/sshCa';
+import type { AwsNetworkSettings, AwsSignIn } from '@shared/types/aws';
 import { DEFAULT_K8S_DEBUG_IMAGES, type K8sDebugImage } from '@shared/types/kubernetes';
 import type { DetectedSmartcardLib, XServerStatus } from '@shared/types/ssh';
 import type { PolicyInfo, PolicySettingId } from '@shared/types/policy';
@@ -136,6 +137,10 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
   const [x11Operating, setX11Operating] = useState<boolean>(false);
   const [platform, setPlatform] = useState<string>('');
 
+  const [enableAws, setEnableAws] = useState<boolean>(currentSettings.enableAws ?? false);
+  const [awsSignIns, setAwsSignIns] = useState<AwsSignIn[]>(currentSettings.awsSignIns ?? []);
+  const [awsRegions, setAwsRegions] = useState<string>(currentSettings.awsRegions ?? '');
+  const [awsNetwork, setAwsNetwork] = useState<AwsNetworkSettings>(currentSettings.awsNetwork ?? {});
   const [enableOpenShift, setEnableOpenShift] = useState<boolean>(
     currentSettings.enableOpenShift ?? false
   );
@@ -223,6 +228,10 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       setRecordingAction(null);
       setShortcutSearch('');
       setEnableOpenShift(currentSettings.enableOpenShift ?? false);
+      setEnableAws(currentSettings.enableAws ?? false);
+      setAwsSignIns(currentSettings.awsSignIns ?? []);
+      setAwsRegions(currentSettings.awsRegions ?? '');
+      setAwsNetwork(currentSettings.awsNetwork ?? {});
       setK8sDebugImages(currentSettings.k8sDebugImages ?? [...DEFAULT_K8S_DEBUG_IMAGES]);
       setShowAddDebugImage(false);
       setSshCaConfigs(currentSettings.sshCaConfigs ?? []);
@@ -353,6 +362,10 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       x11ServerArgs,
       shortcuts,
       enableOpenShift,
+      enableAws,
+      awsSignIns,
+      awsRegions: awsRegions.trim() || undefined,
+      awsNetwork,
       k8sDebugImages,
       sshCaConfigs,
       defaultSshCaConfigId,
@@ -513,6 +526,16 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     setPlatform,
     enableOpenShift,
     setEnableOpenShift,
+    enableAws,
+    setEnableAws,
+    awsSignIns,
+    setAwsSignIns,
+    awsRegions,
+    setAwsRegions,
+    /** Sign-ins provided by policy (read-only), as `Name|url|region` entries. */
+    awsManagedSignIns: currentSettings.awsManagedSignIns,
+    awsNetwork,
+    setAwsNetwork,
     k8sDebugImages,
     setK8sDebugImages,
     showAddDebugImage,

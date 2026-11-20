@@ -31,6 +31,7 @@ import { OPEN_TAB_MENU_EVENT } from '../lib/tabMenuEvents';
 import { getShortcutKeys } from '../lib/shortcuts';
 import { formatDate } from '../lib/dateFormat';
 import { SshCaStatusBadge } from './ca/SshCaStatusBadge';
+import { AwsSsoStatusBadge } from './aws/AwsSsoStatusBadge';
 
 export type TabType = 'terminal' | 'filemanager' | 'editor';
 
@@ -58,6 +59,8 @@ export interface TabBarProps {
   /** Opens the global search. Omit to hide its button (it can be switched off in Settings). */
   onOpenGlobalSearch?: () => void;
   onOpenSettings?: () => void;
+  /** Opens Settings on the AWS page (from the AWS badge). */
+  onOpenAwsSettings?: () => void;
   onOpenDirSyncProfiles?: () => void;
   onOpenTunnels?: () => void;
   /** Shown only when Settings > Security > Smartcard PIN Caching is set to 'Global (App Lifetime)'. */
@@ -82,6 +85,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   onOpenProfiles,
   onOpenGlobalSearch,
   onOpenSettings,
+  onOpenAwsSettings,
   onOpenDirSyncProfiles,
   onOpenTunnels,
   showLockSmartcardButton,
@@ -622,6 +626,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           </div>
         )}
         <SshCaStatusBadge onOpenSettings={onOpenSettings} />
+        <AwsSsoStatusBadge onOpenAwsSettings={onOpenAwsSettings} />
         <button
           type="button"
           data-testid="quick-profiles-btn"

@@ -1,3 +1,7 @@
+import { isSsmShellProfile } from '@shared/ssm';
+import { hostIsValid, ssmProblem, trimProfileFields, usernameOk, withSsm } from '../../lib/ssmProfile';
+import { SshSsmFields } from './SshSsmFields';
+import { JumpHostField } from './JumpHostField';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -292,7 +296,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     void scanFido2ResidentKeys();
   }, [config.authType, config.fido2Resident]);
 
-  const isValid = config.name.trim() && config.host.trim() && config.username.trim();
+  const isValid = config.name.trim() && hostIsValid(config) && usernameOk(config);
 
   // A saved result no longer applies once anything the chain depends on changes.
   const accessResetKey = [
@@ -308,9 +312,11 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     config.password?.length ?? 0,
   ].join('|');
 
+  // A Session Manager shell has no SSH connection: the SSH-only fields below are hidden for it.
+  const ssmShell = isSsmShellProfile(config);
   // Soft reminder only: a brand-new key-based profile that was never verified on the host. Never blocks saving.
   const needsAccessReminder =
-    !initial && config.authType !== 'password' && (accessState === 'unknown' || accessState === 'failed');
+    !initial && !ssmShell && config.authType !== 'password' && (accessState === 'unknown' || accessState === 'failed');
 
   return (
     <form
@@ -318,7 +324,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         e.preventDefault();
         if (!isValid) return;
         if (needsAccessReminder) setSaveReminderOpen(true);
-        else onSave(config);
+        else onSave(trimProfileFields(config));
       }}
       className="flex h-full min-h-0 flex-col text-xs text-txt-secondary"
     >
@@ -359,7 +365,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-[1fr_80px_1fr] gap-2.5">
+      <div className={ssmShell ? 'grid grid-cols-1 gap-2.5' : 'grid grid-cols-[1fr_80px_1fr] gap-2.5'}>
         <label className="flex flex-col gap-1 text-txt-secondary">
           <span>Hostname / IP<span className="text-red-400" aria-hidden="true"> *</span></span>
           <input
@@ -370,386 +376,93 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             placeholder="host.example.com"
           />
         </label>
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Port
-          <input
-            type="number"
-            value={config.port ?? 22}
-            onChange={(e) => update('port', Number(e.target.value) || 22)}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 text-center"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          <span>Username<span className="text-red-400" aria-hidden="true"> *</span></span>
-          <input
-            required
-            value={config.username}
-            onChange={(e) => update('username', e.target.value)}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            placeholder="root or deploy"
-          />
-        </label>
+        {!ssmShell && (
+          <>
+            <label className="flex flex-col gap-1 text-txt-secondary">
+              Port
+              <input
+                type="number"
+                value={config.port ?? 22}
+                onChange={(e) => update('port', Number(e.target.value) || 22)}
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 text-center"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-txt-secondary">
+              <span>Username<span className="text-red-400" aria-hidden="true"> *</span></span>
+              <input
+                required
+                value={config.username}
+                onChange={(e) => update('username', e.target.value)}
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+                placeholder="root or deploy"
+              />
+            </label>
+          </>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Initial SFTP Path (optional)
-          <input
-            value={config.initialPath ?? ''}
-            onChange={(e) => update('initialPath', e.target.value)}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-            placeholder="e.g. /var/www or /home/user"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Jump Host / ProxyJump (optional)
-          <select
-            value={proxyJumpMode === 'none' ? '' : proxyJumpMode === 'custom' ? '__custom__' : config.proxyJumpProfileId ?? ''}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (value === '') {
-                setProxyJumpMode('none');
-                update('proxyJumpProfileId', undefined);
-                update('proxyJump', undefined);
-              } else if (value === '__custom__') {
-                setProxyJumpMode('custom');
-                update('proxyJumpProfileId', undefined);
-              } else {
-                setProxyJumpMode('profile');
-                update('proxyJumpProfileId', value);
-                update('proxyJump', undefined);
-              }
-            }}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
-          >
-            <option value="">None</option>
-            {allProfiles
-              .filter((p) => p.id !== config.id && p.proxyJumpProfileId !== config.id)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name || p.host}
-                </option>
-              ))}
-            <option value="__custom__">Custom (enter manually)</option>
-          </select>
-          {proxyJumpMode === 'custom' && (
+      {!ssmShell && (
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-txt-secondary">
+            Initial SFTP Path (optional)
             <input
-              value={config.proxyJump ?? ''}
-              onChange={(e) => update('proxyJump', e.target.value)}
-              className="mt-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-              placeholder="e.g. jumpuser@bastion.example.com:22"
+              value={config.initialPath ?? ''}
+              onChange={(e) => update('initialPath', e.target.value)}
+              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
+              placeholder="e.g. /var/www or /home/user"
             />
-          )}
-        </label>
-      </div>
-
-      <label className="flex flex-col gap-1 text-txt-secondary">
-        Authentication
-        <select
-          value={config.authType}
-          onChange={(e) => update('authType', e.target.value as SSHAuthType)}
-          className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
-        >
-          {AUTH_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {config.authType === 'password' && (
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Password
-          <input
-            type="password"
-            value={config.password ?? ''}
-            onChange={(e) => update('password', e.target.value)}
-            disabled={!canEditSecret}
-            placeholder={!canEditSecret ? (config.hasPassword ? '•••• (admin only)' : 'No password set (admin only)') : undefined}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          <span className="text-xs text-txt-muted">
-            {canEditSecret
-              ? "Required for SFTP in File Manager and enables automatic login in the terminal. Stored encrypted in the OS Keychain/DPAPI. If left blank, you'll be prompted for the password when connecting."
-              : 'Only a Team Vault admin can see or change this password. You can still connect using it.'}
-          </span>
-        </label>
+          </label>
+          {/* A jump host or outgoing proxy cannot be combined with SSM. */}
+          {!config.ssm?.enabled && <JumpHostField config={config} profiles={allProfiles} mode={proxyJumpMode} onMode={setProxyJumpMode} update={update} />}
+        </div>
       )}
 
-      {config.authType === 'privateKey' && (
+      {!ssmShell && (
         <>
           <label className="flex flex-col gap-1 text-txt-secondary">
-            Private Key
-            <div className="flex gap-1.5">
-              <input
-                value={config.privateKeyPath ?? ''}
-                onChange={(e) => update('privateKeyPath', e.target.value)}
-                className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
-                placeholder="~/.ssh/id_ed25519"
-              />
-              <button
-                aria-label="Browse"
-                type="button"
-                onClick={() => void browseFor('privateKeyPath')}
-                className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                title="Browse"
-              >
-                <FolderOpen className="h-4 w-4" />
-              </button>
-            </div>
+            Authentication
+            <select
+              value={config.authType}
+              onChange={(e) => update('authType', e.target.value as SSHAuthType)}
+              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
+            >
+              {AUTH_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
           </label>
-          <label className="flex flex-col gap-1 text-txt-secondary">
-            Passphrase (optional)
-            <input
-              type="password"
-              value={config.passphrase ?? ''}
-              onChange={(e) => update('passphrase', e.target.value)}
-              disabled={!canEditSecret}
-              placeholder={!canEditSecret ? '•••• (admin only)' : undefined}
-              className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </label>
-        </>
-      )}
 
-      {config.authType === 'agent' && (
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-txt-secondary text-sm cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={config.useSshCa ?? false}
-              onChange={(e) => update('useSshCa', e.target.checked)}
-              className="rounded border-border-subtle bg-app-input text-sky-500 focus:ring-sky-500/20"
-            />
-            <span>Use active SSH Certificate Authority session</span>
-          </label>
-          {!config.useSshCa && (
+          {config.authType === 'password' && (
             <label className="flex flex-col gap-1 text-txt-secondary">
-              Agent Socket (optional, empty = SSH_AUTH_SOCK)
-              <div className="flex gap-1.5">
-                <input
-                  value={config.agentPath ?? ''}
-                  onChange={(e) => update('agentPath', e.target.value)}
-                  className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
-                  placeholder="/tmp/ssh-agent.sock"
-                />
-                <button
-                  aria-label="Browse"
-                  type="button"
-                  onClick={() => void browseFor('agentPath')}
-                  className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                  title="Browse"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </button>
-              </div>
+              Password
+              <input
+                type="password"
+                value={config.password ?? ''}
+                onChange={(e) => update('password', e.target.value)}
+                disabled={!canEditSecret}
+                placeholder={!canEditSecret ? (config.hasPassword ? '•••• (admin only)' : 'No password set (admin only)') : undefined}
+                className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <span className="text-xs text-txt-muted">
+                {canEditSecret
+                  ? "Required for SFTP in File Manager and enables automatic login in the terminal. Stored encrypted in the OS Keychain/DPAPI. If left blank, you'll be prompted for the password when connecting."
+                  : 'Only a Team Vault admin can see or change this password. You can still connect using it.'}
+              </span>
             </label>
           )}
-        </div>
-      )}
 
-      {config.authType === 'smartcard' && (
-        <div className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
-          <label className="flex flex-col gap-1 text-txt-secondary">
-            PKCS#11 Library (.so / .dll)
-            <div className="flex gap-1.5">
-              <input
-                value={config.pkcs11LibPath ?? ''}
-                onChange={(e) => update('pkcs11LibPath', e.target.value)}
-                className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                placeholder={pkcs11PlaceholderPath(pickDefaultPkcs11Lib(smartcardLibs))}
-              />
-              <button
-                aria-label="Browse"
-                type="button"
-                onClick={() => void browseFor('pkcs11LibPath')}
-                className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                title="Browse"
-              >
-                <FolderOpen className="h-4 w-4" />
-              </button>
-            </div>
-          </label>
-
-          {detecting ? (
-            <div className="flex items-center gap-2 py-1 text-txt-muted">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Scanning for PKCS#11 libraries...
-            </div>
-          ) : smartcardLibs.length > 0 ? (
-            <div className="flex flex-col gap-1">
-              <span className="text-xs text-txt-muted">Detected modules on system:</span>
-              <div className="flex flex-wrap gap-1.5">
-                {smartcardLibs.map((lib) => (
-                  <button
-                    key={lib.path}
-                    type="button"
-                    onClick={() => update('pkcs11LibPath', lib.path)}
-                    className={
-                      'rounded-md border px-2 py-0.5 text-left text-xs transition-colors ' +
-                      (config.pkcs11LibPath === lib.path
-                        ? 'border-sky-500 bg-sky-500/15 text-sky-300 font-medium'
-                        : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover')
-                    }
-                  >
-                    <span className="font-semibold">{lib.name}</span>
-                    <span className="ml-1 text-2xs text-txt-muted font-mono">{lib.path}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <span className="text-xs text-txt-muted">
-              No PKCS#11 libraries were detected automatically. Enter the path or browse for it.
-            </span>
-          )}
-
-          <p className="text-xs text-txt-muted pt-1">
-            PIN caching behavior is set globally under Settings &gt; Security &amp; Smartcard.
-          </p>
-        </div>
-      )}
-
-      {config.authType === 'fido2' && (
-        <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
-          <label className="flex items-center gap-2 cursor-pointer text-txt-primary font-medium">
-            <input
-              type="checkbox"
-              checked={config.fido2Resident ?? false}
-              disabled={IS_WINDOWS && !config.fido2Resident}
-              onChange={(e) => {
-                update('fido2Resident', e.target.checked);
-                if (e.target.checked) update('privateKeyPath', undefined);
-              }}
-              className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500 disabled:opacity-40"
-            />
-            <span>Use a resident (discoverable) credential stored on the device</span>
-          </label>
-
-          {IS_WINDOWS && (
-            <p className="text-xs text-txt-muted">
-              {config.fido2Resident
-                ? 'Resident credentials cannot be read back on Windows (its OpenSSH build has no working resident-key support). Untick this and use a key file instead — generate one below.'
-                : 'On Windows, use a key file: the key is signed through Windows’ built-in security key support, so you are asked for PIN and touch on each login. Resident credentials are not available here — generate a key file below, or pick an existing one.'}
-            </p>
-          )}
-
-          {config.fido2Resident && !IS_WINDOWS ? (
-            <div className="flex flex-col gap-2">
-              <p className="text-xs text-txt-muted">
-                No key file needed — the app loads whatever resident credentials are on the connected
-                security key at connect time. It scans automatically below; re-scan any time you swap
-                keys or after generating a new one.
-              </p>
-              <button
-                type="button"
-                onClick={() => void scanFido2ResidentKeys()}
-                disabled={fido2Scanning}
-                className="flex w-fit items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
-              >
-                {fido2Scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                {fido2Scanning ? 'Touch your security key...' : 'Re-scan connected security key'}
-              </button>
-
-              {fido2ScanError && (
-                <div className="flex items-center gap-1.5 text-xs text-red-300">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                  <span>{fido2ScanError}</span>
-                </div>
-              )}
-              {fido2ResidentKeys && fido2ResidentKeys.length === 0 && (
-                <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
-                  <p className="text-xs text-amber-200">
-                    No resident credentials found on this device yet — this is expected the first time
-                    you use a security key with sshs3. Generate one below to get started.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={startFido2Generate}
-                    className="flex w-fit items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
-                  >
-                    <KeyRound className="h-3.5 w-3.5" />
-                    Generate a key now
-                  </button>
-                </div>
-              )}
-              {fido2ResidentKeys && fido2ResidentKeys.length > 0 && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-emerald-300">
-                    Found {fido2ResidentKeys.length} resident credential(s):
-                  </span>
-                  {fido2DeleteError && (
-                    <div className="flex items-center gap-1.5 text-xs text-red-300">
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                      <span>{fido2DeleteError}</span>
-                    </div>
-                  )}
-                  {fido2ResidentKeys.map((k) => {
-                    const id = k.credentialId ?? k.fingerprint;
-                    const confirming = fido2ConfirmDeleteId === id;
-                    const deleting = fido2DeletingId === id;
-                    return (
-                      <div
-                        key={id}
-                        className="flex items-center justify-between gap-2 rounded-md border border-border-subtle bg-app-surface px-2 py-1 text-xs font-mono text-txt-secondary"
-                      >
-                        <span className="truncate">
-                          <span className="text-txt-primary font-semibold">{k.keyType}</span> {k.fingerprint}{' '}
-                          <span className="text-txt-muted">({k.comment})</span>
-                        </span>
-
-                        {k.credentialId &&
-                          (confirming ? (
-                            <span className="flex shrink-0 items-center gap-1">
-                              <span className="text-amber-300">Delete?</span>
-                              <button
-                                type="button"
-                                onClick={() => void deleteFido2ResidentKey(k.credentialId!)}
-                                disabled={deleting}
-                                className="rounded px-1.5 py-0.5 text-red-300 hover:bg-red-500/20 disabled:opacity-40 transition-colors"
-                              >
-                                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Yes'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setFido2ConfirmDeleteId(null)}
-                                disabled={deleting}
-                                className="rounded px-1.5 py-0.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
-                              >
-                                No
-                              </button>
-                            </span>
-                          ) : (
-                            <button
-                              aria-label="Delete this credential from the security key"
-                              type="button"
-                              onClick={() => {
-                                setFido2DeleteError(null);
-                                setFido2ConfirmDeleteId(id);
-                              }}
-                              className="shrink-0 rounded p-1 text-txt-muted hover:bg-red-500/20 hover:text-red-300 transition-colors"
-                              title="Delete this credential from the security key"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
+          {config.authType === 'privateKey' && (
             <>
               <label className="flex flex-col gap-1 text-txt-secondary">
-                Key File (id_ed25519_sk / id_ecdsa_sk)
+                Private Key
                 <div className="flex gap-1.5">
                   <input
                     value={config.privateKeyPath ?? ''}
                     onChange={(e) => update('privateKeyPath', e.target.value)}
-                    className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                    placeholder="~/.ssh/id_ed25519_sk"
+                    className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
+                    placeholder="~/.ssh/id_ed25519"
                   />
                   <button
                     aria-label="Browse"
@@ -762,251 +475,521 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                   </button>
                 </div>
               </label>
-              <p className="text-xs text-txt-secondary">
-                The file manager (SFTP) uses the system OpenSSH client, so this security key also works for file
-                transfers. You may be asked to touch the key and enter its PIN when connecting.
-              </p>
+              <label className="flex flex-col gap-1 text-txt-secondary">
+                Passphrase (optional)
+                <input
+                  type="password"
+                  value={config.passphrase ?? ''}
+                  onChange={(e) => update('passphrase', e.target.value)}
+                  disabled={!canEditSecret}
+                  placeholder={!canEditSecret ? '•••• (admin only)' : undefined}
+                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
             </>
           )}
 
-          <div ref={fido2GenSectionRef} className="rounded-lg border border-border-subtle bg-app-surface/50">
-            <button
-              type="button"
-              onClick={() => setFido2GenOpen((o) => !o)}
-              className="flex w-full items-center justify-between p-2 text-xs font-medium text-txt-secondary hover:text-txt-primary transition-colors"
-            >
-              <span className="flex items-center gap-1.5">
-                <KeyRound className="h-3.5 w-3.5" />
-                Generate a new key on this security key
-              </span>
-              {fido2GenOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </button>
-
-            {fido2GenOpen && (
-              <div className="border-t border-divider p-2.5 space-y-2.5 text-xs">
-                <div className="grid grid-cols-2 gap-2.5">
-                  <label className="flex flex-col gap-1 text-txt-secondary">
-                    Key Type
-                    <select
-                      value={fido2GenKeyType}
-                      onChange={(e) => setFido2GenKeyType(e.target.value as Fido2KeyType)}
-                      className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
+          {config.authType === 'agent' && (
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-txt-secondary text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={config.useSshCa ?? false}
+                  onChange={(e) => update('useSshCa', e.target.checked)}
+                  className="rounded border-border-subtle bg-app-input text-sky-500 focus:ring-sky-500/20"
+                />
+                <span>Use active SSH Certificate Authority session</span>
+              </label>
+              {!config.useSshCa && (
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Agent Socket (optional, empty = SSH_AUTH_SOCK)
+                  <div className="flex gap-1.5">
+                    <input
+                      value={config.agentPath ?? ''}
+                      onChange={(e) => update('agentPath', e.target.value)}
+                      className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted font-mono"
+                      placeholder="/tmp/ssh-agent.sock"
+                    />
+                    <button
+                      aria-label="Browse"
+                      type="button"
+                      onClick={() => void browseFor('agentPath')}
+                      className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                      title="Browse"
                     >
-                      {FIDO2_KEY_TYPES.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      <FolderOpen className="h-4 w-4" />
+                    </button>
+                  </div>
+                </label>
+              )}
+            </div>
+          )}
+
+          {config.authType === 'smartcard' && (
+            <div className="flex flex-col gap-2 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
+              <label className="flex flex-col gap-1 text-txt-secondary">
+                PKCS#11 Library (.so / .dll)
+                <div className="flex gap-1.5">
+                  <input
+                    value={config.pkcs11LibPath ?? ''}
+                    onChange={(e) => update('pkcs11LibPath', e.target.value)}
+                    className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder={pkcs11PlaceholderPath(pickDefaultPkcs11Lib(smartcardLibs))}
+                  />
+                  <button
+                    aria-label="Browse"
+                    type="button"
+                    onClick={() => void browseFor('pkcs11LibPath')}
+                    className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                    title="Browse"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </button>
+                </div>
+              </label>
+
+              {detecting ? (
+                <div className="flex items-center gap-2 py-1 text-txt-muted">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Scanning for PKCS#11 libraries...
+                </div>
+              ) : smartcardLibs.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-txt-muted">Detected modules on system:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {smartcardLibs.map((lib) => (
+                      <button
+                        key={lib.path}
+                        type="button"
+                        onClick={() => update('pkcs11LibPath', lib.path)}
+                        className={
+                          'rounded-md border px-2 py-0.5 text-left text-xs transition-colors ' +
+                          (config.pkcs11LibPath === lib.path
+                            ? 'border-sky-500 bg-sky-500/15 text-sky-300 font-medium'
+                            : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover')
+                        }
+                      >
+                        <span className="font-semibold">{lib.name}</span>
+                        <span className="ml-1 text-2xs text-txt-muted font-mono">{lib.path}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <span className="text-xs text-txt-muted">
+                  No PKCS#11 libraries were detected automatically. Enter the path or browse for it.
+                </span>
+              )}
+
+              <p className="text-xs text-txt-muted pt-1">
+                PIN caching behavior is set globally under Settings &gt; Security &amp; Smartcard.
+              </p>
+            </div>
+          )}
+
+          {config.authType === 'fido2' && (
+            <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
+              <label className="flex items-center gap-2 cursor-pointer text-txt-primary font-medium">
+                <input
+                  type="checkbox"
+                  checked={config.fido2Resident ?? false}
+                  disabled={IS_WINDOWS && !config.fido2Resident}
+                  onChange={(e) => {
+                    update('fido2Resident', e.target.checked);
+                    if (e.target.checked) update('privateKeyPath', undefined);
+                  }}
+                  className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500 disabled:opacity-40"
+                />
+                <span>Use a resident (discoverable) credential stored on the device</span>
+              </label>
+
+              {IS_WINDOWS && (
+                <p className="text-xs text-txt-muted">
+                  {config.fido2Resident
+                    ? 'Resident credentials cannot be read back on Windows (its OpenSSH build has no working resident-key support). Untick this and use a key file instead — generate one below.'
+                    : 'On Windows, use a key file: the key is signed through Windows’ built-in security key support, so you are asked for PIN and touch on each login. Resident credentials are not available here — generate a key file below, or pick an existing one.'}
+                </p>
+              )}
+
+              {config.fido2Resident && !IS_WINDOWS ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-txt-muted">
+                    No key file needed — the app loads whatever resident credentials are on the connected
+                    security key at connect time. It scans automatically below; re-scan any time you swap
+                    keys or after generating a new one.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void scanFido2ResidentKeys()}
+                    disabled={fido2Scanning}
+                    className="flex w-fit items-center gap-1.5 rounded-lg border border-border-subtle bg-app-surface px-2.5 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
+                  >
+                    {fido2Scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    {fido2Scanning ? 'Touch your security key...' : 'Re-scan connected security key'}
+                  </button>
+
+                  {fido2ScanError && (
+                    <div className="flex items-center gap-1.5 text-xs text-red-300">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{fido2ScanError}</span>
+                    </div>
+                  )}
+                  {fido2ResidentKeys && fido2ResidentKeys.length === 0 && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
+                      <p className="text-xs text-amber-200">
+                        No resident credentials found on this device yet — this is expected the first time
+                        you use a security key with sshs3. Generate one below to get started.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={startFido2Generate}
+                        className="flex w-fit items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        Generate a key now
+                      </button>
+                    </div>
+                  )}
+                  {fido2ResidentKeys && fido2ResidentKeys.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-emerald-300">
+                        Found {fido2ResidentKeys.length} resident credential(s):
+                      </span>
+                      {fido2DeleteError && (
+                        <div className="flex items-center gap-1.5 text-xs text-red-300">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                          <span>{fido2DeleteError}</span>
+                        </div>
+                      )}
+                      {fido2ResidentKeys.map((k) => {
+                        const id = k.credentialId ?? k.fingerprint;
+                        const confirming = fido2ConfirmDeleteId === id;
+                        const deleting = fido2DeletingId === id;
+                        return (
+                          <div
+                            key={id}
+                            className="flex items-center justify-between gap-2 rounded-md border border-border-subtle bg-app-surface px-2 py-1 text-xs font-mono text-txt-secondary"
+                          >
+                            <span className="truncate">
+                              <span className="text-txt-primary font-semibold">{k.keyType}</span> {k.fingerprint}{' '}
+                              <span className="text-txt-muted">({k.comment})</span>
+                            </span>
+
+                            {k.credentialId &&
+                              (confirming ? (
+                                <span className="flex shrink-0 items-center gap-1">
+                                  <span className="text-amber-300">Delete?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void deleteFido2ResidentKey(k.credentialId!)}
+                                    disabled={deleting}
+                                    className="rounded px-1.5 py-0.5 text-red-300 hover:bg-red-500/20 disabled:opacity-40 transition-colors"
+                                  >
+                                    {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Yes'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFido2ConfirmDeleteId(null)}
+                                    disabled={deleting}
+                                    className="rounded px-1.5 py-0.5 text-txt-secondary hover:bg-app-surface-hover disabled:opacity-40 transition-colors"
+                                  >
+                                    No
+                                  </button>
+                                </span>
+                              ) : (
+                                <button
+                                  aria-label="Delete this credential from the security key"
+                                  type="button"
+                                  onClick={() => {
+                                    setFido2DeleteError(null);
+                                    setFido2ConfirmDeleteId(id);
+                                  }}
+                                  className="shrink-0 rounded p-1 text-txt-muted hover:bg-red-500/20 hover:text-red-300 transition-colors"
+                                  title="Delete this credential from the security key"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
                   <label className="flex flex-col gap-1 text-txt-secondary">
-                    Output Path
-                    <input
-                      value={fido2GenPath}
-                      onChange={(e) => setFido2GenPath(e.target.value)}
-                      placeholder={`~/.ssh/id_${fido2GenKeyType.replace('-sk', '')}_sk`}
-                      className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                    />
+                    Key File (id_ed25519_sk / id_ecdsa_sk)
+                    <div className="flex gap-1.5">
+                      <input
+                        value={config.privateKeyPath ?? ''}
+                        onChange={(e) => update('privateKeyPath', e.target.value)}
+                        className="flex-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                        placeholder="~/.ssh/id_ed25519_sk"
+                      />
+                      <button
+                        aria-label="Browse"
+                        type="button"
+                        onClick={() => void browseFor('privateKeyPath')}
+                        className="rounded-lg border border-border-subtle px-2.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                        title="Browse"
+                      >
+                        <FolderOpen className="h-4 w-4" />
+                      </button>
+                    </div>
                   </label>
-                </div>
+                  <p className="text-xs text-txt-secondary">
+                    The file manager (SFTP) uses the system OpenSSH client, so this security key also works for file
+                    transfers. You may be asked to touch the key and enter its PIN when connecting.
+                  </p>
+                </>
+              )}
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
-                    <input
-                      type="checkbox"
-                      checked={fido2GenResident && !IS_WINDOWS}
-                      disabled={IS_WINDOWS}
-                      onChange={(e) => setFido2GenResident(e.target.checked)}
-                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500 disabled:opacity-40"
-                    />
-                    <span>
-                      Resident (discoverable) — no file needed to authenticate later
-                      {IS_WINDOWS && <span className="text-txt-muted"> (not available on Windows)</span>}
-                    </span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
-                    <input
-                      type="checkbox"
-                      checked={fido2GenVerifyRequired}
-                      onChange={(e) => setFido2GenVerifyRequired(e.target.checked)}
-                      className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
-                    />
-                    <span>Require PIN + touch on every use (recommended)</span>
-                  </label>
-                </div>
-
+              <div ref={fido2GenSectionRef} className="rounded-lg border border-border-subtle bg-app-surface/50">
                 <button
                   type="button"
-                  onClick={() => void generateFido2Key()}
-                  disabled={fido2Generating}
-                  className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
+                  onClick={() => setFido2GenOpen((o) => !o)}
+                  className="flex w-full items-center justify-between p-2 text-xs font-medium text-txt-secondary hover:text-txt-primary transition-colors"
                 >
-                  {fido2Generating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {fido2Generating ? 'Touch your security key...' : 'Generate Key'}
+                  <span className="flex items-center gap-1.5">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Generate a new key on this security key
+                  </span>
+                  {fido2GenOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
 
-                {fido2GenError && (
-                  <div className="flex flex-col gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2">
-                    <div className="flex items-center gap-1.5 text-red-300">
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                      <span>{fido2GenError}</span>
-                    </div>
-                    {fido2GenNeedsOverwriteConfirm && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-txt-muted">
-                          If the on-device credential this pointed to was already deleted, the local
-                          file is just a stale leftover — overwrite it?
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void generateFido2Key(true)}
-                          disabled={fido2Generating}
-                          className="shrink-0 rounded-md border border-red-400/40 px-2 py-1 text-red-300 hover:bg-red-500/20 disabled:opacity-40 transition-colors"
+                {fido2GenOpen && (
+                  <div className="border-t border-divider p-2.5 space-y-2.5 text-xs">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <label className="flex flex-col gap-1 text-txt-secondary">
+                        Key Type
+                        <select
+                          value={fido2GenKeyType}
+                          onChange={(e) => setFido2GenKeyType(e.target.value as Fido2KeyType)}
+                          className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
                         >
-                          Overwrite
-                        </button>
+                          {FIDO2_KEY_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1 text-txt-secondary">
+                        Output Path
+                        <input
+                          value={fido2GenPath}
+                          onChange={(e) => setFido2GenPath(e.target.value)}
+                          placeholder={`~/.ssh/id_${fido2GenKeyType.replace('-sk', '')}_sk`}
+                          className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
+                        <input
+                          type="checkbox"
+                          checked={fido2GenResident && !IS_WINDOWS}
+                          disabled={IS_WINDOWS}
+                          onChange={(e) => setFido2GenResident(e.target.checked)}
+                          className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500 disabled:opacity-40"
+                        />
+                        <span>
+                          Resident (discoverable) — no file needed to authenticate later
+                          {IS_WINDOWS && <span className="text-txt-muted"> (not available on Windows)</span>}
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer text-txt-primary">
+                        <input
+                          type="checkbox"
+                          checked={fido2GenVerifyRequired}
+                          onChange={(e) => setFido2GenVerifyRequired(e.target.checked)}
+                          className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                        />
+                        <span>Require PIN + touch on every use (recommended)</span>
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void generateFido2Key()}
+                      disabled={fido2Generating}
+                      className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
+                    >
+                      {fido2Generating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {fido2Generating ? 'Touch your security key...' : 'Generate Key'}
+                    </button>
+
+                    {fido2GenError && (
+                      <div className="flex flex-col gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2">
+                        <div className="flex items-center gap-1.5 text-red-300">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                          <span>{fido2GenError}</span>
+                        </div>
+                        {fido2GenNeedsOverwriteConfirm && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-txt-muted">
+                              If the on-device credential this pointed to was already deleted, the local
+                              file is just a stale leftover — overwrite it?
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void generateFido2Key(true)}
+                              disabled={fido2Generating}
+                              className="shrink-0 rounded-md border border-red-400/40 px-2 py-1 text-red-300 hover:bg-red-500/20 disabled:opacity-40 transition-colors"
+                            >
+                              Overwrite
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {fido2GenResult && (
+                      <div className="flex flex-col gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2">
+                        <div className="flex items-center gap-1.5 text-emerald-300">
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                          <span>Key generated at {fido2GenResult.privateKeyPath}</span>
+                        </div>
+                        <p className="text-xs text-txt-muted">
+                          Copy the public key below into the server's{' '}
+                          <code className="font-mono">~/.ssh/authorized_keys</code>:
+                        </p>
+                        <div className="flex items-start gap-1.5">
+                          <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-md border border-border-subtle bg-app-surface px-2 py-1 font-mono text-2xs text-txt-secondary">
+                            {fido2GenResult.publicKey}
+                          </code>
+                          <button
+                            aria-label="Copy public key"
+                            type="button"
+                            onClick={() => void navigator.clipboard.writeText(fido2GenResult.publicKey)}
+                            className="shrink-0 rounded-md border border-border-subtle p-1.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                            title="Copy public key"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
-
-                {fido2GenResult && (
-                  <div className="flex flex-col gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2">
-                    <div className="flex items-center gap-1.5 text-emerald-300">
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                      <span>Key generated at {fido2GenResult.privateKeyPath}</span>
-                    </div>
-                    <p className="text-xs text-txt-muted">
-                      Copy the public key below into the server's{' '}
-                      <code className="font-mono">~/.ssh/authorized_keys</code>:
-                    </p>
-                    <div className="flex items-start gap-1.5">
-                      <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-md border border-border-subtle bg-app-surface px-2 py-1 font-mono text-2xs text-txt-secondary">
-                        {fido2GenResult.publicKey}
-                      </code>
-                      <button
-                        aria-label="Copy public key"
-                        type="button"
-                        onClick={() => void navigator.clipboard.writeText(fido2GenResult.publicKey)}
-                        className="shrink-0 rounded-md border border-border-subtle p-1.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-                        title="Copy public key"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+
+        </>
       )}
 
-      {/* Outgoing Proxy Settings */}
-      <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
-        <label className="flex items-center gap-2 text-txt-secondary font-medium cursor-pointer">
-          <input
-            type="checkbox"
-            checked={Boolean(config.proxy)}
-            onChange={(e) => {
-              if (e.target.checked) {
-                update('proxy', { type: 'socks5', host: '127.0.0.1', port: 1080 });
-              } else {
-                update('proxy', undefined);
-              }
-            }}
-            className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
-          />
-          <span>Enable Outgoing Proxy (HTTP / SOCKS)</span>
-        </label>
+      <SshSsmFields ssm={config.ssm} host={config.host} onChange={(ssm, extra) => setConfig((prev) => withSsm(prev, ssm, extra))} />
 
-        {config.proxy && (
-          <div className="mt-2.5 grid grid-cols-2 gap-2.5 pt-2 border-t border-divider">
-            <label className="flex flex-col gap-1 text-txt-secondary">
-              Proxy Type
-              <select
-                value={config.proxy.type}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    proxy: { ...prev.proxy!, type: e.target.value as any },
-                  }))
+      {/* Outgoing Proxy Settings (not combinable with SSM) */}
+      {!config.ssm?.enabled && (
+        <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
+          <label className="flex items-center gap-2 text-txt-secondary font-medium cursor-pointer">
+            <input
+              type="checkbox"
+              checked={Boolean(config.proxy)}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  update('proxy', { type: 'socks5', host: '127.0.0.1', port: 1080 });
+                } else {
+                  update('proxy', undefined);
                 }
-                className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
-              >
-                <option value="socks5">SOCKS5</option>
-                <option value="socks4">SOCKS4</option>
-                <option value="http">HTTP</option>
-              </select>
-            </label>
+              }}
+              className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+            />
+            <span>Enable Outgoing Proxy (HTTP / SOCKS)</span>
+          </label>
 
-            <div className="grid grid-cols-[1fr_70px] gap-2">
+          {config.proxy && (
+            <div className="mt-2.5 grid grid-cols-2 gap-2.5 pt-2 border-t border-divider">
               <label className="flex flex-col gap-1 text-txt-secondary">
-                Proxy Host
-                <input
-                  value={config.proxy.host}
+                Proxy Type
+                <select
+                  value={config.proxy.type}
                   onChange={(e) =>
                     setConfig((prev) => ({
                       ...prev,
-                      proxy: { ...prev.proxy!, host: e.target.value },
+                      proxy: { ...prev.proxy!, type: e.target.value as any },
                     }))
                   }
                   className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
-                  placeholder="127.0.0.1"
-                />
+                >
+                  <option value="socks5">SOCKS5</option>
+                  <option value="socks4">SOCKS4</option>
+                  <option value="http">HTTP</option>
+                </select>
               </label>
+
+              <div className="grid grid-cols-[1fr_70px] gap-2">
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Proxy Host
+                  <input
+                    value={config.proxy.host}
+                    onChange={(e) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        proxy: { ...prev.proxy!, host: e.target.value },
+                      }))
+                    }
+                    className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
+                    placeholder="127.0.0.1"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Port
+                  <input
+                    type="number"
+                    value={config.proxy.port}
+                    onChange={(e) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        proxy: { ...prev.proxy!, port: Number(e.target.value) || 1080 },
+                      }))
+                    }
+                    className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 text-center"
+                  />
+                </label>
+              </div>
+
               <label className="flex flex-col gap-1 text-txt-secondary">
-                Port
+                Proxy Username (optional)
                 <input
-                  type="number"
-                  value={config.proxy.port}
+                  value={config.proxy.username ?? ''}
                   onChange={(e) =>
                     setConfig((prev) => ({
                       ...prev,
-                      proxy: { ...prev.proxy!, port: Number(e.target.value) || 1080 },
+                      proxy: { ...prev.proxy!, username: e.target.value },
                     }))
                   }
-                  className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 text-center"
+                  className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-txt-secondary">
+                Proxy Password (optional)
+                <input
+                  type="password"
+                  value={config.proxy.password ?? ''}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      proxy: { ...prev.proxy!, password: e.target.value },
+                    }))
+                  }
+                  disabled={!canEditSecret}
+                  placeholder={!canEditSecret ? '•••• (admin only)' : undefined}
+                  className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
             </div>
-
-            <label className="flex flex-col gap-1 text-txt-secondary">
-              Proxy Username (optional)
-              <input
-                value={config.proxy.username ?? ''}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    proxy: { ...prev.proxy!, username: e.target.value },
-                  }))
-                }
-                className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1 text-txt-secondary">
-              Proxy Password (optional)
-              <input
-                type="password"
-                value={config.proxy.password ?? ''}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    proxy: { ...prev.proxy!, password: e.target.value },
-                  }))
-                }
-                disabled={!canEditSecret}
-                placeholder={!canEditSecret ? '•••• (admin only)' : undefined}
-                className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
-              />
-            </label>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Dotfiles Pool (opt-in, hidden unless enabled in Settings) */}
-      {dotfilesPoolEnabled && (
+      {dotfilesPoolEnabled && !ssmShell && (
         <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5 space-y-2.5">
           <label className="flex flex-col gap-1 text-txt-secondary">
             Dotfiles Pool (optional)
@@ -1046,145 +1029,149 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
       )}
 
       {/* Advanced SSH Options */}
-      <div className="rounded-lg border border-border-subtle bg-app-surface-subtle">
-        <button
-          type="button"
-          onClick={() => setAdvancedOpen((o) => !o)}
-          className="flex w-full items-center justify-between p-2.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-        >
-          <span>Advanced SSH Options (Agent Forwarding, Compression, KeepAlive, Ciphers, KEX, MACs)</span>
-          {advancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        </button>
+      {!ssmShell && (
+        <div className="rounded-lg border border-border-subtle bg-app-surface-subtle">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((o) => !o)}
+            className="flex w-full items-center justify-between p-2.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+          >
+            <span>Advanced SSH Options (Agent Forwarding, Compression, KeepAlive, Ciphers, KEX, MACs)</span>
+            {advancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
 
-        {advancedOpen && (
-          <div className="border-t border-divider p-3 space-y-3 text-xs">
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary">
-                <input
-                  type="checkbox"
-                  checked={config.forwardAgent ?? false}
-                  onChange={(e) => update('forwardAgent', e.target.checked)}
-                  className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
-                />
-                <span>Forward SSH Agent (-A)</span>
-              </label>
+          {advancedOpen && (
+            <div className="border-t border-divider p-3 space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary">
+                  <input
+                    type="checkbox"
+                    checked={config.forwardAgent ?? false}
+                    onChange={(e) => update('forwardAgent', e.target.checked)}
+                    className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                  />
+                  <span>Forward SSH Agent (-A)</span>
+                </label>
 
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary">
-                <input
-                  type="checkbox"
-                  checked={config.compression ?? false}
-                  onChange={(e) => update('compression', e.target.checked)}
-                  className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
-                />
-                <span>Enable Compression</span>
-              </label>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary">
+                  <input
+                    type="checkbox"
+                    checked={config.compression ?? false}
+                    onChange={(e) => update('compression', e.target.checked)}
+                    className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                  />
+                  <span>Enable Compression</span>
+                </label>
 
-              {config.forwardAgent && (
-                <div className="col-span-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-2xs text-amber-300 flex items-start gap-2">
-                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
-                  <div>
-                    <span className="font-semibold block">Security Advisory: SSH Agent Forwarding</span>
-                    Agent forwarding allows anyone with root/administrator access on the remote server to access your local SSH keys while the session is active. Only enable this on servers you completely trust.
+                {config.forwardAgent && (
+                  <div className="col-span-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-2xs text-amber-300 flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+                    <div>
+                      <span className="font-semibold block">Security Advisory: SSH Agent Forwarding</span>
+                      Agent forwarding allows anyone with root/administrator access on the remote server to access your local SSH keys while the session is active. Only enable this on servers you completely trust.
+                    </div>
                   </div>
+                )}
+
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={config.x11Forwarding ?? false}
+                    onChange={(e) => update('x11Forwarding', e.target.checked)}
+                    className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
+                  />
+                  <span>Forward X11 GUI (-Y)</span>
+                </label>
+              </div>
+
+              {config.x11Forwarding && (
+                <div className="rounded-lg border border-border-subtle bg-app-surface/50 p-2.5 space-y-2">
+                  <label className="flex flex-col gap-1 text-txt-secondary">
+                    <span>X11 Display Location (default: 127.0.0.1:0.0 or :0)</span>
+                    <input
+                      value={config.x11Display ?? ''}
+                      onChange={(e) => update('x11Display', e.target.value)}
+                      className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                      placeholder="127.0.0.1:0.0"
+                    />
+                  </label>
+                  {x11ServerStatus && (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      {x11ServerStatus.running ? (
+                        <span className="text-emerald-400">
+                          ✓ Local X11 server detected on {x11ServerStatus.display}
+                        </span>
+                      ) : (
+                        <span className="text-amber-400">
+                          {x11ServerStatus.platform === 'linux'
+                            ? `⚠ No local X11 server listening on ${x11ServerStatus.display}. Ensure an X11 or Xwayland session is active.`
+                            : `⚠ No local X11 server listening on ${x11ServerStatus.display}. Start an X server (e.g. VcXsrv, Xming, or WSLg) on Windows.`}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
-
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-txt-primary col-span-2">
-                <input
-                  type="checkbox"
-                  checked={config.x11Forwarding ?? false}
-                  onChange={(e) => update('x11Forwarding', e.target.checked)}
-                  className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
-                />
-                <span>Forward X11 GUI (-Y)</span>
-              </label>
-            </div>
-
-            {config.x11Forwarding && (
-              <div className="rounded-lg border border-border-subtle bg-app-surface/50 p-2.5 space-y-2">
+              <div className="grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1 text-txt-secondary">
-                  <span>X11 Display Location (default: 127.0.0.1:0.0 or :0)</span>
+                  ServerAliveInterval (sec)
                   <input
-                    value={config.x11Display ?? ''}
-                    onChange={(e) => update('x11Display', e.target.value)}
+                    type="number"
+                    min={0}
+                    max={3600}
+                    value={config.serverAliveInterval ?? 60}
+                    onChange={(e) => update('serverAliveInterval', parseInt(e.target.value, 10) || 0)}
                     className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                    placeholder="127.0.0.1:0.0"
                   />
                 </label>
-                {x11ServerStatus && (
-                  <div className="flex items-center gap-1.5 text-xs">
-                    {x11ServerStatus.running ? (
-                      <span className="text-emerald-400">
-                        ✓ Local X11 server detected on {x11ServerStatus.display}
-                      </span>
-                    ) : (
-                      <span className="text-amber-400">
-                        {x11ServerStatus.platform === 'linux'
-                          ? `⚠ No local X11 server listening on ${x11ServerStatus.display}. Ensure an X11 or Xwayland session is active.`
-                          : `⚠ No local X11 server listening on ${x11ServerStatus.display}. Start an X server (e.g. VcXsrv, Xming, or WSLg) on Windows.`}
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
-            )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                ServerAliveInterval (sec)
-                <input
-                  type="number"
-                  min={0}
-                  max={3600}
-                  value={config.serverAliveInterval ?? 60}
-                  onChange={(e) => update('serverAliveInterval', parseInt(e.target.value, 10) || 0)}
-                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                />
-              </label>
+              <div className="space-y-2">
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Custom Ciphers (comma-separated, empty = defaults)
+                  <input
+                    value={config.ciphers ?? ''}
+                    onChange={(e) => update('ciphers', e.target.value)}
+                    className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="chacha20-poly1305@openssh.com,aes128-gcm@openssh.com"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Custom KEX Algorithms (comma-separated, empty = defaults)
+                  <input
+                    value={config.kexAlgorithms ?? ''}
+                    onChange={(e) => update('kexAlgorithms', e.target.value)}
+                    className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                    placeholder="curve25519-sha256,ecdh-sha2-nistp256"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1 text-txt-secondary">
+                  Custom MACs (comma-separated, empty = defaults)
+                  <input
+                    value={config.macs ?? ''}
+                    onChange={(e) => update('macs', e.target.value)}
+                    placeholder="e.g. hmac-sha2-256,hmac-sha1"
+                    className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
+                  />
+                </label>
+              </div>
             </div>
+          )}
+        </div>
+      )}
 
-            <div className="space-y-2">
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Custom Ciphers (comma-separated, empty = defaults)
-                <input
-                  value={config.ciphers ?? ''}
-                  onChange={(e) => update('ciphers', e.target.value)}
-                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                  placeholder="chacha20-poly1305@openssh.com,aes128-gcm@openssh.com"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Custom KEX Algorithms (comma-separated, empty = defaults)
-                <input
-                  value={config.kexAlgorithms ?? ''}
-                  onChange={(e) => update('kexAlgorithms', e.target.value)}
-                  className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                  placeholder="curve25519-sha256,ecdh-sha2-nistp256"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-txt-secondary">
-                Custom MACs (comma-separated, empty = defaults)
-                <input
-                  value={config.macs ?? ''}
-                  onChange={(e) => update('macs', e.target.value)}
-                  placeholder="e.g. hmac-sha2-256,hmac-sha1"
-                  className="rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-xs text-txt-primary outline-none focus:border-sky-500 font-mono"
-                />
-              </label>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <AccessSetupPanel
-        config={config}
-        resetKey={accessResetKey}
-        onStateChange={setAccessState}
-        openInstallSignal={openInstallSignal}
-      />
+      {!ssmShell && (
+        <AccessSetupPanel
+          config={config}
+          resetKey={accessResetKey}
+          onStateChange={setAccessState}
+          openInstallSignal={openInstallSignal}
+        />
+      )}
 
       </div>
 
@@ -1205,7 +1192,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           <button
             type="submit"
             disabled={!isValid}
-            title={isValid ? undefined : 'Fill in profile name, hostname and username first'}
+            title={isValid ? undefined : ssmProblem(config) ?? 'Fill in profile name, hostname and username first'}
             className="rounded-lg bg-sky-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-500 disabled:opacity-40 shadow-sm transition-colors"
           >
             Save Profile
@@ -1234,7 +1221,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
                 type="button"
                 onClick={() => {
                   setSaveReminderOpen(false);
-                  onSave(config);
+                  onSave(trimProfileFields(config));
                 }}
                 className="rounded-lg border border-border-subtle px-3 py-1.5 text-xs text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary"
               >

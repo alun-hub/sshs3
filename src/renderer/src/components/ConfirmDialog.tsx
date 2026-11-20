@@ -1,7 +1,8 @@
-import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
+import React, { useCallback, useContext, useRef, useState } from 'react';
 import { AlertTriangle, HelpCircle } from 'lucide-react';
 import { useModalDismiss } from '../lib/useModalDismiss';
 import { useDialogFocus } from '../lib/useDialogFocus';
+import { ConfirmContext } from '../lib/confirmContext';
 
 /**
  * In-app replacement for window.confirm() for destructive/consequential
@@ -19,13 +20,14 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   /** Styles the confirm button red and swaps the icon for a warning triangle. Default true. */
   danger?: boolean;
+  /** A notice with a single OK button (the in-app replacement for window.alert()). */
+  notice?: boolean;
 }
 
 interface PendingConfirm extends ConfirmOptions {
   resolve: (value: boolean) => void;
 }
 
-const ConfirmContext = createContext<((options: ConfirmOptions) => Promise<boolean>) | null>(null);
 
 export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [pending, setPending] = useState<PendingConfirm | null>(null);
@@ -97,16 +99,19 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
               {/* Autofocused, so a stray Enter/Space press (or the same key
                   that just confirmed a previous, unrelated dialog) cancels
                   rather than confirms. */}
+              {!pending.notice && (
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => settle(false)}
+                  className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+                >
+                  {pending.cancelLabel ?? 'Cancel'}
+                </button>
+              )}
               <button
                 type="button"
-                autoFocus
-                onClick={() => settle(false)}
-                className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
-              >
-                {pending.cancelLabel ?? 'Cancel'}
-              </button>
-              <button
-                type="button"
+                autoFocus={pending.notice}
                 onClick={() => settle(true)}
                 className={
                   'rounded-lg px-3.5 py-1.5 text-xs font-medium text-white shadow-sm transition-colors ' +

@@ -329,7 +329,7 @@ function laterTimestamp(a?: string, b?: string): string | undefined {
  * and, if taken from a remote copy, would let a compromised sync source choose what the app
  * launches — so they are neither pushed nor applied from a pull.
  */
-const LOCAL_ONLY_SETTINGS = ['x11ServerPath', 'x11ServerArgs', 'smartcardLibPath'] as const;
+const LOCAL_ONLY_SETTINGS = ['x11ServerPath', 'x11ServerArgs', 'smartcardLibPath', 'enableAws', 'awsSignIns', 'awsRegions', 'awsManagedSignIns', 'awsNetwork'] as const;
 
 function withoutLocalOnlySettings(settings: AppSettings): AppSettings {
   const copy: any = { ...settings };

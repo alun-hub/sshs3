@@ -51,7 +51,9 @@ import type {
   SshCaVaultDetectRequest,
   SshCaVaultDetectResult,
 } from '../shared/types/sshCa';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoLoginResult, AwsSsoNetworkOptions } from '../shared/types/aws';
+import type { AwsSsmTools } from '../shared/types/ssm';
+import { awsScanApi } from './awsScanApi';
+import type { AwsSsoLoginInfo } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
   DotfilePool,
@@ -691,11 +693,8 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, config),
 
   // AWS SSO login (device-authorization flow)
-  awsSsoLogin: (
-    startUrl: string,
-    region: string,
-    network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoLoginResult> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region, network),
+  awsSsoLogin: (startUrl: string, region: string, s3ProfileId?: string): Promise<AwsSsoLoginInfo> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region, s3ProfileId),
 
   awsSsoCancelLogin: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN_CANCEL, id),
@@ -716,20 +715,8 @@ export const api: MultiSSHApi = {
     };
   },
 
-  awsSsoListAccounts: (
-    accessToken: string,
-    region: string,
-    network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoAccount[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS, accessToken, region, network),
-
-  awsSsoListRoles: (
-    accessToken: string,
-    region: string,
-    accountId: string,
-    network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoAccountRole[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LIST_ROLES, accessToken, region, accountId, network),
+  awsSsmCheckTools: (): Promise<AwsSsmTools> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSM_CHECK_TOOLS),
+  ...awsScanApi,
 
   awsSsoReloginProvider: (providerId: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, providerId),

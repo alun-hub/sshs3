@@ -2,6 +2,7 @@ import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
 import { collectLeaves } from './paneTree';
 import { groupBySystem, systemNameOf } from './systemGrouping';
+import { isSsmShellProfile } from '@shared/ssm';
 import { sftpUnavailableReason } from './platform';
 import type { AppTab } from './tabs';
 
@@ -56,7 +57,7 @@ export function buildProfileEntries(sources: SearchSource[]): SearchEntry[] {
         sourceLabel: label,
         lastUsedAt: p.lastUsedAt,
         ref: p.id,
-        sftp: !sftpUnavailableReason(p.authType),
+        sftp: !sftpUnavailableReason(p.authType) && !isSsmShellProfile(p),
       });
     }
     // One row per system: Enter connects to all of its servers.

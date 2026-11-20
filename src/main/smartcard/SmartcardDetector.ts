@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
 import { isAllowedExtraOption } from '../ssh/blockedSshDirectives';
+import { isSsmShellProfile } from '../../shared/ssm';
+import { assertValidSsm, SSM_SHELL_NO_SSH_MESSAGE, ssmEnvOverlay, ssmHostNameOption, ssmProxyOption } from '../ssh/ssmProxy';
 import { createLogger } from '../log';
 const smartcardLog = createLogger('smartcard');
 
@@ -232,6 +234,10 @@ export class SmartcardDetector {
     if (!isSafeHostToken(config.host)) {
       throw new Error('Invalid SSH host: contains characters not allowed in a hostname');
     }
+
+    // SSH over AWS SSM: host is an instance id; combining with a proxy/jump host is rejected here.
+    assertValidSsm(config);
+    if (isSsmShellProfile(config)) throw new Error(SSM_SHELL_NO_SSH_MESSAGE);
 
     const port = config.port ?? 22;
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -488,6 +494,17 @@ export class SmartcardDetector {
       args.push('-o', `ProxyCommand=${proxyCliLauncher()}"${cliPath}" ${p.type} ${p.host} ${port} %h %p`);
     }
 
+    // An outgoing proxy or ProxyJump is a shell-run command in which ssh expands %h from the HostName it RESOLVES, and a
+    // synced ~/.ssh/config block can set that HostName for the alias. Pin it to the host validated above: a command-line
+    // -o beats the config, so no config entry can put another value into the shell string (SSM pins it below the same way).
+    if ((config.proxy?.enabled && config.proxy.host) || config.proxyJump?.trim()) args.push('-o', `HostName=${config.host}`);
+
+    // SSH over AWS SSM (-o ProxyCommand=aws ssm start-session …). A command-line -o beats any
+    // hand-written ~/.ssh/config entry for the same host, so the two never double up. HostName is pinned the same way:
+    // ssh expands %h in the shell-run ProxyCommand from the resolved HostName, never from a config entry.
+    const ssmOption = ssmProxyOption(config);
+    if (ssmOption) args.push('-o', ssmOption, '-o', ssmHostNameOption(config)!);
+
     // Destination target (username@host or host), preceded by '--' to prevent flag injection
     const destination = config.username ? `${config.username}@${config.host}` : config.host;
     args.push('--');
@@ -505,6 +522,7 @@ export class SmartcardDetector {
    * ProxyCommand — see the comment in buildSSHArguments.
    */
   public static buildProxyEnv(config: SSHConnectionConfig): Record<string, string> {
+    if (config.ssm?.enabled) return ssmEnvOverlay(config);
     if (!config.proxy?.enabled || !config.proxy.host) {
       return {};
     }

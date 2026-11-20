@@ -38,9 +38,13 @@ The registry value name is the policy name with a capital first letter (`autoChe
 | `localTerminalAgentMode` | text | `auto`, `system`, `app-managed`, `disabled` | Which SSH agent local shell tabs inherit. |
 | `x11ServerMode` | text | `manual`, `auto`, `always` | Windows: when the bundled X server starts. |
 | `x11ServerArgs` | text | up to 1024 characters, no control characters | Windows: X server arguments. |
+| `enableAws` | boolean | `true`, `false` | Turns the AWS user interface (Add from AWS, the AWS sign-in button, the SSM profile section) on or off and locks the option. It does not block connections; use `awsSsm` for that. |
+| `awsRegions` | text | up to 512 characters, comma separated regions | Regions searched when users import AWS instances; locks the list. |
+| `awsManagedSignIns` | text | up to 4096 characters (1023 in Group Policy), `Name\|https://start-url\|region` entries separated by `;` | IAM Identity Center sign-ins offered to every user as locked rows. Invalid entries are ignored with a warning. |
 | `enableOpenShift` | boolean | `true`, `false` | OpenShift login and the `oc` shim. |
 | `gitKeyFetch` | boolean | `true`, `false` | `false` blocks fetching public keys from GitHub, GitLab or a custom Git host. |
 | `dotfileGitImport` | boolean | `true`, `false` | `false` blocks importing dotfiles from a Git repository. |
+| `awsSsm` | boolean | `true`, `false` | `false` blocks SSH connections through AWS Systems Manager (SSM). |
 
 A setting that is not in the policy stays under the user's control.
 

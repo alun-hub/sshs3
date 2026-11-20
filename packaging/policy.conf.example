@@ -35,8 +35,21 @@
 # OpenShift login and the oc CLI shim: true or false.
 # enableOpenShift = false
 
+# AWS features (SSH over Systems Manager, importing instances, the AWS sign-in button): true or false.
+# enableAws = true
+
+# Regions searched when importing AWS instances, comma separated (up to 512 characters).
+# awsRegions = eu-north-1,eu-west-1
+
+# IAM Identity Center sign-ins offered to every user: Name|https://start-url|region, separated by semicolons
+# (up to 4096 characters; Group Policy allows 1023).
+# awsManagedSignIns = Corp|https://corp.awsapps.com/start|us-east-1
+
 # Allow fetching public SSH keys from GitHub, GitLab or a custom Git host. false blocks it.
 # gitKeyFetch = false
 
 # Allow importing dotfiles from a Git repository. false blocks it.
 # dotfileGitImport = false
+
+# Allow SSH connections through AWS Systems Manager (SSM). false blocks it.
+# awsSsm = false
