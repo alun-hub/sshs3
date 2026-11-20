@@ -1,5 +1,5 @@
 import { fingerprintKey } from '../ssh/hostKeyFingerprint';
-import { directiveValue, isSafeManagedDirectiveValue } from '../ssh/managedConfigValues';
+import { directiveValue, hasUnsafeLineChars, isSafeManagedDirectiveValue } from '../ssh/managedConfigValues';
 import {
   ALLOWED_MANAGED_BLOCK_DIRECTIVES,
   BLOCKED_SSH_DIRECTIVES,
@@ -88,8 +88,9 @@ export function sanitizeSshConfigBody(body: string): SanitizeSshConfigBodyResult
       removedLines.push(line);
       continue;
     }
-    // Values that ssh expands into shell-run commands (%h, %p, %r, ProxyJump) must not carry shell syntax.
-    if (directive && !isSafeManagedDirectiveValue(directive, directiveValue(trimmed))) {
+    // Values that ssh expands into shell-run commands (%h, %p, %r, ProxyJump) must not carry shell syntax, and a line must
+    // not hide a value behind a CR / Unicode line separator (ssh ends a line at LF only).
+    if (hasUnsafeLineChars(trimmed) || (directive && !isSafeManagedDirectiveValue(directive, directiveValue(trimmed)))) {
       removedLines.push(line);
       continue;
     }

@@ -11,6 +11,51 @@ describe('directiveValue', () => {
   });
 });
 
+describe('line separators other than LF cannot hide a value from the check', () => {
+  // Found by the security review of 14dd8c8 and reproduced with OpenSSH 10.5: ssh ends a line at LF only, so a quoted
+  // value keeps a CR / U+2028 / U+2029 and the whole value reaches the shell-run ProxyCommand through %h.
+  it('reads the whole value even when it holds CR, U+2028 or U+2029', () => {
+    expect(directiveValue('HostName "x\r$(touch /tmp/m)"')).toBe('"x\r$(touch /tmp/m)"');
+    expect(directiveValue('HostName "x\u2028$(id)"')).toBe('"x\u2028$(id)"');
+    expect(directiveValue('HostName "x\u2029$(id)"')).toBe('"x\u2029$(id)"');
+  });
+
+  it('fails closed for an expanded directive whose value cannot be read, and only for those', () => {
+    for (const d of ['hostname', 'port', 'user', 'proxyjump']) expect(isSafeManagedDirectiveValue(d, undefined)).toBe(false);
+    expect(isSafeManagedDirectiveValue('compression', undefined)).toBe(true);
+  });
+
+  it('removes every variant from a synced block, including a quoted Port/User/ProxyJump', () => {
+    const lines = [
+      'HostName "x\r$(touch /tmp/m)"',
+      'HostName "x\u2028$(touch /tmp/m)"',
+      'HostName "x\u2029$(touch /tmp/m)"',
+      'HostName "x\u000b$(touch /tmp/m)"',
+      'HostName "x\u0085$(touch /tmp/m)"',
+      'HostName ok.example.com\u2028HostName evil',
+      "Port \"22'\r$(touch /tmp/m)'\"",
+      'User "a\r$(id)"',
+      'ProxyJump "a\u2029b"',
+    ];
+    for (const l of lines) {
+      const r = sanitizeSshConfigBody(['Host victim', l].join('\n'));
+      expect(r.removedLines, JSON.stringify(l)).toHaveLength(1);
+      expect(r.body).toBe('Host victim');
+    }
+  });
+
+  it('keeps a normal block with CRLF line endings (the trailing CR is a line ending, not part of a value)', () => {
+    const crlf = ['Host web', '    HostName web-01.example.com', '    Port 2222', '    User deploy', '    ProxyJump bastion'].join('\r\n');
+    const r = sanitizeSshConfigBody(crlf);
+    expect(r.removedLines).toEqual([]);
+    expect(r.body).toContain('HostName web-01.example.com');
+  });
+
+  it('keeps TAB-separated directives', () => {
+    expect(sanitizeSshConfigBody('Host h\n\tHostName\tweb.example.com').removedLines).toEqual([]);
+  });
+});
+
 describe('isSafeManagedDirectiveValue', () => {
   it('accepts what sshs3 itself generates', () => {
     for (const v of ['web-01.example.com', '10.0.0.5', '::1', '[2001:db8::1]', 'i-0123456789abcdef0', 'host_name']) {
