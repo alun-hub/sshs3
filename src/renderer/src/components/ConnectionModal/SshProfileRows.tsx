@@ -1,5 +1,6 @@
 import { isSsmShellProfile } from '@shared/ssm';
-import { profileTarget } from '../../lib/ssmProfile';
+import { authSuffix, profileTarget } from '../../lib/ssmProfile';
+import { SsmBadge } from './SsmBadge';
 import React from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Cable, Copy, Folder, KeyRound, Pencil, Trash2 } from 'lucide-react';
@@ -49,11 +50,7 @@ export const SshRecentRow: React.FC<SshProfileRowProps> = ({
             Agent Fwd
           </span>
         )}
-        {profile.ssm?.enabled && (
-          <span title={isSsmShellProfile(profile) ? 'Session Manager shell, no SSH (experimental)' : 'Connects through AWS Systems Manager (experimental)'} className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
-            {isSsmShellProfile(profile) ? 'SSM shell' : 'SSM'}
-          </span>
-        )}
+        <SsmBadge profile={profile} />
         {profile.group && (
           <span
             title={`In folder "${profile.group}"`}
@@ -147,6 +144,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
         <span className="truncate text-sm text-txt-primary font-medium">
           {profile.name}
         </span>
+        <SsmBadge profile={profile} />
         <TagChips tags={profile.tags} />
         {profile.proxyJump && (
           <span className="rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.2 text-2xs text-sky-400">
@@ -165,7 +163,7 @@ export const SshProfileRow: React.FC<SshProfileRowProps> = ({
         )}
       </div>
       <div className="truncate text-xs text-txt-muted">
-        {profileTarget(profile, ` · ${profile.authType}`)}
+        {profileTarget(profile, authSuffix(profile))}
       </div>
     </div>
     <div className="flex shrink-0 items-center gap-1.5">

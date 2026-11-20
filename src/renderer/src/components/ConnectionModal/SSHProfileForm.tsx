@@ -1,5 +1,7 @@
+import { isSsmShellProfile } from '@shared/ssm';
 import { hostIsValid, ssmProblem, trimProfileFields, usernameOk, withSsm } from '../../lib/ssmProfile';
 import { SshSsmFields } from './SshSsmFields';
+import { JumpHostField } from './JumpHostField';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -310,9 +312,11 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
     config.password?.length ?? 0,
   ].join('|');
 
+  // A Session Manager shell has no SSH connection: the SSH-only fields below are hidden for it.
+  const ssmShell = isSsmShellProfile(config);
   // Soft reminder only: a brand-new key-based profile that was never verified on the host. Never blocks saving.
   const needsAccessReminder =
-    !initial && config.authType !== 'password' && (accessState === 'unknown' || accessState === 'failed');
+    !initial && !ssmShell && config.authType !== 'password' && (accessState === 'unknown' || accessState === 'failed');
 
   return (
     <form
@@ -361,7 +365,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-[1fr_80px_1fr] gap-2.5">
+      <div className={ssmShell ? 'grid grid-cols-1 gap-2.5' : 'grid grid-cols-[1fr_80px_1fr] gap-2.5'}>
         <label className="flex flex-col gap-1 text-txt-secondary">
           <span>Hostname / IP<span className="text-red-400" aria-hidden="true"> *</span></span>
           <input
@@ -372,6 +376,8 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             placeholder="host.example.com"
           />
         </label>
+        {!ssmShell && (
+          <>
         <label className="flex flex-col gap-1 text-txt-secondary">
           Port
           <input
@@ -391,8 +397,11 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             placeholder="root or deploy"
           />
         </label>
+          </>
+        )}
       </div>
 
+      {!ssmShell && (
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1 text-txt-secondary">
           Initial SFTP Path (optional)
@@ -403,48 +412,13 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
             placeholder="e.g. /var/www or /home/user"
           />
         </label>
-        <label className="flex flex-col gap-1 text-txt-secondary">
-          Jump Host / ProxyJump (optional)
-          <select
-            value={proxyJumpMode === 'none' ? '' : proxyJumpMode === 'custom' ? '__custom__' : config.proxyJumpProfileId ?? ''}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (value === '') {
-                setProxyJumpMode('none');
-                update('proxyJumpProfileId', undefined);
-                update('proxyJump', undefined);
-              } else if (value === '__custom__') {
-                setProxyJumpMode('custom');
-                update('proxyJumpProfileId', undefined);
-              } else {
-                setProxyJumpMode('profile');
-                update('proxyJumpProfileId', value);
-                update('proxyJump', undefined);
-              }
-            }}
-            className="rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500"
-          >
-            <option value="">None</option>
-            {allProfiles
-              .filter((p) => p.id !== config.id && p.proxyJumpProfileId !== config.id && !p.ssm?.enabled)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name || p.host}
-                </option>
-              ))}
-            <option value="__custom__">Custom (enter manually)</option>
-          </select>
-          {proxyJumpMode === 'custom' && (
-            <input
-              value={config.proxyJump ?? ''}
-              onChange={(e) => update('proxyJump', e.target.value)}
-              className="mt-1 rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
-              placeholder="e.g. jumpuser@bastion.example.com:22"
-            />
-          )}
-        </label>
+        {/* A jump host or outgoing proxy cannot be combined with SSM. */}
+        {!config.ssm?.enabled && <JumpHostField config={config} profiles={allProfiles} mode={proxyJumpMode} onMode={setProxyJumpMode} update={update} />}
       </div>
+      )}
 
+      {!ssmShell && (
+      <>
       <label className="flex flex-col gap-1 text-txt-secondary">
         Authentication
         <select
@@ -904,9 +878,13 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
         </div>
       )}
 
+      </>
+      )}
+
       <SshSsmFields ssm={config.ssm} host={config.host} onChange={(ssm, extra) => setConfig((prev) => withSsm(prev, ssm, extra))} />
 
-      {/* Outgoing Proxy Settings */}
+      {/* Outgoing Proxy Settings (not combinable with SSM) */}
+      {!config.ssm?.enabled && (
       <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5">
         <label className="flex items-center gap-2 text-txt-secondary font-medium cursor-pointer">
           <input
@@ -1008,9 +986,10 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Dotfiles Pool (opt-in, hidden unless enabled in Settings) */}
-      {dotfilesPoolEnabled && (
+      {dotfilesPoolEnabled && !ssmShell && (
         <div className="rounded-lg border border-border-subtle bg-app-surface-subtle p-2.5 space-y-2.5">
           <label className="flex flex-col gap-1 text-txt-secondary">
             Dotfiles Pool (optional)
@@ -1050,6 +1029,7 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
       )}
 
       {/* Advanced SSH Options */}
+      {!ssmShell && (
       <div className="rounded-lg border border-border-subtle bg-app-surface-subtle">
         <button
           type="button"
@@ -1182,13 +1162,16 @@ export const SSHProfileForm: React.FC<SSHProfileFormProps> = ({
           </div>
         )}
       </div>
+      )}
 
+      {!ssmShell && (
       <AccessSetupPanel
         config={config}
         resetKey={accessResetKey}
         onStateChange={setAccessState}
         openInstallSignal={openInstallSignal}
       />
+      )}
 
       </div>
 

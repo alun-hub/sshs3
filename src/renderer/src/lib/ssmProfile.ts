@@ -48,6 +48,11 @@ export function usernameOk(config: Pick<SSHConnectionConfig, 'username' | 'ssm'>
   return config.username.trim() !== '' || isSsmShellProfile(config);
 }
 
+/** ` · <auth type>` for a row's subtitle; empty for a Session Manager shell, which has no SSH login. */
+export function authSuffix(p: Pick<SSHConnectionConfig, 'authType' | 'ssm'>): string {
+  return isSsmShellProfile(p) ? '' : ` · ${p.authType}`;
+}
+
 /** The `user@host:port · auth` line of a profile row; a Session Manager shell shows what it is instead. */
 export function profileTarget(p: Pick<SSHConnectionConfig, 'username' | 'host' | 'port' | 'authType' | 'ssm'>, suffix: string): string {
   if (isSsmShellProfile(p)) return `Session Manager shell · ${p.host}${suffix}`;
