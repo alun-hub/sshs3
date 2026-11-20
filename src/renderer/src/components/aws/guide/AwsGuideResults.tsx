@@ -23,11 +23,13 @@ interface Props {
   onUsername: (instanceId: string, value: string) => void;
   /** Instance ids that already have an SSM profile. */
   added: ReadonlySet<string>;
+  /** Rows for those ids cannot be chosen (importing several profiles). False when filling one profile form: a second profile for the same instance is fine, e.g. in a Team Vault. */
+  blockAdded?: boolean;
   onCancel: () => void;
 }
 
 /** Steps 4 and 5 of "Add from AWS": progress while searching, then the nodes found, grouped by account and region. */
-export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selected, onToggle, onSelectMany, showLogin = true, usernames, onUsername, added, onCancel }) => {
+export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selected, onToggle, onSelectMany, showLogin = true, usernames, onUsername, added, blockAdded = true, onCancel }) => {
   const [query, setQuery] = useState('');
   const result = state.result;
   const groups = useMemo(() => {
@@ -95,21 +97,22 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
                         const key = instanceKey(i);
                         const on = selected.has(key);
                         const isAdded = added.has(i.instanceId);
+                        const blocked = isAdded && blockAdded;
                         return (
                           <div
                             key={key}
                             role="option"
                             aria-selected={on}
-                            aria-disabled={isAdded}
-                            tabIndex={isAdded ? -1 : 0}
-                            onClick={() => !isAdded && onToggle(key)}
+                            aria-disabled={blocked}
+                            tabIndex={blocked ? -1 : 0}
+                            onClick={() => !blocked && onToggle(key)}
                             onKeyDown={(e) => {
-                              if (!isAdded && (e.key === 'Enter' || e.key === ' ')) {
+                              if (!blocked && (e.key === 'Enter' || e.key === ' ')) {
                                 e.preventDefault();
                                 onToggle(key);
                               }
                             }}
-                            className={`grid cursor-pointer ${showLogin ? 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr_7rem]' : 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr]'} items-center gap-2 rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'} ${isAdded ? 'cursor-default opacity-60' : ''}`}
+                            className={`grid cursor-pointer ${showLogin ? 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr_7rem]' : 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr]'} items-center gap-2 rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'} ${blocked ? 'cursor-default opacity-60' : ''}`}
                           >
                             <input
                               type={single ? 'radio' : 'checkbox'}
@@ -117,10 +120,13 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
                               readOnly
                               tabIndex={-1}
                               aria-hidden="true"
-                              disabled={isAdded}
+                              disabled={blocked}
                               className="pointer-events-none h-3.5 w-3.5 text-sky-600"
                             />
-                            <span className="truncate font-medium text-txt-primary">{i.name}{isAdded && <span className="ml-1.5 rounded bg-emerald-500/20 px-1 text-[10px] text-emerald-300">Already added</span>}</span>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <span className="truncate font-medium text-txt-primary">{i.name}</span>
+                              {isAdded && <span title="A profile for this instance already exists" className="shrink-0 rounded bg-emerald-500/20 px-1 text-[10px] text-emerald-300">Already added</span>}
+                            </span>
                             <span className="truncate font-mono text-txt-muted">{i.instanceId}</span>
                             <span className="truncate text-txt-secondary">{i.platformName ?? i.platformType ?? ''}</span>
                             <span className="truncate text-txt-muted">{i.ipAddress ?? ''}</span>
@@ -131,7 +137,7 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
                               onClick={(e) => e.stopPropagation()}
                               onKeyDown={(e) => e.stopPropagation()}
                               onChange={(e) => onUsername(i.instanceId, e.target.value)}
-                              disabled={isAdded}
+                              disabled={blocked}
                               className="rounded border border-border-subtle bg-app-input px-1.5 py-0.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
                             />
                             )}

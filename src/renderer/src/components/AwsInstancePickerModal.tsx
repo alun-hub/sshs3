@@ -306,6 +306,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
           usernames={usernames}
           onUsername={(id, v) => setUsernames((u) => ({ ...u, [id]: v }))}
           added={added}
+          blockAdded={!single}
           onCancel={scan.cancel}
         />
 

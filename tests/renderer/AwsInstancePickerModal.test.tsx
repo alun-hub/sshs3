@@ -217,6 +217,27 @@ describe('AwsInstancePickerModal (choosing instances)', () => {
     expect(screen.getByText('0 selected')).toBeInTheDocument();
   });
 
+  it('an instance that already has a profile can still be picked when filling one profile (single mode, e.g. a Team Vault)', async () => {
+    profiles = [{ id: 'p', name: 'old', host: id(2), username: 'u', authType: 'agent', ssm: { enabled: true } }];
+    await results('single');
+    const row = screen.getByRole('option', { name: /db-1/ });
+    expect(row).toHaveTextContent('Already added'); // still shown as information
+    expect(row).toHaveAttribute('aria-disabled', 'false');
+    fireEvent.click(row);
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    expect((row.querySelector('input') as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole('button', { name: 'Use selected' })).toBeEnabled();
+  });
+
+  it('in import mode the same row stays blocked', async () => {
+    profiles = [{ id: 'p', name: 'old', host: id(2), username: 'u', authType: 'agent', ssm: { enabled: true } }];
+    await results('multi');
+    const row = screen.getByRole('option', { name: /db-1/ });
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(row);
+    expect(screen.getByText('0 selected')).toBeInTheDocument();
+  });
+
   it('only selects what the filter shows, and keeps earlier picks', async () => {
     await results();
     fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
