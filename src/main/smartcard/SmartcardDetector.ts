@@ -494,6 +494,11 @@ export class SmartcardDetector {
       args.push('-o', `ProxyCommand=${proxyCliLauncher()}"${cliPath}" ${p.type} ${p.host} ${port} %h %p`);
     }
 
+    // An outgoing proxy or ProxyJump is a shell-run command in which ssh expands %h from the HostName it RESOLVES, and a
+    // synced ~/.ssh/config block can set that HostName for the alias. Pin it to the host validated above: a command-line
+    // -o beats the config, so no config entry can put another value into the shell string (SSM pins it below the same way).
+    if ((config.proxy?.enabled && config.proxy.host) || config.proxyJump?.trim()) args.push('-o', `HostName=${config.host}`);
+
     // SSH over AWS SSM (-o ProxyCommand=aws ssm start-session …). A command-line -o beats any
     // hand-written ~/.ssh/config entry for the same host, so the two never double up. HostName is pinned the same way:
     // ssh expands %h in the shell-run ProxyCommand from the resolved HostName, never from a config entry.
