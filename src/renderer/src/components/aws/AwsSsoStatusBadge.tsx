@@ -40,15 +40,24 @@ export const AwsSsoStatusBadge: React.FC<Props> = ({ onOpenAwsSettings }) => {
   useEffect(() => {
     if (!awsEnabled) return;
     load();
-    // Refocusing the window refreshes at most every 30 s (the status colour must stay current, but not cost IPC on every alt-tab).
+    // Refocusing the window refreshes at most every 30 s (not on every alt-tab). A focus inside that window schedules ONE
+    // refresh for when it ends, so the status colour is never left stale after e.g. `aws sso login` in a terminal.
     let last = Date.now();
-    const onFocus = () => {
-      if (Date.now() - last < 30_000) return;
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const refreshNow = () => {
       last = Date.now();
       load();
     };
+    const onFocus = () => {
+      const wait = 30_000 - (Date.now() - last);
+      if (wait <= 0) refreshNow();
+      else if (!pending) pending = setTimeout(() => { pending = undefined; refreshNow(); }, wait);
+    };
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      clearTimeout(pending);
+    };
   }, [awsEnabled, load]);
 
   const rows: BadgeRow[] = buildBadgeRows(settings, profiles);

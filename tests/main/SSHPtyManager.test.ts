@@ -750,6 +750,27 @@ describe('SSHPtyManager', () => {
       }
     });
 
+    it('a failing sign-in check does not leave the session stuck: the reconnect budget is used up and the session exits', async () => {
+      vi.useFakeTimers();
+      const { setSsoSignedInCheck } = await import('../../src/main/ssh/ssmProxy');
+      setSsoSignedInCheck(async () => { throw new Error('token cache unreadable'); });
+      try {
+        await manager.createSession({
+          id: 'sess-check-throws', name: 'SSM', host: 'i-0123456789abcdef0', username: 'ec2-user', authType: 'agent',
+          autoReconnect: true, maxReconnectAttempts: 1, reconnectDelayMs: 50,
+          ssm: { enabled: true, region: 'eu-north-1', sso: { startUrl: 'https://d-1.awsapps.com/start', region: 'us-east-1', accountId: '123456789012', roleName: 'Dev' } },
+        } as SSHConnectionConfig);
+        const exitSpy = vi.fn();
+        manager.on('exit', exitSpy);
+        mockPtyInstances[0].emitExit(255);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(exitSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        setSsoSignedInCheck(async () => true);
+        vi.useRealTimers();
+      }
+    });
+
     // Low finding (code review 2026-11-03): any non-zero exit reconnected, including `exit 1` typed in the shell or
     // a remote command failing. ssh itself ends with 255 when the connection fails.
     it('does not reconnect when the session ended with an ordinary non-zero exit code', async () => {

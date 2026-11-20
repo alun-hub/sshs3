@@ -13,14 +13,16 @@ export interface ProfileNetworkFields {
 /**
  * The route for a call that carries the SSO access token (device-flow `CreateToken`, account and role lists). A profile
  * may bring its own proxy and CA, but it can NEVER relax TLS verification below what the AWS settings allow: `false` is
- * replaced by the global value. A profile without any network setting simply uses the AWS settings.
+ * replaced by the global value. Everything a profile does not set (proxy, CA, TLS) comes from the AWS settings.
  */
 export function capProfileNetwork(profile: ProfileNetworkFields | undefined, global: AwsSsoNetworkOptions | undefined): AwsSsoNetworkOptions | undefined {
   if (!profile || (!profile.proxy && !profile.customCaPath && profile.rejectUnauthorized === undefined)) return global;
+  // Field by field: whatever the profile does not set comes from the AWS settings (a profile with only its own proxy
+  // still trusts the corporate CA of the settings page, and one with only a CA still uses the settings proxy).
   return {
-    customCaPath: profile.customCaPath,
-    rejectUnauthorized: profile.rejectUnauthorized === false ? global?.rejectUnauthorized : profile.rejectUnauthorized,
-    proxy: profile.proxy,
+    customCaPath: profile.customCaPath ?? global?.customCaPath,
+    proxy: profile.proxy ?? global?.proxy,
+    rejectUnauthorized: profile.rejectUnauthorized === false ? global?.rejectUnauthorized : (profile.rejectUnauthorized ?? global?.rejectUnauthorized),
   };
 }
 

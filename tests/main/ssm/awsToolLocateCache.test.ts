@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { locateTools } from '../../../src/main/aws/AwsSsmToolchain';
+import { clearToolLocateCache, locateTools } from '../../../src/main/aws/AwsSsmToolchain';
 
 afterEach(() => vi.useRealTimers());
 
@@ -30,6 +30,19 @@ describe('locateTools result reuse', () => {
     expect(locateTools(platform, env, dir).aws).toBe(aws);
     fs.rmSync(aws);
     expect(locateTools(platform, { PATH: join(dir, 'nonexistent') } as NodeJS.ProcessEnv, dir).aws).not.toBe(aws);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('an explicit clear (the "Check again" path) looks at the file system again at once', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tool-clear-'));
+    const aws = join(dir, name);
+    const env = { PATH: dir } as NodeJS.ProcessEnv;
+    clearToolLocateCache();
+    expect(locateTools(platform, env, dir).aws).not.toBe(aws); // nothing installed yet (a system-wide aws may be found)
+    fs.writeFileSync(aws, '#!/bin/sh\n', { mode: 0o755 });
+    expect(locateTools(platform, env, dir).aws).not.toBe(aws); // still the reused answer
+    clearToolLocateCache();
+    expect(locateTools(platform, env, dir).aws).toBe(aws);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

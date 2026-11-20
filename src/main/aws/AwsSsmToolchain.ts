@@ -13,8 +13,10 @@ export function candidateDirs(platform: NodeJS.Platform, env: NodeJS.ProcessEnv,
   if (platform === 'win32') {
     const pf = env.ProgramFiles ?? env.PROGRAMFILES ?? 'C:\\Program Files';
     const pf86 = env['ProgramFiles(x86)'] ?? env['PROGRAMFILES(X86)'];
-    // Machine installs first (the MSI default); then a 32-bit Program Files and a per-user folder, in case of a custom install.
-    const roots = [pf, ...(pf86 ? [pf86] : []), ...(env.LOCALAPPDATA ? [path.win32.join(env.LOCALAPPDATA, 'Programs')] : [])];
+    // Machine-controlled install locations only (the MSI default, then a 32-bit Program Files): a user-writable folder
+    // such as %LOCALAPPDATA%\Programs is deliberately not searched, since the first match is executed with the SSO
+    // profile and token environment (the same Windows trust rule as for the policy: machine locations only).
+    const roots = [pf, ...(pf86 ? [pf86] : [])];
     return {
       aws: roots.map((r) => path.win32.join(r, 'Amazon', 'AWSCLIV2')),
       plugin: roots.map((r) => path.win32.join(r, 'Amazon', 'SessionManagerPlugin', 'bin')),
@@ -90,23 +92,28 @@ interface Located {
   viaPath: boolean;
 }
 
-type Located2 = { aws?: Located; plugin?: Located };
+type LocatedTools = { aws?: Located; plugin?: Located };
 const LOCATE_TTL_MS = 2000;
-let locateCache: { key: string; at: number; value: Located2 } | undefined;
+let locateCache: { key: string; at: number; value: LocatedTools } | undefined;
 
 /**
  * `locate` walks every PATH directory with synchronous fs calls, and is asked several times per connection and by the
  * settings poll: a result is reused for a moment (an install is still noticed within seconds).
  */
-function locate(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): Located2 {
-  const key = JSON.stringify([platform, home, pathDirs(env, platform), env.ProgramFiles ?? env.PROGRAMFILES, env['ProgramFiles(x86)'] ?? env['PROGRAMFILES(X86)'], env.LOCALAPPDATA]);
+/** Forgets the reused lookup, so the next one looks at the file system again (an explicit "Check again"). */
+export function clearToolLocateCache(): void {
+  locateCache = undefined;
+}
+
+function locate(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): LocatedTools {
+  const key = JSON.stringify([platform, home, pathDirs(env, platform), env.ProgramFiles ?? env.PROGRAMFILES, env['ProgramFiles(x86)'] ?? env['PROGRAMFILES(X86)']]);
   if (locateCache && locateCache.key === key && Date.now() - locateCache.at < LOCATE_TTL_MS) return locateCache.value;
   const value = locateUncached(platform, env, home);
   locateCache = { key, at: Date.now(), value };
   return value;
 }
 
-function locateUncached(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): Located2 {
+function locateUncached(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): LocatedTools {
   const cand = candidateDirs(platform, env, home);
   const onPath = pathDirs(env, platform);
   const names = (n: typeof AWS_NAMES) => (platform === 'win32' ? n.win32 : n.other);
@@ -146,6 +153,7 @@ export function toolDirsMissingFromPath(
 
 /** Detects both tools; versions are probed once per tool file version (see probeVersion). */
 export async function detectAwsSsmTools(): Promise<AwsSsmTools> {
+  clearToolLocateCache(); // an explicit check always looks again
   const loc = locateTools();
   const status = async (file: string | undefined, isPlugin: boolean): Promise<AwsSsmToolStatus> => {
     if (!file) return { found: false };

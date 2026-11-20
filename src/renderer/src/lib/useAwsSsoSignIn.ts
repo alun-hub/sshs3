@@ -69,15 +69,16 @@ export function useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAcc
   );
 
   const loadAccounts = useCallback(async () => {
+    const mine = ++accountsReq.current;
     try {
       setManualEntry(false);
-      const mine = ++accountsReq.current;
       const list = await window.multissh.awsSsoListAccountsCached({ startUrl, region, s3ProfileId });
       if (mine !== accountsReq.current) return;
       setAccounts(list);
       const current = valueRef.current.accountId;
       if (current) void loadRoles(current);
     } catch (err) {
+      if (mine !== accountsReq.current) return; // a newer request (another URL or region) owns the state now
       // Some permission sets cannot list accounts/roles through the portal API: fall back to typing them in, and say why.
       setManualEntry(true);
       const detail = describeIpcError(err, 'Could not list the accounts');

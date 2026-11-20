@@ -25,6 +25,18 @@ describe('capProfileNetwork', () => {
     expect(capProfileNetwork({ proxy: PROXY, rejectUnauthorized: false }, { rejectUnauthorized: true })?.rejectUnauthorized).toBe(true);
     expect(capProfileNetwork({ proxy: PROXY, rejectUnauthorized: true }, undefined)?.rejectUnauthorized).toBe(true);
   });
+  it('merges field by field: what the profile does not set comes from the AWS settings', () => {
+    const global = { customCaPath: '/corp-ca.pem', proxy: { enabled: true, type: 'http', host: 'corp.proxy', port: 8080 } as const };
+    // a profile with only its own proxy still trusts the corporate CA of the settings page
+    expect(capProfileNetwork({ proxy: PROXY }, global)).toEqual({ customCaPath: '/corp-ca.pem', proxy: PROXY, rejectUnauthorized: undefined });
+    // a profile with only its own CA still uses the settings proxy
+    expect(capProfileNetwork({ customCaPath: '/p.pem' }, global)).toEqual({ customCaPath: '/p.pem', proxy: global.proxy, rejectUnauthorized: undefined });
+    // a profile that disables its proxy explicitly wins over the settings proxy
+    expect(capProfileNetwork({ proxy: { ...PROXY, enabled: false } }, global)?.proxy?.enabled).toBe(false);
+    // TLS: the profile can only be stricter than the settings, and inherits them when silent
+    expect(capProfileNetwork({ proxy: PROXY }, { rejectUnauthorized: false })?.rejectUnauthorized).toBe(false);
+    expect(capProfileNetwork({ proxy: PROXY, rejectUnauthorized: false }, { rejectUnauthorized: true })?.rejectUnauthorized).toBe(true);
+  });
 });
 
 describe('networkForSavedS3Profile', () => {

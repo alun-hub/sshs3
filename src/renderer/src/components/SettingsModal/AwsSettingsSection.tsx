@@ -216,7 +216,7 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
               Verify TLS certificates
             </label>
             <p className="text-xs text-txt-muted">
-              Used for sign-in, listing and instance search, and passed to the aws CLI as HTTPS_PROXY and AWS_CA_BUNDLE. A proxy that needs a login is not supported for the CLI; use the system proxy settings in that case.
+              Used for sign-in, listing and instance search, and passed to the aws CLI as HTTPS_PROXY and AWS_CA_BUNDLE. A proxy that needs a login is not supported for the CLI; use the system proxy settings in that case. Sign-in, listing and search use the saved settings, so save before signing in after a change.
             </p>
           </div>
 

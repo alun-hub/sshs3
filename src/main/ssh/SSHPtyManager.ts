@@ -221,12 +221,12 @@ export class InternalSSHPtySession implements SSHPtySession {
 
       this.reconnectTimer = setTimeout(async () => {
         if (this.disposed) return;
-        if (await ssmReconnectBlocked(this.config)) { // retrying cannot work until the user signs in again: say so once, give up
-          this.announce(`\r\n\x1b[31m[sshs3: AWS SSO session expired: sign in again, then reconnect]\x1b[0m\r\n`);
-          [this.reconnecting, this.reconnectAttempts] = [false, maxAttempts];
-          return this.handlePtyExit(event);
-        }
         try {
+          if (await ssmReconnectBlocked(this.config)) { // retrying cannot work until the user signs in again: say so once, give up
+            this.announce(`\r\n\x1b[31m[sshs3: AWS SSO session expired: sign in again, then reconnect]\x1b[0m\r\n`);
+            [this.reconnecting, this.reconnectAttempts] = [false, maxAttempts];
+            return this.handlePtyExit(event);
+          }
           const success = await this.manager.reconnectSession(this);
           if (success) {
             this.reconnecting = false;

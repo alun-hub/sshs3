@@ -98,3 +98,32 @@ describe('AwsSsoStatusBadge', () => {
     expect(await screen.findByRole('dialog', { name: 'Import instances from AWS' })).toBeInTheDocument();
   });
 });
+
+describe('AwsSsoStatusBadge window focus refresh', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('refreshes at most every 30 s, and schedules ONE trailing refresh so the colour is not left stale', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    show();
+    await waitFor(() => expect(api.profilesGet).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event('focus'));
+    window.dispatchEvent(new Event('focus')); // still inside the window: no extra refresh, one trailing one scheduled
+    expect(api.profilesGet).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(api.profilesGet).toHaveBeenCalledTimes(2); // the trailing refresh, once
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(api.profilesGet).toHaveBeenCalledTimes(2); // nothing pending any more
+    window.dispatchEvent(new Event('focus')); // outside the window: immediate
+    await waitFor(() => expect(api.profilesGet).toHaveBeenCalledTimes(3));
+  });
+
+  it('does not refresh after the badge is gone', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    show();
+    await waitFor(() => expect(api.profilesGet).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event('focus'));
+    cleanup();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(api.profilesGet).toHaveBeenCalledTimes(1);
+  });
+});

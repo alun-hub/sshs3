@@ -116,14 +116,11 @@ describe('ssoConfigFile', () => {
 describe('toolchain helpers', () => {
   it('lists Windows and Linux candidate dirs', () => {
     expect(candidateDirs('win32', { ProgramFiles: 'C:\\Program Files' }, 'C:\\Users\\u').plugin[0]).toBe('C:\\Program Files\\Amazon\\SessionManagerPlugin\\bin');
-    // Also a 32-bit Program Files and a per-user folder, after the machine install; both are optional.
+    // A 32-bit Program Files after the machine install; never a user-writable folder such as %LOCALAPPDATA%\\Programs.
     const full = candidateDirs('win32', { ProgramFiles: 'C:\\Program Files', 'ProgramFiles(x86)': 'C:\\Program Files (x86)', LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' }, 'C:\\Users\\u');
-    expect(full.aws).toEqual([
-      'C:\\Program Files\\Amazon\\AWSCLIV2',
-      'C:\\Program Files (x86)\\Amazon\\AWSCLIV2',
-      'C:\\Users\\u\\AppData\\Local\\Programs\\Amazon\\AWSCLIV2',
-    ]);
-    expect(full.plugin[2]).toBe('C:\\Users\\u\\AppData\\Local\\Programs\\Amazon\\SessionManagerPlugin\\bin');
+    expect(full.aws).toEqual(['C:\\Program Files\\Amazon\\AWSCLIV2', 'C:\\Program Files (x86)\\Amazon\\AWSCLIV2']);
+    expect(full.plugin).toEqual(['C:\\Program Files\\Amazon\\SessionManagerPlugin\\bin', 'C:\\Program Files (x86)\\Amazon\\SessionManagerPlugin\\bin']);
+    expect([...full.aws, ...full.plugin].some((d) => d.includes('AppData'))).toBe(false);
     expect(candidateDirs('win32', {}, 'C:\\Users\\u').aws).toEqual(['C:\\Program Files\\Amazon\\AWSCLIV2']);
     expect(candidateDirs('linux', {}, '/home/u').aws).toContain('/home/u/.local/bin');
   });

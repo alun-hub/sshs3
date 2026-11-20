@@ -130,4 +130,19 @@ describe('AwsSsoSignInPanel', () => {
     expect(screen.getByRole('option', { name: 'ReadOnly' })).toBeInTheDocument();
     api.awsSsoListRolesCached.mockImplementation((async () => [{ roleName: 'Admin' }, { roleName: 'ReadOnly' }]) as never);
   });
+
+  it('ignores a failed account list of an OLD start URL once a newer request has answered', async () => {
+    status = { status: 'valid', expiresAt: '2030-05-06T07:08:00' };
+    let rejectOld!: (e: Error) => void;
+    api.awsSsoListAccountsCached.mockImplementationOnce((() => new Promise((_res, rej) => { rejectOld = rej; })) as never); // the first (old URL) request hangs
+    render(<Harness initial={{ startUrl: URL_ }} />);
+    await waitFor(() => expect(api.awsSsoListAccountsCached).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByTestId('aws-sso-start-url'), { target: { value: 'https://d-2.awsapps.com/start' } });
+    const account = await screen.findByTestId('aws-sso-account'); // the new URL's request resolved
+    await waitFor(() => expect(account.querySelectorAll('option').length).toBeGreaterThan(1));
+    rejectOld(new Error('old request failed'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole('alert')).toBeNull(); // no bogus "Could not list the accounts"
+    expect(screen.queryByText('Account ID')).toBeNull(); // still the picker, not manual entry
+  });
 });
