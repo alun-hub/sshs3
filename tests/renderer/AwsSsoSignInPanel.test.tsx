@@ -103,14 +103,14 @@ describe('AwsSsoSignInPanel', () => {
     expect(alert).not.toHaveTextContent('save this profile first');
   });
 
-  it('shows a sign-in failure; only the sign-in itself carries the profile network options, never the cached lists', async () => {
+  it('shows a sign-in failure; no request carries network options, only a saved S3 profile id (main looks the network up)', async () => {
     api.awsSsoLogin.mockRejectedValueOnce(new Error('AWS SSO login was cancelled'));
     render(<Harness initial={{ startUrl: URL_ }} network={{ rejectUnauthorized: false }} />);
     await waitFor(() => expect(api.awsSsoStatus).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('aws-sso-sign-in'));
     expect(await screen.findByRole('alert')).toHaveTextContent('cancelled');
-    expect(api.awsSsoLogin).toHaveBeenCalledWith(URL_, 'us-east-1', { rejectUnauthorized: false });
-    for (const call of api.awsSsoListAccountsCached.mock.calls) expect(JSON.stringify(call)).not.toContain('rejectUnauthorized');
+    expect(api.awsSsoLogin).toHaveBeenCalledWith(URL_, 'us-east-1', undefined);
+    for (const call of [...api.awsSsoLogin.mock.calls, ...api.awsSsoListAccountsCached.mock.calls]) expect(JSON.stringify(call)).not.toContain('rejectUnauthorized');
   });
 
   it('shows the roles of the account chosen last, even when an earlier answer arrives afterwards', async () => {

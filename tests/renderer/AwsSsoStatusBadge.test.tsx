@@ -65,7 +65,7 @@ describe('AwsSsoStatusBadge', () => {
     expect(within(popover).getByText('Corp')).toBeInTheDocument();
     expect(await within(popover).findByText('Sign-in expired. Sign in again.')).toBeInTheDocument();
     fireEvent.click(within(popover).getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(api.awsSsoLogin).toHaveBeenCalledWith(CORP, 'us-east-1', undefined));
+    await waitFor(() => expect(api.awsSsoLogin).toHaveBeenCalledWith(CORP, 'us-east-1'));
     await waitFor(() => expect(button).toHaveAttribute('title', 'AWS: signed in'));
     expect(within(popover).getByRole('button', { name: 'Sign in again' })).toBeInTheDocument();
   });

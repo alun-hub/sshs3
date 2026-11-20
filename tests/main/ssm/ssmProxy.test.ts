@@ -275,3 +275,22 @@ describe('ssmReconnectBlocked', () => {
     expect(await ssmReconnectBlocked({ ssm: sso })).toBe(false);
   });
 });
+
+
+describe('SSM HostName pin (ssh expands %h from config, a command-line -o beats ~/.ssh/config)', () => {
+  it('adds -o HostName=<instance id> next to the ProxyCommand for an SSM profile only', async () => {
+    const { SmartcardDetector } = await import('../../../src/main/smartcard/SmartcardDetector');
+    const { ssmHostNameOption } = await import('../../../src/main/ssh/ssmProxy');
+    const id = 'i-0123456789abcdef0';
+    const ssmCfg = { id: 'p', name: 'n', host: id, username: 'ec2-user', authType: 'agent', ssm: { enabled: true, region: 'eu-north-1' } } as never;
+    const args = SmartcardDetector.buildSSHArguments(ssmCfg);
+    const at = args.indexOf(`HostName=${id}`);
+    expect(at).toBeGreaterThan(0);
+    expect(args[at - 1]).toBe('-o');
+    expect(args.findIndex((a: string) => a.startsWith('ProxyCommand='))).toBeGreaterThan(0);
+    expect(args.indexOf('--')).toBeGreaterThan(at); // before the destination
+    expect(ssmHostNameOption(ssmCfg)).toBe(`HostName=${id}`);
+    const plain = SmartcardDetector.buildSSHArguments({ id: 'q', name: 'n', host: 'web.example.com', username: 'u', authType: 'agent' } as never);
+    expect(plain.some((a: string) => a.startsWith('HostName='))).toBe(false);
+  });
+});

@@ -75,10 +75,10 @@ describe('AwsSettingsSection', () => {
     expect(screen.queryByRole('group', { name: 'New sign-in' })).toBeNull();
   });
 
-  it('signs in from the list and passes the network settings', async () => {
+  it('signs in from the list without sending any network settings (main reads them from the saved AWS settings)', async () => {
     render(<Harness initial={{ enableAws: true, awsSignIns: [{ id: 'u1', name: 'Mine', startUrl: 'https://mine.awsapps.com/start', region: 'eu-north-1' }], awsNetwork: { customCaPath: '/ca.pem' } }} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(api.awsSsoLogin).toHaveBeenCalledWith('https://mine.awsapps.com/start', 'eu-north-1', expect.objectContaining({ customCaPath: '/ca.pem' })));
+    await waitFor(() => expect(api.awsSsoLogin).toHaveBeenCalledWith('https://mine.awsapps.com/start', 'eu-north-1'));
   });
 
   it('shows the valid regions and flags the ones it will ignore', async () => {

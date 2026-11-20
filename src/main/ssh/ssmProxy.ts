@@ -158,6 +158,15 @@ export function ssmProxyOption(config: SSHConnectionConfig): string | undefined 
   return `ProxyCommand=${buildSsmProxyCommand(ssm, process.platform, profile)}`;
 }
 
+/**
+ * `HostName=<instance id>` for an SSM profile. ssh fills `%h` in the ProxyCommand from the HostName it resolves, and a
+ * command-line `-o` beats `~/.ssh/config`, so no config entry for the same host can put another value into the
+ * shell-evaluated ProxyCommand. The host is the instance id that `assertValidSsm` already validated.
+ */
+export function ssmHostNameOption(config: SSHConnectionConfig): string | undefined {
+  return config.ssm?.enabled ? `HostName=${config.host}` : undefined;
+}
+
 /** Env overlay for an SSM profile; empty for other profiles. */
 export function ssmEnvOverlay(config: SSHConnectionConfig): Record<string, string> {
   const ssm = config.ssm;

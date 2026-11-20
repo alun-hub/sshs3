@@ -53,7 +53,7 @@ import type {
 } from '../shared/types/sshCa';
 import type { AwsSsmTools } from '../shared/types/ssm';
 import { awsScanApi } from './awsScanApi';
-import type { AwsSsoLoginInfo, AwsSsoNetworkOptions } from '../shared/types/aws';
+import type { AwsSsoLoginInfo } from '../shared/types/aws';
 import type {
   DotfileImportedFile,
   DotfilePool,
@@ -693,11 +693,8 @@ export const api: MultiSSHApi = {
     ipcRenderer.invoke(IPC_CHANNELS.CONNECTION_TEST_S3, config),
 
   // AWS SSO login (device-authorization flow)
-  awsSsoLogin: (
-    startUrl: string,
-    region: string,
-    network?: AwsSsoNetworkOptions
-  ): Promise<AwsSsoLoginInfo> => ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region, network),
+  awsSsoLogin: (startUrl: string, region: string, s3ProfileId?: string): Promise<AwsSsoLoginInfo> =>
+    ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN, startUrl, region, s3ProfileId),
 
   awsSsoCancelLogin: (id: string): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.AWS_SSO_LOGIN_CANCEL, id),

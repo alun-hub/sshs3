@@ -1,4 +1,5 @@
 import { fingerprintKey } from '../ssh/hostKeyFingerprint';
+import { directiveValue, isSafeManagedDirectiveValue } from '../ssh/managedConfigValues';
 import {
   ALLOWED_MANAGED_BLOCK_DIRECTIVES,
   BLOCKED_SSH_DIRECTIVES,
@@ -84,6 +85,11 @@ export function sanitizeSshConfigBody(body: string): SanitizeSshConfigBodyResult
     // double-quoted keyword ("ProxyCommand" cmd), so quotes are stripped before the lookup.
     const directive = trimmed.split(/[\s=]+/, 1)[0]?.replace(/["']/g, '').toLowerCase();
     if (directive && (BLOCKED_SSH_DIRECTIVES.has(directive) || !ALLOWED_MANAGED_BLOCK_DIRECTIVES.has(directive))) {
+      removedLines.push(line);
+      continue;
+    }
+    // Values that ssh expands into shell-run commands (%h, %p, %r, ProxyJump) must not carry shell syntax.
+    if (directive && !isSafeManagedDirectiveValue(directive, directiveValue(trimmed))) {
       removedLines.push(line);
       continue;
     }

@@ -125,14 +125,14 @@ export function useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAcc
     setError(null);
     setSigningIn(true);
     try {
-      await window.multissh.awsSsoLogin(startUrl, region, networkRef.current);
+      await window.multissh.awsSsoLogin(startUrl, region, s3ProfileId);
       await refreshStatus();
     } catch (err) {
       setError(describeIpcError(err, 'AWS SSO login failed'));
     } finally {
       setSigningIn(false);
     }
-  }, [ready, startUrl, region, refreshStatus]);
+  }, [ready, startUrl, region, s3ProfileId, refreshStatus]);
 
   const selectAccount = useCallback(
     (accountId: string) => {

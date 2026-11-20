@@ -12,16 +12,15 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('useAwsRowSignIn', () => {
-  it('signs in the row (with the network options), marks it busy meanwhile and refreshes afterwards', async () => {
+  it('signs in the row (never sending network options), marks it busy meanwhile and refreshes afterwards', async () => {
     let release!: () => void;
     login.mockImplementation(() => new Promise<void>((r) => { release = r; }));
     const refresh = vi.fn();
-    const network = { customCaPath: '/ca.pem' };
-    const { result } = renderHook(() => useAwsRowSignIn(refresh, network));
+    const { result } = renderHook(() => useAwsRowSignIn(refresh));
     let p!: Promise<void>;
     act(() => { p = result.current.signIn(row); });
     expect(result.current.busyId).toBe('r1');
-    expect(login).toHaveBeenCalledWith(row.startUrl, row.region, network);
+    expect(login).toHaveBeenCalledWith(row.startUrl, row.region);
     await act(async () => { release(); await p; });
     expect(result.current.busyId).toBeNull();
     expect(refresh).toHaveBeenCalledTimes(1);

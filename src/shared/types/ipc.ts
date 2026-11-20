@@ -46,7 +46,6 @@ import type {
 import type {
   AwsSsoDevicePrompt,
   AwsSsoLoginInfo,
-  AwsSsoNetworkOptions,
 } from './aws';
 import type { SessionData } from './session';
 import type { ClipboardHistoryEntry } from './clipboard';
@@ -884,7 +883,8 @@ export interface MultiSSHApi extends AwsScanElectronApi {
   testS3Connection(config: S3Config): Promise<{ success: boolean; error?: string }>;
 
   // AWS SSO login (device-authorization flow)
-  awsSsoLogin(startUrl: string, region: string, network?: AwsSsoNetworkOptions): Promise<AwsSsoLoginInfo>;
+  /** `s3ProfileId`: a saved S3 profile whose own proxy/CA the sign-in may use (looked up in main; never sent from here). */
+  awsSsoLogin(startUrl: string, region: string, s3ProfileId?: string): Promise<AwsSsoLoginInfo>;
   /** Detects the `aws` CLI and `session-manager-plugin` needed for SSH over AWS SSM. */
   awsSsmCheckTools(): Promise<AwsSsmTools>;
   awsSsoCancelLogin(id: string): Promise<void>;

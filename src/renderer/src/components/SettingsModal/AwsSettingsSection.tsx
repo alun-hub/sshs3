@@ -56,7 +56,7 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
   }, [enableAws]);
 
   const network = awsNetworkToOptions(awsNetwork);
-  const { busyId, error, signIn } = useAwsRowSignIn(refresh, network);
+  const { busyId, error, signIn } = useAwsRowSignIn(refresh);
   const regionList = parseRegionList(awsRegions);
   const ignoredRegions = awsRegions.split(/[\s,;]+/).filter((r) => r && !regionList.includes(r));
   const draftValid = !!draft && draft.name.trim() !== '' && isValidSsoConfig({ startUrl: normalizeStartUrl(draft.startUrl), region: draft.region.trim() });

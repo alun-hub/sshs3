@@ -1,7 +1,7 @@
-import { globalAwsNetwork } from '../aws/awsNetworkSettings';
+import { networkForSavedS3Profile } from '../aws/ssoNetwork';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
-import { isValidRegion, isValidStartUrl, normalizeStartUrl } from '../../shared/ssm';
-import type { AwsSsoAccount, AwsSsoAccountRole, AwsSsoNetworkOptions } from '../../shared/types/aws';
+import { isValidRegion, isValidStartUrl } from '../../shared/ssm';
+import type { AwsSsoAccount, AwsSsoAccountRole } from '../../shared/types/aws';
 import type { AwsSsoCachedRequest, AwsSsoStatusInfo } from '../../shared/types/awsScan';
 import { assertAwsAllowed } from './ssmPreflight';
 import type { IpcBridge } from '../IpcBridge';
@@ -17,22 +17,6 @@ function checkRequest(req: unknown, needsAccount: boolean): AwsSsoCachedRequest 
   if (!r || !isValidStartUrl(r.startUrl) || !isValidRegion(r.region)) throw new Error('Invalid AWS SSO request');
   if (needsAccount && !(typeof r.accountId === 'string' && /^\d{12}$/.test(r.accountId))) throw new Error('Invalid AWS account id');
   return r;
-}
-
-/** Network for a listing: a saved S3 profile's own proxy/CA when its id is given, otherwise the AWS settings. */
-async function networkFor(bridge: AwsSsoCachedHost, r: AwsSsoCachedRequest): Promise<AwsSsoNetworkOptions | undefined> {
-  if (typeof r.s3ProfileId !== 'string' || !bridge.profileStore) return globalAwsNetwork();
-  const saved = (await bridge.profileStore.getProfiles()).s3?.find((p) => p.id === r.s3ProfileId);
-  // Only a profile signed in to this very start URL may route its token, and it can never relax TLS verification
-  // beyond what the AWS settings allow.
-  if (!saved?.sso?.startUrl || normalizeStartUrl(saved.sso.startUrl) !== r.startUrl || (saved.sso.region ?? r.region) !== r.region) return globalAwsNetwork();
-  if (!saved.proxy && !saved.customCaPath && saved.rejectUnauthorized === undefined) return globalAwsNetwork();
-  const global = globalAwsNetwork();
-  return {
-    customCaPath: saved.customCaPath,
-    rejectUnauthorized: saved.rejectUnauthorized === false ? global?.rejectUnauthorized : saved.rejectUnauthorized,
-    proxy: saved.proxy,
-  };
 }
 
 /**
@@ -52,7 +36,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
     async (_event, req: AwsSsoCachedRequest): Promise<AwsSsoAccount[]> => {
       checkPolicy(bridge);
       const r = checkRequest(req, false);
-      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, await networkFor(bridge, r));
+      return await bridge.awsSsoAuthService.listAccountsCached(r.startUrl, r.region, await networkForSavedS3Profile(bridge.profileStore, r.s3ProfileId, r.startUrl, r.region));
     }
   );
 
@@ -65,7 +49,7 @@ export function registerAwsSsoCachedHandlers(bridge: AwsSsoCachedHost): void {
         r.startUrl,
         r.region,
         r.accountId!,
-        await networkFor(bridge, r)
+        await networkForSavedS3Profile(bridge.profileStore, r.s3ProfileId, r.startUrl, r.region)
       );
     }
   );

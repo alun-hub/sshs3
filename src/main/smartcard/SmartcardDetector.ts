@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
 import { isAllowedExtraOption } from '../ssh/blockedSshDirectives';
 import { isSsmShellProfile } from '../../shared/ssm';
-import { assertValidSsm, SSM_SHELL_NO_SSH_MESSAGE, ssmEnvOverlay, ssmProxyOption } from '../ssh/ssmProxy';
+import { assertValidSsm, SSM_SHELL_NO_SSH_MESSAGE, ssmEnvOverlay, ssmHostNameOption, ssmProxyOption } from '../ssh/ssmProxy';
 import { createLogger } from '../log';
 const smartcardLog = createLogger('smartcard');
 
@@ -495,9 +495,10 @@ export class SmartcardDetector {
     }
 
     // SSH over AWS SSM (-o ProxyCommand=aws ssm start-session …). A command-line -o beats any
-    // hand-written ~/.ssh/config entry for the same host, so the two never double up.
+    // hand-written ~/.ssh/config entry for the same host, so the two never double up. HostName is pinned the same way:
+    // ssh expands %h in the shell-run ProxyCommand from the resolved HostName, never from a config entry.
     const ssmOption = ssmProxyOption(config);
-    if (ssmOption) args.push('-o', ssmOption);
+    if (ssmOption) args.push('-o', ssmOption, '-o', ssmHostNameOption(config)!);
 
     // Destination target (username@host or host), preceded by '--' to prevent flag injection
     const destination = config.username ? `${config.username}@${config.host}` : config.host;
