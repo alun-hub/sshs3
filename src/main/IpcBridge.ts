@@ -1095,9 +1095,10 @@ export class IpcBridge {
    * metadata-only check rather than a full pull on every tick. Called after a successful
    * unlock/create and after the target changes; a no-op tick (see `runTeamVaultAutoPoll`) stops
    * itself if the vault isn't actually unlocked or has no remote target configured, so callers
-   * don't need to check either condition themselves before calling this. */
-  public startTeamVaultAutoPollTimer(vaultId: string): void {
+   * don't need to check either condition themselves before calling this. `pollNow`: one tick at once (the first is 3 min away). */
+  public startTeamVaultAutoPollTimer(vaultId: string, pollNow = false): void {
     this.stopTeamVaultAutoPollTimer(vaultId);
+    if (pollNow) void this.runTeamVaultAutoPoll(vaultId);
     const timer = setInterval(() => {
       void this.runTeamVaultAutoPoll(vaultId);
     }, IpcBridge.TEAM_VAULT_AUTO_POLL_INTERVAL_MS);
