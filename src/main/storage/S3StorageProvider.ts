@@ -109,6 +109,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
     const s3ClientConfig: S3ClientConfig = {
       region: config.region || 'us-east-1',
       endpoint: config.endpoint,
+      followRegionRedirects: !config.endpoint, // AWS S3 only: a bucket in another region than the profile's is found instead of 'must be addressed using the specified endpoint'
       forcePathStyle: config.forcePathStyle ?? true,
       credentials:
         config.authMode === 'sso' && config.sso
