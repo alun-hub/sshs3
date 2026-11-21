@@ -96,13 +96,21 @@ describe('AWS_SSO_LOGIN / AWS_SSO_RELOGIN_PROVIDER handlers', () => {
     expect(login).not.toHaveBeenCalled();
   });
 
-  it('signs in with the start URL exactly as the saved profile holds it, because the S3 provider reads the token cache by that same string', async () => {
-    // The cache file is named sha1(startUrl). The S3 provider looks it up with the saved string (fromSSO), so a
-    // profile saved as ".../start#/" must be signed in as ".../start#/": normalising here would write the token
-    // under a name the provider never reads. Validation still uses the normalised form.
+  it('signs in under the normalised start URL, also for a saved S3 profile that holds it as typed (relogin)', async () => {
+    // The token cache file is named sha1(start URL) and the status/list handlers, the sign-in dialogs and the S3 provider
+    // all use the normalised URL, so that is what login() must be given even when the saved profile says ".../start#/".
     await call(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, 's3-legacy');
     expect(login).toHaveBeenCalledTimes(1);
-    expect((login.mock.calls[0] as unknown as [string, string])[0]).toBe(LEGACY_URL);
+    expect((login.mock.calls[0] as unknown as [string, string])[0]).toBe(URL_);
+    expect(LEGACY_URL).not.toBe(URL_);
+  });
+
+  it('hands login() the cleaned start URL and region, not what the caller sent', async () => {
+    await call(IPC_CHANNELS.AWS_SSO_LOGIN, `  ${URL_}#/?tab=accounts `, ' us-east-1 ');
+    expect(login).toHaveBeenCalledTimes(1);
+    const [url, region] = login.mock.calls[0] as unknown as [string, string];
+    expect(url).toBe(URL_);
+    expect(region).toBe('us-east-1');
   });
 
   it('relogin uses the saved provider proxy/CA but never weaker TLS than the AWS settings', async () => {

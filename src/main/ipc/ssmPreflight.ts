@@ -4,7 +4,7 @@ import type { AwsSsoAuthService } from '../aws/AwsSsoAuthService';
 import type { PolicyDocument } from '../../shared/types/policy';
 import { isFeatureAllowed } from '../policy/policyApply';
 
-/** The `awsSsm` policy switch for the AWS IPC handlers (scan, CLI profiles, cached sign-in lists). */
+/** The `awsSsm` policy switch for the AWS IPC handlers that search for or check instances (scan, CLI profiles). */
 export function assertAwsAllowed(policy: PolicyDocument): void {
   if (!isFeatureAllowed(policy, 'awsSsm')) throw new Error('AWS features are disabled by your administrator');
 }

@@ -18,11 +18,14 @@ const REFRESH_MARGIN_MS = 5 * 60_000;
 export function shareCredentials(provider: () => Promise<{ expiration?: Date }>): () => Promise<any> {
   let current: Promise<{ expiration?: Date }> | undefined;
   const expiring = (c: { expiration?: Date }) => c.expiration !== undefined && c.expiration.getTime() - Date.now() < REFRESH_MARGIN_MS;
+  const expired = (c: { expiration?: Date }) => c.expiration !== undefined && c.expiration.getTime() <= Date.now();
   return async () => {
     const mine = (current ??= provider());
     let waiting = mine;
+    let held: { expiration?: Date } | undefined;
     try {
       const c = await mine;
+      held = c;
       if (!expiring(c)) return c;
       // Near expiry: the first caller to notice starts the refresh; the others wait for that same promise.
       if (current === mine) current = provider();
@@ -31,6 +34,9 @@ export function shareCredentials(provider: () => Promise<{ expiration?: Date }>)
     } catch (err) {
       // A failed provider (the first one or its refresh) is retried by the next call, not by every caller that waited on it.
       if (current === waiting || current === mine) current = undefined;
+      // A refresh that fails while the credentials in hand are still valid (the margin is only a head start) is not a
+      // reason to fail the caller: use them, and the next call tries the refresh again.
+      if (held && !expired(held)) return held;
       throw err;
     }
   };

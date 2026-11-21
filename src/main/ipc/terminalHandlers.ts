@@ -1,5 +1,6 @@
 import { XServerManager } from '../x11/XServerManager';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
+import { isSsmShellProfile } from '../../shared/ssm';
 import { assertSsmSignedIn } from './ssmPreflight';
 import { resolveSshConfigForConnect } from './sshConfigResolve';
 import type { SSHConnectionConfig, PtyOptions } from '../../shared/types/ssh';
@@ -49,11 +50,17 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
         config = await resolveSshConfigForConnect(bridge, config);
         await assertSsmSignedIn(bridge.awsSsoAuthService, config.ssm, bridge.policy.policy);
         config = await bridge.resolveProxyJumpConfig(config);
-        config = await bridge.smartcard.prepareSmartcardConfig(config);
-        config = await bridge.smartcard.prepareFido2Config(config);
-        config = await bridge.smartcard.prepareSshCaConfig(config);
+        // A Session Manager shell never runs ssh. The smartcard, FIDO2 and SSH CA preparation (a PIN or touch prompt, a key
+        // file that waits for its YubiKey, an agent) and the X server belong to SSH connections, and a profile that was
+        // switched to a shell still carries its old authType and X11 setting.
+        const runsSsh = !isSsmShellProfile(config);
+        if (runsSsh) {
+          config = await bridge.smartcard.prepareSmartcardConfig(config);
+          config = await bridge.smartcard.prepareFido2Config(config);
+          config = await bridge.smartcard.prepareSshCaConfig(config);
+        }
 
-        if (config.x11Forwarding && process.platform === 'win32') {
+        if (runsSsh && config.x11Forwarding && process.platform === 'win32') {
           try {
             const settings = await bridge.settingsStore.getSettings();
             if (settings.x11ServerMode !== 'manual') {
@@ -87,7 +94,7 @@ export function registerTerminalHandlers(bridge: TerminalHost): void {
 
       bridge.assignSession(event?.sender, session.sessionId);
 
-      if (!options.local && config) {
+      if (!options.local && config && !isSsmShellProfile(config)) {
         // Fire-and-forget: never let the dotfiles check delay or fail the
         // terminal session itself, and give the PTY a moment to become
         // interactive before a second connection competes for the network.

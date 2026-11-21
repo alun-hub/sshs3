@@ -37,6 +37,7 @@ import {
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { fromSSO } from '@aws-sdk/credential-provider-sso';
+import { normalizeStartUrl } from '../../shared/ssm';
 import { buildAwsNodeHttpHandler } from '../aws/buildAwsNodeHttpHandler';
 import { describeS3Error, isAwsCredentialsError, isAwsSsoSessionError } from '../aws/awsErrors';
 import { createLogger } from '../log';
@@ -112,7 +113,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       credentials:
         config.authMode === 'sso' && config.sso
           ? fromSSO({
-              ssoStartUrl: config.sso.startUrl,
+              ssoStartUrl: normalizeStartUrl(config.sso.startUrl ?? ''), // sign-ins write the token under the normalised URL (old profiles may hold it as typed)
               ssoRegion: config.sso.region,
               ssoAccountId: config.sso.accountId,
               ssoRoleName: config.sso.roleName,

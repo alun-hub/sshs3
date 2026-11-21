@@ -35,7 +35,8 @@
 # OpenShift login and the oc CLI shim: true or false.
 # enableOpenShift = false
 
-# AWS features (SSH over Systems Manager, importing instances, the AWS sign-in button): true or false.
+# The AWS user interface (importing instances, the AWS sign-in button, the Systems Manager section of a profile):
+# true shows it and locks it on, false hides it and locks it off. It does not block connections; use awsSsm for that.
 # enableAws = true
 
 # Regions searched when importing AWS instances, comma separated (up to 512 characters).
@@ -51,5 +52,6 @@
 # Allow importing dotfiles from a Git repository. false blocks it.
 # dotfileGitImport = false
 
-# Allow SSH connections through AWS Systems Manager (SSM). false blocks it.
+# Allow connections through AWS Systems Manager (SSM): SSH over SSM, Session Manager shells and the instance search.
+# false blocks them.
 # awsSsm = false

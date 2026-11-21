@@ -77,13 +77,21 @@ describe('cached SSO handlers', () => {
     expect(accounts).not.toHaveBeenCalled();
   });
 
-  it('validates arguments in main and honours the policy', async () => {
+  it('validates arguments in main', async () => {
     await expect(call(IPC_CHANNELS.AWS_SSO_STATUS, 'http://evil/../x')).rejects.toThrow(/Invalid AWS SSO start URL/);
     await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'bad;region' })).rejects.toThrow(/Invalid/);
     await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, undefined)).rejects.toThrow(/Invalid/);
     await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ROLES_CACHED, { startUrl: URL_, region: 'us-east-1', accountId: '12' })).rejects.toThrow(/account id/);
+  });
+
+  it('keeps answering when the administrator blocks SSH over SSM (awsSsm=false): the S3 and sync target forms use these calls for sign-ins that have nothing to do with Systems Manager', async () => {
     features = { awsSsm: false };
-    await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1' })).rejects.toThrow(/disabled by your administrator/);
+    writeToken(new Date(Date.now() + 3600_000).toISOString());
+    expect((await call(IPC_CHANNELS.AWS_SSO_STATUS, URL_)).status).toBe('valid');
+    expect(await call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'us-east-1' })).toEqual([{ accountId: '123456789012', accountName: 'Prod' }]);
+    expect(await call(IPC_CHANNELS.AWS_SSO_LIST_ROLES_CACHED, { startUrl: URL_, region: 'us-east-1', accountId: '123456789012' })).toEqual([{ roleName: 'Dev' }]);
+    // The arguments are still validated, and a missing sign-in still asks for one.
+    await expect(call(IPC_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, { startUrl: URL_, region: 'bad;region' })).rejects.toThrow(/Invalid/);
   });
 
   it('uses the proxy of a SAVED S3 profile (looked up by id in main), falling back to the AWS settings', async () => {
