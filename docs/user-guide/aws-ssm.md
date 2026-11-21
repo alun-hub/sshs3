@@ -1,4 +1,4 @@
-## SSH over AWS Systems Manager (Experimental)
+## SSH over AWS Systems Manager
 
 Connect to EC2 instances (or hybrid nodes) that have no public SSH port through AWS Systems Manager Session Manager. There are two connection types:
 
@@ -8,9 +8,6 @@ Connect to EC2 instances (or hybrid nodes) that have no public SSH port through 
 | **Session Manager shell** | A terminal like **Connect → Session Manager** in the EC2 console. IAM decides who may connect; you log in as `ssm-user`. | Only the SSM Agent and IAM permissions: no sshd, no key. Terminal only; files, tunnels and key install need SSH. |
 
 You can type an instance ID, or sign in once and let sshs3 list what you have across accounts and regions.
-
-> [!IMPORTANT]
-> This feature is **Experimental**. It has been tested end to end on Linux (Fedora) against a live AWS account with Amazon Linux 2023: an AWS CLI profile (`aws login`), the default credential chain and IAM Identity Center sign-in. Windows is verified for the `ProxyCommand` hand-off only, and Debian/Ubuntu, very large organizations, SCP region restrictions and corporate proxies are covered by automated tests but not yet tried against real environments.
 
 ## 1. Requirements
 
