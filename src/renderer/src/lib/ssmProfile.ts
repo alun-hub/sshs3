@@ -53,8 +53,13 @@ export function authSuffix(p: Pick<SSHConnectionConfig, 'authType' | 'ssm'>): st
   return isSsmShellProfile(p) ? '' : ` · ${p.authType}`;
 }
 
+/** What a Session Manager shell profile shows where other profiles show `user@host`: it has no SSH login to show. */
+export function ssmShellTarget(host: string): string {
+  return `Session Manager shell · ${host}`;
+}
+
 /** The `user@host:port · auth` line of a profile row; a Session Manager shell shows what it is instead. */
 export function profileTarget(p: Pick<SSHConnectionConfig, 'username' | 'host' | 'port' | 'authType' | 'ssm'>, suffix: string): string {
-  if (isSsmShellProfile(p)) return `Session Manager shell · ${p.host}${suffix}`;
+  if (isSsmShellProfile(p)) return `${ssmShellTarget(p.host)}${suffix}`;
   return `${p.username}@${p.host}:${p.port ?? 22}${suffix}`;
 }

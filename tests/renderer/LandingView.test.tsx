@@ -57,6 +57,34 @@ describe('LandingView Component', () => {
     expect(screen.getByTestId('landing-file-manager-btn')).toBeInTheDocument();
   });
 
+  it('shows a Session Manager shell profile as what it is, and other profiles as user@host:port', () => {
+    const shell: SSHConnectionConfig = {
+      id: 'conn-3',
+      name: 'ec2 shell',
+      host: 'i-0123456789abcdef0',
+      username: '',
+      authType: 'agent',
+      ssm: { enabled: true, mode: 'shell', region: 'eu-north-1' },
+    };
+    render(
+      <LandingView
+        recentSSH={[...mockRecentSSH, shell]}
+        onConnectRecentSSH={vi.fn()}
+        onConnectSFTP={vi.fn()}
+        onQuickConnectSSH={vi.fn()}
+        onQuickStartTerminal={vi.fn()}
+        onNewTab={vi.fn()}
+        onOpenProfiles={vi.fn()}
+        onNewProfile={vi.fn()}
+        onOpenSyncBootstrap={vi.fn()}
+        onNavigateToTabBar={vi.fn()}
+      />
+    );
+    expect(screen.getByText('Session Manager shell · i-0123456789abcdef0')).toBeInTheDocument();
+    expect(screen.queryByText(/^@i-0123456789abcdef0/)).toBeNull();
+    expect(screen.getByText('alun@gnarg:22')).toBeInTheDocument();
+  });
+
   describe('searching saved profiles from the quick-connect box', () => {
     const allSSH: SSHConnectionConfig[] = [
       ...mockRecentSSH,

@@ -23,6 +23,27 @@ describe('buildProfileEntries (Session Manager shell)', () => {
     ]);
     expect(entries.map((e) => [e.ref, e.sftp])).toEqual([['shell', false], ['over-ssh', true]]);
   });
+
+  it('describes a shell profile by what it is, not as "@<instance>" when it has no SSH login', () => {
+    const entries = buildProfileEntries([
+      {
+        source: 'personal',
+        ssh: [
+          ssh('shell', { username: '', host: 'i-0123456789abcdef0', ssm: { enabled: true, mode: 'shell', region: 'eu-north-1' } }),
+          ssh('over-ssh', { username: 'ec2-user', host: 'i-0fedcba9876543210', ssm: { enabled: true, region: 'eu-north-1' } }),
+        ],
+        s3: [],
+      },
+    ]);
+    expect(entries.map((e) => e.subtitle)).toEqual(['Session Manager shell · i-0123456789abcdef0', 'ec2-user@i-0fedcba9876543210']);
+  });
+
+  it('does not show a stale SSH login for a shell profile either', () => {
+    const [entry] = buildProfileEntries([
+      { source: 'personal', ssh: [ssh('shell', { username: 'ec2-user', host: 'i-0123456789abcdef0', ssm: { enabled: true, mode: 'shell' } })], s3: [] },
+    ]);
+    expect(entry.subtitle).toBe('Session Manager shell · i-0123456789abcdef0');
+  });
 });
 
 describe('buildProfileEntries', () => {

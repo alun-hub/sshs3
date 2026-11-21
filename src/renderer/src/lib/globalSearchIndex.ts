@@ -4,6 +4,7 @@ import { collectLeaves } from './paneTree';
 import { groupBySystem, systemNameOf } from './systemGrouping';
 import { isSsmShellProfile } from '@shared/ssm';
 import { sftpUnavailableReason } from './platform';
+import { ssmShellTarget } from './ssmProfile';
 import type { AppTab } from './tabs';
 
 /**
@@ -49,7 +50,7 @@ export function buildProfileEntries(sources: SearchSource[]): SearchEntry[] {
         id: `ssh:${source}:${p.id}`,
         kind: 'ssh',
         title: p.name,
-        subtitle: `${p.username}@${p.host}${port}`,
+        subtitle: isSsmShellProfile(p) ? ssmShellTarget(p.host) : `${p.username}@${p.host}${port}`,
         group: p.group,
         system: systemNameOf(p),
         tags: p.tags ?? [],

@@ -8,6 +8,7 @@ import { TagChips } from './ui/TagChips';
 import { Highlighted } from './ui/Highlighted';
 import { searchLandingProfiles, type LandingMatch } from '../lib/landingSearch';
 import { formatRelativeTime } from '../lib/relativeTime';
+import { profileTarget } from '../lib/ssmProfile';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { TabType } from './TabBar';
 import { FOCUSABLE_OVERLAY_SELECTOR, isElementVisible, navigateInOverlay, type NavigationDirection } from '../lib/spatialNavigation';
@@ -264,8 +265,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
                     <div className="truncate text-xs font-medium text-txt-primary" title={profile.name}>
                       <Highlighted text={profile.name} indices={titleIndices} />
                     </div>
-                    <div className="truncate text-xs text-txt-muted" title={`${profile.username}@${profile.host}:${profile.port ?? 22}`}>
-                      {profile.username}@{profile.host}:{profile.port ?? 22}
+                    <div className="truncate text-xs text-txt-muted" title={profileTarget(profile, '')}>
+                      {profileTarget(profile, '')}
                       {!searching && profile.lastUsedAt && <span> · {formatRelativeTime(profile.lastUsedAt)}</span>}
                     </div>
                   </div>
