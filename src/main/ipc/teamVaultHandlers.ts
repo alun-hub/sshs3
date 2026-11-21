@@ -317,7 +317,7 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
       requireIdentityFilePath(identityFilePath);
       await bridge.teamVaultService.unlock(vid, recipientId, identityFilePath);
       await bridge.teamVaultConfigStore.setSelfIdentity(vid, recipientId, identityFilePath);
-      bridge.startTeamVaultAutoPollTimer(vid);
+      bridge.startTeamVaultAutoPollTimer(vid, true); // poll at once: pick up what was pushed while this machine was locked or off
     }
   );
 
@@ -329,7 +329,7 @@ export function registerTeamVaultHandlers(bridge: TeamVaultHost): void {
         throw new Error('Recovery key text is required');
       }
       await bridge.teamVaultService.unlockWithRecoveryText(vid, identityText);
-      bridge.startTeamVaultAutoPollTimer(vid);
+      bridge.startTeamVaultAutoPollTimer(vid, true);
     }
   );
 

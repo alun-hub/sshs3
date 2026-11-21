@@ -238,6 +238,33 @@ describe('IpcBridge background work', () => {
       bridge.stopTeamVaultAutoPollTimer('vlt_a');
     });
 
+    it('with pollNow it pulls a remote change at once, without waiting for the interval', async () => {
+      const { bridge, teamVaultService, sent } = makeBridge();
+      teamVaultService.hasRemoteChangedSinceLastSync.mockResolvedValue(true);
+
+      bridge.startTeamVaultAutoPollTimer('vlt_a', true);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(teamVaultService.pullFromRemote).toHaveBeenCalledWith('vlt_a', expect.anything(), 'tv-base');
+      expect(sent.map((e) => e.channel)).toContain(IPC_CHANNELS.TEAM_VAULT_AUTO_PULLED);
+      bridge.stopTeamVaultAutoPollTimer('vlt_a');
+    });
+
+    it('with pollNow it never pulls over unpushed local changes, and a failing poll does not throw', async () => {
+      const { bridge, teamVaultService, sent } = makeBridge();
+      teamVaultService.hasRemoteChangedSinceLastSync.mockResolvedValue(true);
+      teamVaultService.hasUnpushedLocalChanges.mockResolvedValue(true);
+      bridge.startTeamVaultAutoPollTimer('vlt_a', true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(teamVaultService.pullFromRemote).not.toHaveBeenCalled();
+      expect(sent.map((e) => e.channel)).toContain(IPC_CHANNELS.TEAM_VAULT_REMOTE_CHANGED);
+
+      teamVaultService.hasRemoteChangedSinceLastSync.mockRejectedValue(new Error('offline'));
+      expect(() => bridge.startTeamVaultAutoPollTimer('vlt_a', true)).not.toThrow();
+      await vi.advanceTimersByTimeAsync(0);
+      bridge.stopTeamVaultAutoPollTimer('vlt_a');
+    });
+
     it('auto-pulls a remote change when there are no unpushed local changes, and tells every window', async () => {
       const { bridge, teamVaultService, teamVaultConfigStore, sent } = makeBridge();
       teamVaultService.hasRemoteChangedSinceLastSync.mockResolvedValue(true);
