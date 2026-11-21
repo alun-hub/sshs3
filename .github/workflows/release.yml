@@ -144,6 +144,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # The RPM must not ship /usr/lib/.build-id links: a link such as chrome-sandbox's is identical in every package built from the
+      # same Electron, so dnf refused the v0.98.0 auto-update next to another Electron app (a file conflict with the Lens package).
+      - name: Check the RPM has no build-id links
+        if: runner.os == 'Linux'
+        run: |
+          rpm_file="$(ls release/*.rpm | head -n 1)"
+          count="$(rpm -qlp "$rpm_file" | grep -c '^/usr/lib/\.build-id' || true)"
+          echo "$rpm_file: $count build-id entries"
+          if [ "$count" != "0" ]; then
+            echo "::error::The RPM contains /usr/lib/.build-id entries (see _build_id_links in electron-builder.json)"
+            exit 1
+          fi
+
       - name: Package policy templates (ADMX/ADML and policy.conf example)
         if: runner.os == 'Linux'
         run: |
