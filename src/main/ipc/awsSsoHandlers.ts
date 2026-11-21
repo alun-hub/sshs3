@@ -37,6 +37,10 @@ async function runSsoLogin(
 
   try {
     // The access token stays in the main process (the token cache); the renderer only learns when the sign-in ends.
+    // The start URL goes on exactly as given, not normalised: the cache file is named sha1(startUrl) and its reader
+    // decides the name. The renderer, saved sign-ins and SSM profiles hand over a normalised URL anyway; a saved S3
+    // profile saved by v0.97.9 or earlier may hold the URL as typed (e.g. ".../start#/"), and the S3 provider (fromSSO)
+    // then reads that same string. Normalising here would write the token where nothing looks for it.
     const { expiresAt } = await bridge.awsSsoAuthService.login(startUrl, region, {
       network,
       onPrompt: (prompt) => {
