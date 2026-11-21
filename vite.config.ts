@@ -123,7 +123,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    setupFiles: ['./tests/helpers/jsdomCanvas.ts'],
+    setupFiles: ['./tests/helpers/jsdomCanvas.ts', './tests/helpers/noRealSshG.ts'],
     passWithNoTests: true,
     coverage: {
       provider: 'v8',
