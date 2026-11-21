@@ -44,7 +44,7 @@ The registry value name is the policy name with a capital first letter (`autoChe
 | `enableOpenShift` | boolean | `true`, `false` | OpenShift login and the `oc` shim. |
 | `gitKeyFetch` | boolean | `true`, `false` | `false` blocks fetching public keys from GitHub, GitLab or a custom Git host. |
 | `dotfileGitImport` | boolean | `true`, `false` | `false` blocks importing dotfiles from a Git repository. |
-| `awsSsm` | boolean | `true`, `false` | `false` blocks SSH connections through AWS Systems Manager (SSM). |
+| `awsSsm` | boolean | `true`, `false` | `false` blocks connections through AWS Systems Manager (SSM): SSH over SSM and Session Manager shells, and the instance search. Signing in to IAM Identity Center for an S3 profile is not affected. |
 
 A setting that is not in the policy stays under the user's control.
 

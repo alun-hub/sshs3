@@ -77,7 +77,7 @@ sshs3 adds `-o ProxyCommand=…aws ssm start-session --target %h --document-name
 | Need | How |
 |------|-----|
 | Many accounts | Tick the accounts and pick a role per account (or one for all); sshs3 searches them in parallel with a small limit and skips what is denied. |
-| Preconfigured sign-ins | Policy `awsManagedSignIns` adds locked sign-ins for everyone; policy `awsRegions` sets the regions; policy `enableAws` turns the features on or off; policy `awsSsm` blocks SSH over SSM entirely. See [Enterprise deployment](/docs/reference/enterprise-deployment/). |
+| Preconfigured sign-ins | Policy `awsManagedSignIns` adds locked sign-ins for everyone; policy `awsRegions` sets the regions; policy `enableAws` shows or hides the AWS interface; policy `awsSsm` blocks connections through SSM (SSH over SSM and Session Manager shells) and the instance search. See [Enterprise deployment](/docs/reference/enterprise-deployment/). |
 | Corporate proxy or TLS inspection | **Settings → AWS → Network**. |
 | Names that mean something | Tag instances with `Name` and allow `ec2:DescribeInstances`. |
 | Audit | Session Manager activity is recorded in CloudTrail; AWS offers no session logging for SSH over SSM. |

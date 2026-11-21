@@ -44,8 +44,10 @@ Not configured: each user decides.</string>
 Disabled: OpenShift support is off and cannot be turned on.
 Not configured: each user decides.</string>
       <string id="EnableAws">AWS features</string>
-      <string id="EnableAws_Help">Enabled: AWS features (SSH over Systems Manager, importing instances, the AWS sign-in button) are on and cannot be turned off.
-Disabled: AWS features are off and cannot be turned on.
+      <string id="EnableAws_Help">Controls the AWS user interface: importing instances, the AWS sign-in button and the Systems Manager section of a profile.
+
+Enabled: the AWS user interface is shown and cannot be turned off.
+Disabled: the AWS user interface is hidden and cannot be turned on. This does not block connections; use "SSH over AWS Systems Manager" for that.
 Not configured: each user decides.</string>
       <string id="AwsRegions">AWS regions to search</string>
       <string id="AwsRegions_Help">Regions searched when users import AWS instances, comma separated (for example eu-north-1,eu-west-1). Locks the list for users.
@@ -66,7 +68,7 @@ Disabled: the feature is blocked. Enabled or Not configured: allowed.</string>
 
 Disabled: the feature is blocked. Enabled or Not configured: allowed.</string>
       <string id="AwsSsm">SSH over AWS Systems Manager</string>
-      <string id="AwsSsm_Help">Allows SSH connections through AWS Systems Manager (SSM).
+      <string id="AwsSsm_Help">Allows connections through AWS Systems Manager (SSM): SSH over SSM and Session Manager shells, and searching for instances.
 
 Disabled: the feature is blocked. Enabled or Not configured: allowed.</string>
     </stringTable>
