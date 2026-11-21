@@ -5,8 +5,12 @@ name: Microsoft Store build
 # is used here.
 # Optional submit job (input "submit"): uploads the package to Partner Center with the Microsoft Store
 # Developer CLI. It runs in the "store" environment (holds the Partner Center credentials; configure
-# required reviewers there). By default the submission is left as a DRAFT in Partner Center
-# (--noCommit); tick "commit" to also send it to certification.
+# required reviewers there). Without "commit" (--noCommit) msstore creates the submission and uploads the package to
+# Partner Center's storage but never commits it, and Partner Center only processes and shows an uploaded package after the
+# commit call (observed 2026-11-21: the draft still listed the old package). So "submit" without "commit" does NOT give a
+# draft with the new package: upload the artifact by hand in Partner Center, or tick "commit". A commit sends the submission to
+# certification with the texts of the last submission (What's new cannot be edited in between); publishing can be held with
+# "Don't publish until I select Publish now" under Submission options.
 # The bundled-tool steps (age, age-plugin-yubikey, VcXsrv) mirror release.yml (same pinned versions and
 # checksums); update both files together.
 
@@ -18,7 +22,7 @@ on:
         type: boolean
         default: false
       commit:
-        description: Commit the submission for certification (otherwise it stays a draft)
+        description: Commit the submission for certification (without it the uploaded package is not shown in Partner Center)
         type: boolean
         default: false
 
