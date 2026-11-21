@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.2] - 2026-11-21
+
+### Added
+- **Pick bucket… in the S3 profile form.** For an AWS SSO profile with an account and a role chosen, it lists the buckets that role may list. Choosing one sets **Initial Path**, the **Region** of that bucket and an empty **Profile Name**. It needs the permission `s3:ListAllMyBuckets`; without it the dialog shows the S3 message and you type the bucket name in **Initial Path**. Buckets that belong to another account are not listed.
+- **Saved sign-in** list in the S3 profile form and the sync target form: the IAM Identity Center sign-ins from **Settings → AWS** (and from policy) can be chosen instead of typing the start URL and region. A new form with exactly one saved sign-in starts from it; a profile that already has a start URL is never changed.
+
+### Changed
+- **Team Vault:** unlocking a team now checks the remote at once instead of after the first three minutes, so a profile pushed from another machine shows up without waiting. It still only pulls when you have no unpushed local changes; otherwise it only tells you that the remote changed.
+- **S3 in the wrong region:** a profile whose **Region** is not the bucket's now says *This bucket is in the region eu-north-1, but this profile uses another region. Edit the profile and set Region to eu-north-1.* instead of S3's *must be addressed using the specified endpoint*.
+- User guide: the keyring warning now says that saved profile passwords are stored in plain text without an OS keyring (it claimed they are never written unencrypted); the Settings guide covers all 11 categories and the search filter's real behavior; the list of file types blocked from external editing matches the code; many button names match the UI; Team Vault has a troubleshooting section.
+
+### Fixed
+- **A profile added or changed in `~/.aws/config` while sshs3 is running is found.** After `aws login`, `aws configure` or `aws sso login`, a running sshs3 kept using the old content of the file and answered *Could not load credentials from any providers* for a profile the AWS CLI could use. Restarting the app used to be the only way out.
+
 ## [0.98.1] - 2026-11-21
 
 ### Fixed
