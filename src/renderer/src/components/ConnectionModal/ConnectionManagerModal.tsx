@@ -1384,6 +1384,7 @@ export const ConnectionManagerModal: React.FC<ConnectionManagerModalProps> = ({
                   setEditing={setEditing}
                   onNewProfile={handleNewTeamProfile}
                   onVaultsMetaChange={handleVaultsMetaChange}
+                  needsSsh={needsSsh}
                 />
               )}
 

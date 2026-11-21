@@ -63,6 +63,9 @@ describe('AWS_SSO_LOGIN / AWS_SSO_RELOGIN_PROVIDER handlers', () => {
   const login = vi.fn(async () => ({ accessToken: 'secret-token', expiresAt: '2099-01-01T00:00:00Z' }));
   const clearCache = vi.fn();
   const provider = { type: 's3', clearCache, config: { authMode: 'sso', region: 'us-east-1', sso: { startUrl: URL_, region: 'us-east-1' }, proxy: PROXY, rejectUnauthorized: false } };
+  // Saved by the S3 form of v0.97.9 and earlier, which stored the start URL exactly as typed.
+  const LEGACY_URL = `${URL_}#/`;
+  const legacyProvider = { type: 's3', clearCache, config: { authMode: 'sso', region: 'us-east-1', sso: { startUrl: LEGACY_URL, region: 'us-east-1' } } };
   beforeEach(() => {
     handlers.clear(); login.mockClear(); clearCache.mockClear();
     registerAwsSsoHandlers({
@@ -70,7 +73,7 @@ describe('AWS_SSO_LOGIN / AWS_SSO_RELOGIN_PROVIDER handlers', () => {
       awsSsoAuthService: { login },
       pendingAwsSsoLogins: new Map(),
       sendToSender: vi.fn(),
-      storageRegistry: { get: (id: string) => (id === 's3-1' ? provider : undefined) },
+      storageRegistry: { get: (id: string) => (id === 's3-1' ? provider : id === 's3-legacy' ? legacyProvider : undefined) },
       profileStore: { getProfiles: async () => ({ s3: [] }) },
     } as never);
   });
@@ -91,6 +94,15 @@ describe('AWS_SSO_LOGIN / AWS_SSO_RELOGIN_PROVIDER handlers', () => {
       await expect(call(IPC_CHANNELS.AWS_SSO_LOGIN, u, r)).rejects.toThrow(/Invalid AWS SSO start URL or region/);
     }
     expect(login).not.toHaveBeenCalled();
+  });
+
+  it('signs in with the start URL exactly as the saved profile holds it, because the S3 provider reads the token cache by that same string', async () => {
+    // The cache file is named sha1(startUrl). The S3 provider looks it up with the saved string (fromSSO), so a
+    // profile saved as ".../start#/" must be signed in as ".../start#/": normalising here would write the token
+    // under a name the provider never reads. Validation still uses the normalised form.
+    await call(IPC_CHANNELS.AWS_SSO_RELOGIN_PROVIDER, 's3-legacy');
+    expect(login).toHaveBeenCalledTimes(1);
+    expect((login.mock.calls[0] as unknown as [string, string])[0]).toBe(LEGACY_URL);
   });
 
   it('relogin uses the saved provider proxy/CA but never weaker TLS than the AWS settings', async () => {

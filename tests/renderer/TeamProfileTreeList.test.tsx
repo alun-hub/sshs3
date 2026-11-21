@@ -443,3 +443,48 @@ describe('TeamProfileTreeList systems', () => {
     expect(screen.queryByRole('button', { name: /Connect all/ })).not.toBeInTheDocument();
   });
 });
+
+describe('TeamProfileTreeList when the list is a place to pick an SSH endpoint (needsSsh)', () => {
+  const unlocked = { ...lockedStatus, unlocked: true } as TeamVaultStatus;
+  const web = { id: 'p1', name: 'web-1', host: 'web-1.example.com', username: 'root', authType: 'password' };
+  const shell = { id: 'p2', name: 'ec2-shell', host: 'i-0123456789abcdef0', username: '', authType: 'agent', ssm: { enabled: true, mode: 'shell', region: 'eu-north-1' } };
+  const overSsm = { id: 'p3', name: 'ec2-ssh', host: 'i-0fedcba9876543210', username: 'ec2-user', authType: 'agent', ssm: { enabled: true, region: 'eu-north-1' } };
+
+  function withPayload(ssh: unknown[], folders: string[] = []) {
+    setApi({
+      teamVaultList: vi.fn().mockResolvedValue([unlocked]),
+      teamVaultGetStatus: vi.fn().mockResolvedValue(unlocked),
+      teamVaultGetPayload: vi.fn().mockResolvedValue({ ssh, s3: [], folders } as unknown as TeamVaultPayload),
+    });
+  }
+  const lastMeta = (fn: ReturnType<typeof vi.fn>) => (fn.mock.calls.at(-1)![0] as Array<{ matchCount: number }>)[0];
+
+  it('leaves out Session Manager shell profiles, but keeps SSH over SSM and ordinary ones', async () => {
+    withPayload([web, shell, overSsm]);
+    renderList({ needsSsh: true });
+    expect(await screen.findByText('web-1')).toBeInTheDocument();
+    expect(screen.getByText('ec2-ssh')).toBeInTheDocument();
+    expect(screen.queryByText('ec2-shell')).toBeNull();
+  });
+
+  it('shows every profile otherwise, shell profiles included', async () => {
+    withPayload([web, shell, overSsm]);
+    renderList();
+    expect(await screen.findByText('ec2-shell')).toBeInTheDocument();
+    expect(screen.getByText('web-1')).toBeInTheDocument();
+  });
+
+  it('does not count a hidden shell profile as a search match', async () => {
+    withPayload([web, shell]);
+    const onVaultsMetaChange = vi.fn();
+    renderList({ needsSsh: true, query: 'ec2', onVaultsMetaChange });
+    await waitFor(() => expect(onVaultsMetaChange).toHaveBeenCalled());
+    await waitFor(() => expect(lastMeta(onVaultsMetaChange).matchCount).toBe(0));
+    cleanup();
+
+    withPayload([web, shell]);
+    const counted = vi.fn();
+    renderList({ needsSsh: false, query: 'ec2', onVaultsMetaChange: counted });
+    await waitFor(() => expect(lastMeta(counted).matchCount).toBe(1));
+  });
+});

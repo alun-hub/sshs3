@@ -27,6 +27,8 @@ interface Props {
   /** `single` picks one instance (fills the profile form); `multi` imports several as new profiles. */
   mode: 'single' | 'multi';
   initialSso?: { startUrl: string; region: string };
+  /** `single` only: false when the profile being filled is a Session Manager shell, which has no SSH login to suggest. */
+  sshLogin?: boolean;
   onClose: () => void;
   onPick: (result: AwsPickResult) => void | Promise<void>;
 }
@@ -37,7 +39,7 @@ interface Props {
  * Instances come from `ssm:DescribeInstanceInformation`, so only nodes with a running SSM Agent appear.
  * Credentials and tokens stay in the main process; this dialog only sees status, lists and the nodes found.
  */
-export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onClose, onPick }) => {
+export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, sshLogin = true, onClose, onPick }) => {
   const single = mode === 'single';
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(dialogRef, true);
@@ -302,7 +304,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
           selected={selectedKeys}
           onToggle={(key) => setSelectedKeys((cur) => toggleSelection(cur, key, single))}
           onSelectMany={(keys) => setSelectedKeys((cur) => (keys.length === 0 ? new Set() : new Set([...cur, ...keys])))}
-          showLogin={single || connect.mode === 'ssh'}
+          showLogin={single ? sshLogin : connect.mode === 'ssh'}
           usernames={usernames}
           onUsername={(id, v) => setUsernames((u) => ({ ...u, [id]: v }))}
           added={added}

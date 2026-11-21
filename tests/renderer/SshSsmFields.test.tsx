@@ -17,22 +17,28 @@ const api = {
   policyGet: vi.fn(async () => ({ managed: [], features: {}, warnings: [] })),
   profilesGet: vi.fn(async () => ({ ssh: [], s3: [] })),
   awsSsoListRolesCached: vi.fn(async () => []),
+  awsSsmScan: vi.fn(async () => ({
+    instances: [{ instanceId: 'i-0abcdef0123456789', name: 'web-1', platformName: 'Ubuntu', platformType: 'Linux', ipAddress: '10.0.0.5', region: 'eu-north-1', targetId: 'default' }],
+    skipped: [], truncated: false, searched: 1,
+  })),
   awsSsmScanCancel: vi.fn(async () => undefined),
   onAwsSsmScanProgress: vi.fn(() => () => {}),
 };
 
 let latest: { ssm?: SshSsmConfig; host?: string; username?: string };
+/** What the last `onChange` passed as its second argument (kept apart: the harness re-renders and resets `latest`). */
+let lastExtra: { host?: string; username?: string } | undefined;
 const Harness = ({ initial }: { initial?: SshSsmConfig }) => {
   const [ssm, setSsm] = useState<SshSsmConfig | undefined>(initial);
   latest = { ssm };
   return (
     <AwsEnabledContext.Provider value={true}>
-      <SshSsmFields ssm={ssm} host="i-0123456789abcdef0" onChange={(next, extra) => { setSsm(next); latest = { ssm: next, ...extra }; }} />
+      <SshSsmFields ssm={ssm} host="i-0123456789abcdef0" onChange={(next, extra) => { setSsm(next); lastExtra = extra; latest = { ssm: next, ...extra }; }} />
     </AwsEnabledContext.Provider>
   );
 };
 
-beforeEach(() => { Object.values(api).forEach((f) => f.mockClear()); window.multissh = { ...api } as never; });
+beforeEach(() => { lastExtra = undefined; Object.values(api).forEach((f) => f.mockClear()); window.multissh = { ...api } as never; });
 afterEach(() => cleanup());
 
 describe('SshSsmFields (simplified)', () => {
@@ -79,6 +85,36 @@ describe('SshSsmFields (simplified)', () => {
     render(<Harness initial={{ enabled: true }} />);
     fireEvent.click(screen.getByRole('button', { name: /Pick from AWS/ }));
     expect(await screen.findByRole('dialog', { name: 'Pick an AWS instance' })).toBeInTheDocument();
+  });
+
+  async function pickWeb1() {
+    fireEvent.click(screen.getByRole('button', { name: /Pick from AWS/ }));
+    await screen.findByRole('dialog', { name: 'Pick an AWS instance' });
+    fireEvent.click(await screen.findByRole('radio', { name: 'Default credentials' }));
+    fireEvent.click(screen.getByTestId('guide-search'));
+    const row = await screen.findByLabelText(/^web-1,/);
+    return row;
+  }
+
+  it('a Session Manager shell profile is not asked for, and does not get, an SSH login when an instance is picked', async () => {
+    render(<Harness initial={{ enabled: true, mode: 'shell' }} />);
+    const row = await pickWeb1();
+    expect(screen.queryByLabelText('SSH login for web-1')).toBeNull();
+    expect(screen.queryByText(/The SSH login is a suggestion/)).toBeNull();
+    fireEvent.click(row);
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected' }));
+    expect(lastExtra).toEqual({ host: 'i-0abcdef0123456789' }); // no username key at all: the profile keeps its own
+    expect(latest.ssm).toMatchObject({ enabled: true, mode: 'shell' });
+  });
+
+  it('an SSH-over-SSM profile still gets the platform login suggestion (or the one typed) when an instance is picked', async () => {
+    render(<Harness initial={{ enabled: true }} />);
+    const row = await pickWeb1();
+    expect(screen.getByLabelText('SSH login for web-1')).toHaveValue('ubuntu');
+    fireEvent.change(screen.getByLabelText('SSH login for web-1'), { target: { value: 'deploy' } });
+    fireEvent.click(row);
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected' }));
+    expect(lastExtra).toEqual({ host: 'i-0abcdef0123456789', username: 'deploy' });
   });
 
   it('switches between SSH over SSM and a Session Manager shell and keeps the choice when the credentials change', async () => {
