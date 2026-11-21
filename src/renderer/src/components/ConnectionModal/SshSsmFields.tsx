@@ -107,10 +107,12 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
             <AwsInstancePickerModal
               mode="single"
               initialSso={ssm.sso ? { startUrl: ssm.sso.startUrl, region: ssm.sso.region } : undefined}
+              sshLogin={ssm.mode !== 'shell'}
               onClose={() => setPicking(false)}
               onPick={(r) => {
                 const item = r.items[0];
-                if (item) onChange(ssmConfigForSource(item.source, item.instance.region, ssm.mode), { host: item.instance.instanceId, username: item.username });
+                // A Session Manager shell has no SSH login: keep whatever the profile already has instead of a platform guess.
+                if (item) onChange(ssmConfigForSource(item.source, item.instance.region, ssm.mode), { host: item.instance.instanceId, ...(ssm.mode === 'shell' ? {} : { username: item.username }) });
                 setPicking(false);
               }}
             />
