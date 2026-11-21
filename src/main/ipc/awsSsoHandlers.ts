@@ -26,7 +26,12 @@ async function runSsoLogin(
     throw new Error('Start URL and region are required');
   }
   // Validated like any IPC argument (the region names the OIDC endpoint, the URL selects the token cache entry).
-  if (!isValidStartUrl(normalizeStartUrl(startUrl)) || !isValidRegion(region.trim())) {
+  // The cache file is named sha1(start URL), so the URL is normalised once here and the cleaned values are what is used:
+  // the status and list handlers, the sign-in dialogs and the S3 provider (`S3StorageProvider`) all look the token up under
+  // the normalised URL, also for a saved S3 profile that holds the URL as typed (v0.97.9 and earlier saved it untouched).
+  const cleanUrl = normalizeStartUrl(startUrl);
+  const cleanRegion = region.trim();
+  if (!isValidStartUrl(cleanUrl) || !isValidRegion(cleanRegion)) {
     throw new Error('Invalid AWS SSO start URL or region');
   }
 
@@ -37,11 +42,7 @@ async function runSsoLogin(
 
   try {
     // The access token stays in the main process (the token cache); the renderer only learns when the sign-in ends.
-    // The start URL goes on exactly as given, not normalised: the cache file is named sha1(startUrl) and its reader
-    // decides the name. The renderer, saved sign-ins and SSM profiles hand over a normalised URL anyway; a saved S3
-    // profile saved by v0.97.9 or earlier may hold the URL as typed (e.g. ".../start#/"), and the S3 provider (fromSSO)
-    // then reads that same string. Normalising here would write the token where nothing looks for it.
-    const { expiresAt } = await bridge.awsSsoAuthService.login(startUrl, region, {
+    const { expiresAt } = await bridge.awsSsoAuthService.login(cleanUrl, cleanRegion, {
       network,
       onPrompt: (prompt) => {
         const urlToOpen = prompt.verificationUriComplete || prompt.verificationUri;

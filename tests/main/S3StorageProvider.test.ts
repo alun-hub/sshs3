@@ -303,6 +303,17 @@ describe('S3StorageProvider', () => {
       );
     });
 
+    it('looks the SSO token up under the normalised start URL, also for a profile saved with "#/", "?…" or spaces', () => {
+      // Sign-ins write the token cache file under the normalised URL (sha1 of it), so the provider must read that one.
+      fromSSOMock.mockReturnValueOnce(vi.fn());
+      new S3StorageProvider({
+        ...defaultS3Config,
+        authMode: 'sso',
+        sso: { startUrl: ' https://example.awsapps.com/start#/?tab=accounts ', region: 'us-east-1', accountId: '111', roleName: 'Admin' },
+      });
+      expect(fromSSOMock).toHaveBeenCalledWith(expect.objectContaining({ ssoStartUrl: 'https://example.awsapps.com/start' }));
+    });
+
     it('should include sessionToken in credentials if provided', () => {
       new S3StorageProvider({
         ...defaultS3Config,
