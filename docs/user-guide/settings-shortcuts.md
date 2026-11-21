@@ -14,7 +14,7 @@ Access the preferences dialog via the gear icon in the top toolbar or via the ke
 > Settings that an administrator has locked show **Managed by your organization** and cannot be changed here. See [Enterprise Deployment & Policy](/docs/reference/enterprise-deployment/).
 
 ### Instant Settings Filter
-The Settings modal features a real-time search filter at the top of the sidebar. Typing a search keyword filters across all 10 settings categories, option titles, and descriptions dynamically, allowing you to jump straight to any configuration option in under two seconds.
+The Settings modal features a real-time search filter at the top of the sidebar. Typing a keyword filters the 11 settings categories by their names (for example *git* shows **Git & GitHub**), so you can jump straight to a category. Individual option titles and descriptions are not searched.
 
 ### 1.1 General & Appearance
 ![General Settings](/img/docs/settings-general.png)
@@ -23,16 +23,17 @@ The Settings modal features a real-time search filter at the top of the sidebar.
 - **Confirm Before Quitting:** Warns if active terminal sessions or background file transfers are in progress when closing the window.
 - **Enable Global Search:** On by default. Shows the magnifier in the top bar and enables <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> (see [Global Search](/docs/workspace/connections/#global-search)). Switched off, the key combination is left free for other uses.
 - **Check for Updates Automatically:** Checks GitHub Releases in the background every 6 hours; **Check now**, **Download**, and **Restart and install** are explicit actions. Permanently locked off when `SSHS3_DISABLE_UPDATES=1` is set.
-- **Application Logging:** Configures log verbosity (**Errors only**, **Warnings**, **Normal**, **Debug**). Rotated at 5 MB (last 5 kept). PINs, passwords, and private keys are strictly never logged.
+- **Application Logging:** Configures log verbosity (**Errors only**, **Warnings**, **Normal**, **Debug**). Rotated at 5 MB (last 5 kept). PINs, passwords, and private keys are strictly never logged. **Open log folder** opens the log directory, and **Copy diagnostics** copies a diagnostics summary to the clipboard for a bug report.
 
 ### 1.2 Terminal
 ![Terminal Settings](/img/docs/settings-terminal.png)
 - **Typography:** Configurable font family and font size with live preview render.
 - **Cursor Style:** **Block**, **Underline**, or **Vertical Bar**.
 - **Scrollback Buffer:** Retained history per terminal pane (default 5,000 lines). Searchable with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>.
-- **Copy text automatically on selection:** Copies highlighted terminal text to the clipboard and stores it in the encrypted clipboard history. Scope can be **Global** or **Per Host**. The setting also applies to the Markdown preview in the file editor, which copies to the clipboard only (nothing goes into the history).
+- **Copy text automatically on selection:** Copies highlighted terminal text to the clipboard and stores it in the encrypted clipboard history. Scope can be **Global** or **Per Host**, and **Clear history** deletes every entry after a confirmation. The setting also applies to the Markdown preview in the file editor, which copies to the clipboard only (nothing goes into the history).
 - **Session End Behavior:** **Reconnect (Default)**, **Close Tab Immediately**, or **Keep Open**.
 - **Local Terminal SSH Agent:** Selects `$SSH_AUTH_SOCK` injection for local workstation shell tabs: **Auto** (`AppAgent` under Global PIN caching), **System Only**, or **Disabled**.
+- **Local X11 Server (GUI Forwarding):** Shows whether a local X server is running (**Running** with its display, or **Stopped**) and refreshes on demand. See [Graphical X11 Forwarding](/docs/cloud/tunnels/) for the setup.
 - **Keep `~/.ssh/config` in Sync:** On by default. Maintains a marked block in your local `~/.ssh/config` at startup and whenever an SSH profile is saved, deleted or imported, so `ssh <profile>` works in any external terminal. Only the sshs3 block is touched.
 
 ### 1.3 Performance
@@ -42,7 +43,8 @@ The Settings modal features a real-time search filter at the top of the sidebar.
 - **Show Hidden Files and Dotfiles:** Toggles visibility of hidden files (`.git`, `.env`).
 - **Confirm Before Deleting Files and Folders** and **Verify File Integrity and Size After Transfer:** Both on by default.
 - **Default Conflict Resolution:** Automatic policy for filename collisions: **Ask** (default), **Overwrite**, **Skip**, or **Rename**.
-- **File Transfer Concurrency:** Transfers execute with up to 3 parallel file streams with automatic backpressure management.
+- **Share folders between SSH/SFTP and S3 in Connection Manager:** Off by default, so each tab shows only the folders that contain a profile of its own type. Turn it on to use one shared folder tree for both connection types.
+- Transfers run up to 3 files in parallel (this is not configurable).
 - **Dotfiles Pool Sync:** Opt-in session staging for personal shell configuration files.
 
 ### 1.5 Security & Smartcard
@@ -53,7 +55,19 @@ The Settings modal features a real-time search filter at the top of the sidebar.
 - Red Hat OpenShift support toggle, default diagnostic container presets for `kubectl debug` (Netshoot, RHEL Support Tools, BusyBox, Curl, Ubuntu).
 
 ### 1.7 AWS
-- **Enable AWS features** switch (off by default), saved IAM Identity Center sign-ins with status and **Sign in**, regions to search, proxy and CA for AWS calls, and the AWS CLI and plugin status. The workflow is described in the page SSH over AWS Systems Manager.
+- **Enable AWS features** switch (off by default), saved IAM Identity Center sign-ins with status and **Sign in**, regions to search, proxy and CA for AWS calls, and the AWS CLI and plugin status. The workflow is described in [SSH over AWS Systems Manager](/docs/cloud/aws-ssm/).
+
+### 1.8 Synchronization
+- Sets up the target for encrypted Remote Profile Sync (S3 or SFTP) and offers **Push** and **Pull**. Changes in this category save immediately. See [Environment & Profile Synchronization](/docs/security/sync-environment/).
+
+### 1.9 Team Vault
+- Lists your teams and lets you create or join one, unlock it, and manage its members and storage target. Changes in this category save immediately. See [Team Vault](/docs/security/team-vault/).
+
+### 1.10 Git & GitHub
+- **Developer SSH Keys & Git Providers:** copy a public key or register it on GitHub or GitLab, and set the key used for commit signing (**Git Sign**).
+- **SFTP & File Manager Git Integration:** a switch that shows or hides the Git branch and Git actions in the SFTP and file manager panes.
+- **Lookup Public Keys (username.keys):** fetch a user's public keys with **Fetch keys**.
+- See [Git Integration & Developer Tooling](/docs/security/git-developer/).
 
 ---
 

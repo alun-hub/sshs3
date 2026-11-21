@@ -154,3 +154,12 @@ sshs3 bundles its core runtime, but delegates host connectivity and smartcard co
 | Windows SmartScreen Warning | Commercial EV certificate not attached | Click **More info** → **Run anyway**. Validate against `SHA256SUMS`. |
 | `Cannot connect to X server` (Linux) | Display mismatch or forced `--ozone-platform=x11` on Wayland | Launch with `--ozone-platform=wayland` in Wayland desktop sessions. |
 | Update toggle disabled in Settings | `SSHS3_DISABLE_UPDATES=1` is active in environment | Unset the variable in `/etc/environment` or user profile if updates are desired. |
+
+---
+
+## Next Steps
+
+Installed and running? Continue with:
+- [Quickstart](/docs/get-started/quickstart/)
+- [Connection Profiles & Key Deployment](/docs/workspace/connections/)
+- [Terminal, Split Panes & Ergonomics](/docs/workspace/terminal/)
