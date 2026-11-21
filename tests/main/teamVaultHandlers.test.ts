@@ -345,9 +345,15 @@ describe('Team Vault IPC handlers', () => {
       expect(teamVaultConfigStore.setSelfIdentity).toHaveBeenCalledWith(VAULT_ID, 'alice', '/tmp/identity.txt');
     });
 
-    it('starts the background auto-poll for that vaultId once unlock succeeds', async () => {
+    it('starts the background auto-poll for that vaultId once unlock succeeds, with one poll right away', async () => {
       await call(IPC_CHANNELS.TEAM_VAULT_UNLOCK, VAULT_ID, 'alice', '/tmp/identity.txt');
-      expect(startTeamVaultAutoPollTimer).toHaveBeenCalledWith(VAULT_ID);
+      expect(startTeamVaultAutoPollTimer).toHaveBeenCalledWith(VAULT_ID, true);
+    });
+
+    it('does not start the poll when the unlock fails', async () => {
+      teamVaultService.unlock.mockRejectedValueOnce(new Error('wrong key'));
+      await expect(call(IPC_CHANNELS.TEAM_VAULT_UNLOCK, VAULT_ID, 'alice', '/tmp/identity.txt')).rejects.toThrow('wrong key');
+      expect(startTeamVaultAutoPollTimer).not.toHaveBeenCalled();
     });
   });
 
@@ -362,7 +368,7 @@ describe('Team Vault IPC handlers', () => {
     it('forwards the text and starts the background auto-poll once it succeeds', async () => {
       await call(IPC_CHANNELS.TEAM_VAULT_UNLOCK_WITH_RECOVERY_TEXT, VAULT_ID, 'AGE-SECRET-KEY-1FAKE');
       expect(teamVaultService.unlockWithRecoveryText).toHaveBeenCalledWith(VAULT_ID, 'AGE-SECRET-KEY-1FAKE');
-      expect(startTeamVaultAutoPollTimer).toHaveBeenCalledWith(VAULT_ID);
+      expect(startTeamVaultAutoPollTimer).toHaveBeenCalledWith(VAULT_ID, true);
     });
   });
 
