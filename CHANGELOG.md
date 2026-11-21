@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.1] - 2026-11-21
+
+### Fixed
+- **Linux RPM auto-update failed next to another Electron app.** The 0.98.0 RPM contained `/usr/lib/.build-id/*` links, one of which is identical in every package built from the same Electron, so `dnf` refused the update with `file /usr/lib/.build-id/… conflicts with file from package lens` (the app showed *Command pkexec exited with code 1*). The RPM no longer ships those links, and the release build now fails if it does. If the update to 0.98.0 failed for you, update to 0.98.1 instead. The COPR repository was not affected.
+
 ## [0.98.0] - 2026-11-21
 
 AWS Systems Manager: reach EC2 instances that have no open SSH port, find them across accounts and regions, and import them as profiles.

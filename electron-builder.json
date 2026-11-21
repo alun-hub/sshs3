@@ -87,7 +87,9 @@
     "afterRemove": "build/linux/rpm-after-remove.sh",
     "fpm": [
       "--rpm-posttrans",
-      "build/linux/rpm-posttrans.sh"
+      "build/linux/rpm-posttrans.sh",
+      "--rpm-rpmbuild-define",
+      "_build_id_links none"
     ]
   },
   "appx": {
