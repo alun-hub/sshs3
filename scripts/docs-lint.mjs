@@ -24,7 +24,7 @@ const CALLOUT_TYPES = new Set(['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION']
 const ALLOWED_TAGS = new Set(['kbd', 'br', 'video', 'source', 'img', 'a', 'b', 'i', 'em', 'strong', 'code', 'sup', 'sub']);
 
 /** Pages that legitimately have no Troubleshooting section. */
-const NO_TROUBLESHOOTING = new Set(['quickstart.md', 'team-vault.md']);
+const NO_TROUBLESHOOTING = new Set(['quickstart.md']);
 
 /** Shortcuts that exist in the terminal or the Markdown preview but are not configurable (so absent from settings.ts). */
 const EXTRA_SHORTCUTS = new Set(['Ctrl+Shift+V', 'Ctrl+Shift+C']);

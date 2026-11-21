@@ -55,7 +55,7 @@ Data you send to these servers is handled by their operators under their own pol
 
 ### Update check
 
-Builds installed outside the Microsoft Store can check GitHub Releases for new versions. The request is a plain release lookup and contains no personal information. It can be switched off under **Settings → App Behavior**, or with the environment variable `SSHS3_DISABLE_UPDATES=1`. The Microsoft Store version does not run this check; the Microsoft Store delivers updates.
+Builds installed outside the Microsoft Store can check GitHub Releases for new versions. The request is a plain release lookup and contains no personal information. It can be switched off under **Settings → General → App Behavior**, or with the environment variable `SSHS3_DISABLE_UPDATES=1`. The Microsoft Store version does not run this check; the Microsoft Store delivers updates.
 
 ---
 
@@ -96,5 +96,5 @@ Technical details on how secrets and PINs are handled are in [Security & smartca
 
 | Symptom | Probable Root Cause | Corrective Action |
 | :--- | :--- | :--- |
-| You see outgoing traffic you did not expect | A connection you configured (profile, sync target, S3 endpoint, Kubernetes cluster), or the update check in a non-Store build | Check the profiles and sync settings. Switch the update check off under **Settings → App Behavior** or set `SSHS3_DISABLE_UPDATES=1`. |
+| You see outgoing traffic you did not expect | A connection you configured (profile, sync target, S3 endpoint, Kubernetes cluster), or the update check in a non-Store build | Check the profiles and sync settings. Switch the update check off under **Settings → General → App Behavior** or set `SSHS3_DISABLE_UPDATES=1`. |
 | You want to remove all stored data | Profiles and settings live in the local data folder | Uninstall sshs3 and delete its data folder in your user profile. |

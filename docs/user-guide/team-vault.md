@@ -253,3 +253,17 @@ sshs3 never stores the recovery key on disk; the pasted text is piped to `age` o
 - `TeamVaultCryptoService` (`src/main/services/TeamVaultCryptoService.ts`): Manages AES-256-GCM payload encryption, HMAC access-header MAC calculation, rotation proofs, and age envelope wrapping.
 - `AgePtyPinRelay` (`src/main/services/AgePtyPinRelay.ts`): Spawns bundled `age` and `age-plugin-yubikey` processes in an isolated pseudo-terminal, relaying PIN and touch events directly to Electron modals.
 - `TeamVaultConfigStore` (`src/main/services/TeamVaultConfigStore.ts`): Stores per-vault S3 connection parameters and remembered local identity mappings.
+
+---
+
+## 9. Troubleshooting & Diagnostics
+
+| Symptom / Error | Probable Root Cause | Corrective Action |
+| :--- | :--- | :--- |
+| *This YubiKey still has its factory-default PIN/PUK. Change them yourself first…* | The card still has its factory PIN and PUK, and `age-plugin-yubikey` would force a card-wide migration that sshs3 never runs for you | Change them yourself with `ykman piv access change-pin` and `ykman piv access change-puk`, then retry. |
+| Generating your Team Vault ID fails on a card with a custom Management Key | The Management Key is not PIN-protected, and sshs3 does not know a custom key | Run `ykman piv access change-management-key --generate --protect` once, then retry (see the table in section 1). |
+| *This Team Vault is unlocked with the YubiKey that has serial number … but that YubiKey was not found.* | The YubiKey that belongs to this vault identity is not plugged in | Insert that YubiKey and unplug other YubiKeys if you have several, then unlock again. |
+| Unlock or ID generation finds no card on Linux | The smartcard daemon `pcscd` is not installed or not running | Install and start `pcscd` (see [Installation](/docs/get-started/installation/)), then retry. |
+| **Remote has a newer version — pull first**, or *A newer version is available — your unsynced changes here will be lost.* | Another member pushed since this machine last pulled | Press **Pull** (or **Get latest**). This discards unsynced local changes, so copy anything you want to keep first. |
+| *The remote Team Vault's access header is shorter than the local copy's, but the Vault Key rotation isn't provably linked…* | This machine was offline through more than one member removal and key rotation | Use **Remove vault from this machine**, then pull fresh after confirming the member list with an admin. |
+| *Remote Team Vault file is too large … refusing to download it* | The remote object is larger than 50 MB, far more than a real vault | Check that the target path points at the vault file and that nothing else replaced it. |

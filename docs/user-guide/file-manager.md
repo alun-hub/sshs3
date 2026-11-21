@@ -126,15 +126,20 @@ Inspect, edit, and preview remote files or monitor live server logs without open
 
 | Format / Tool | Capabilities |
 | :--- | :--- |
-| **CodeMirror 6 Editor** | Syntax highlighting for 15+ languages (JS, TS, Python, Bash, Nginx, YAML, JSON, SQL, Rust, Go). Monospaced font with line numbers, active line highlight, bracket matching, cursor coordinates (`Ln X, Col Y`), word-wrap toggle, and <kbd>Ctrl</kbd>+<kbd>F</kbd> search. For JSON files, **Format JSON** beautifies and re-indents minified payloads. |
+| **CodeMirror 6 Editor** | Syntax highlighting for 15+ languages (JS, TS, Python, Bash, Nginx, YAML, JSON, SQL, Rust, Go). Monospaced font with line numbers, active line highlight, bracket matching, cursor coordinates (`Ln X, Col Y`), word-wrap toggle, and <kbd>Ctrl</kbd>+<kbd>F</kbd> search. For JSON files, **Format** beautifies and re-indents minified payloads. |
 | **Atomic Save (<kbd>Ctrl</kbd>+<kbd>S</kbd>)** | Saves updates back to remote SFTP, S3, or Kubernetes with timestamp confirmation (`yyyy-mm-dd HH:mm`). CRLF line endings are preserved. |
-| **Markdown Preview** | Toggle between raw source and rendered GitHub Flavored Markdown with tables and task lists. You can select and copy any text: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copies the selection, and with **Copy text automatically on selection** turned on (**Settings → Terminal**) it is copied as soon as you release the mouse button. A short *Copied N characters* notice confirms either. Links to web pages (`http` or `https`) open in your browser; hover over one to see where it really goes. Other links, such as links to another file or to a heading, are shown as plain text. Code blocks in common languages are colored and have a copy button (hover over the block, or tab to it). While you search, code blocks show without colors so that a phrase is found even where the colors would split it. |
+| **Markdown Preview** | Toggle between raw source and rendered GitHub Flavored Markdown with tables, task lists and colored code blocks. See the notes below the table. |
 | **HTML Sandbox** | Static preview in a hardened, sandboxed iframe (`sandbox=""` with external scripts and navigation blocked). |
 | **CSV / TSV Data Grid** | Parses tabular data into an interactive, sortable grid with column headers and text filter. |
 | **Media & Image Viewer** | Interactive zoom, pan dragging, and 90° rotation for `.png`, `.jpg`, `.webp`, `.gif`, `.svg` with dimensions and file size display. |
 | **PDF Documents** | Native PDF document preview powered by Chromium's embedded PDF engine. |
 | **Certificate Viewer** | Right-click a `.crt`, `.cer`, `.cert`, `.pem` or `.der` file and select **View Certificate...** for subject, issuer, validity, SANs, key, key usage, revocation URLs, fingerprints and the bundle's chain in plain language, with copy buttons and a host name check. It is decoded inside sshs3, so `openssl` is not needed on the server. Details: [Certificate Preview](/docs/workspace/terminal/#certificate-preview). |
-| **Live Log Tail (`tail -f`)** | Right-click any server log (e.g. `access.log`) and select **Tail -f**. Streams growing logs in real time with auto-scroll and pause/resume without loading giant files into memory. |
+| **Live Log Tail (`tail -f`)** | Right-click any server log (e.g. `access.log`) and select **Tail -f (Stream Log)**. Streams growing logs in real time with auto-scroll and pause/resume without loading giant files into memory. |
+
+**Markdown preview notes**
+- **Copying:** <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copies the selection. With **Copy text automatically on selection** turned on (**Settings → Terminal**) it is copied as soon as you release the mouse button. A short *Copied N characters* notice confirms either.
+- **Links:** Links to web pages (`http` or `https`) open in your browser; hover over one to see where it really goes. Other links, such as links to another file or to a heading, are shown as plain text.
+- **Code blocks:** Common languages are colored and have a copy button (hover over the block, or tab to it). While you search, code blocks show without colors so that a phrase is found even where the colors would split it.
 
 ### External Editor Integration
 Right-click any file and select **Open in External Editor** to edit in your local desktop IDE (VS Code, Neovim, Sublime):
@@ -142,12 +147,11 @@ Right-click any file and select **Open in External Editor** to edit in your loca
 - When you save locally (<kbd>Ctrl</kbd>+<kbd>S</kbd>), sshs3 detects the filesystem event and streams the updated buffer back to the remote server automatically in the background!
 - **Saving by rename:** Editors that save by writing a new file and renaming it over the old one (Vim, JetBrains IDEs and others) keep working: sshs3 follows the new file. Saves made close together are uploaded one at a time, and a save made just before you close the editor tab is uploaded before the temporary copy is removed.
 - **Open in sshs3 as well:** If the same file is open in the built-in editor, it reloads after the upload. When it has unsaved edits, sshs3 asks first (**Reload and discard** or **Keep my edits**). Only the file on the same server and path is touched, never a file with the same path on another server.
-- **Security Guard:** For workstation security, executable binaries and scripts (`.exe`, `.bat`, `.ps1`, `.sh`, `.vbs`, `.jar`) are blocked from external launching to prevent accidental execution of untrusted remote payloads.
+- **Security Guard:** To prevent accidental execution of untrusted remote files, types the operating system would run instead of open are blocked from external launching (for example `.exe`, `.msi`, `.jar`, `.desktop`, and on Windows also `.bat`, `.cmd`, `.ps1`, `.vbs`, `.js`, `.reg`). Open them in the built-in editor instead.
 
 ### Good to Know & Limitations: Editor File Size Caps & Safety Locks
 - **5 MB Text Editor Safety Threshold:** Text files load up to 5 MB into the built-in editor. Files exceeding 5 MB (only the first 5 MB are read), binary files, and non-UTF-8 encodings open strictly **read-only**, and save operations are disabled to prevent corrupting remote files with partial or re-encoded data. Use **Open in External Editor** to modify larger files.
 - **100 MB Media Preview Ceiling:** Image and PDF previews stream up to 100 MB directly from remote SFTP or S3 backends.
-- **External Editor Inode Watches:** Local editors must save files in place without breaking filesystem inode watches (e.g. `:set backupcopy=yes` in Vim).
 
 ---
 
@@ -171,6 +175,6 @@ When browsing any local or remote directory containing a `.git` repository, sshs
 | :--- | :--- | :--- |
 | `Permission denied` on file upload | Remote directory lacks write permissions | Check folder mode via `ls -ld <folder>`. Use `chmod 755` or connect as an authorized user. |
 | `SFTP subsystem not found` | Remote `sshd_config` lacks subsystem definition | Verify `Subsystem sftp /usr/lib/openssh/sftp-server` exists in `/etc/ssh/sshd_config`. |
-| External editor edits do not upload | Editor saves via atomic temporary files | Configure editor to write in-place (e.g. in Vim: `:set backupcopy=yes`). |
+| External editor edits do not upload | The editor removed the file without putting a new one in its place (the notice *The file was removed by the external editor; automatic upload stopped.* appears), or the file type is blocked from external launching | Save again in the editor, or reopen with **Open in External Editor**. Blocked types open in the built-in editor. |
 | "Forbidden" cursor while dragging (Linux) | Upstream Chromium / Wayland cursor quirk | Cosmetic issue: the drop operation completes normally when you release the mouse button. |
 | **Password Required for SFTP** appears after a restart although a password is saved | The tab was saved for another host, port or user than the profile has now | Reconnect from **Saved Connections**; the tab then uses the current profile. |

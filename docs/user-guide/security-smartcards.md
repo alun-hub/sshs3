@@ -18,7 +18,7 @@ A critical security principle of sshs3 is that **private cryptographic keys are 
 | **Saved Passwords & Secrets** | Encrypted via Electron `safeStorage` using the OS keyring (DPAPI on Windows, Secret Service/libsecret on Linux). | **Encrypted at rest** |
 
 > [!WARNING]
-> **Keyring Unavailable Warning**: In headless Linux environments or minimal sessions lacking a D-Bus Secret Service, sshs3 surfaces an active alert: *"Credential encryption unavailable"*. In this mode, sensitive credentials are held in volatile memory only and are never written unencrypted to disk.
+> **No OS keyring:** On Linux without a Secret Service (headless or minimal sessions) saved passwords and passphrases cannot be encrypted. sshs3 then shows **Saved passwords are not encrypted** (a banner) and **Credentials are stored in plaintext** (**Settings → Security & Smartcard**): whatever you choose to save is written in plain text to your profile file. Install and unlock a keyring service, or avoid saving credentials. A banner also appears when saved secrets on disk can no longer be decrypted. Smartcard and FIDO2 PINs are never written to disk, and the clipboard history is not saved at all without a keyring (it stays in memory).
 
 ---
 

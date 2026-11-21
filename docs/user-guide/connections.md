@@ -177,9 +177,9 @@ Replace error-prone manual `ssh-copy-id` commands with a graphical multi-key dep
 
 ![Public Key Deployment Modal](/img/docs/profile-install-key-modal.png)
 
-1. Right-click any SSH profile and select **Install public key** (or click the key icon in the profile editor).
+1. Right-click any SSH profile and select **Install public key** (or use **Install key…** in the **Access** section of the profile editor, next to **Test connection**).
 2. Select the public keys you want to authorize (e.g. workstation key, YubiKey FIDO2 key, or smartcard certificate).
-3. Select your login method under **Log in with** (**Automatic**, **Password**, or **Existing Key**) and click **Install**.
+3. Select your login method under **Log in with** (**Automatic (recommended)**, **Password**, **This profile's key**, or **Already-unlocked keys (ssh-agent)**; a **Smartcard (PKCS#11)** choice appears when another smartcard is present) and click **Install N key(s)**.
 4. **Out-of-Band Copy:** Click **Copy command (Bash)** or **Copy PowerShell** to generate a safe, idempotent one-liner ready to paste into web consoles or out-of-band management terminals (iLO, iDRAC):
    ```bash
    mkdir -p -m 700 ~/.ssh && echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG...' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys

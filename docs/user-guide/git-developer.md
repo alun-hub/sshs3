@@ -54,8 +54,8 @@ Eliminate manual key hunting, copy-pasting, and navigation through provider acco
    - Local key pairs in `~/.ssh/` (`id_ed25519.pub`, `id_rsa.pub`, etc.).
    - Active keys loaded in your running `ssh-agent`.
    - Unlocked FIDO2 tokens and smartcard authentication certificates.
-3. Click **Add to GitHub** or **Add to GitLab** next to any detected key.
-4. sshs3 copies the public key string to your system clipboard and opens your default browser directly at the provider's key creation page with the key title pre-filled. You must already be signed in to the provider in that browser.
+3. Click **GitHub** or **GitLab** next to any detected key.
+4. sshs3 copies the public key string to your system clipboard and opens the provider's key creation page in your default browser (on GitHub the key title is pre-filled). The providers do not accept the key itself through a web link, so paste it with <kbd>Ctrl</kbd>+<kbd>V</kbd> into the **Key** field. You must already be signed in to the provider in that browser.
 
 ---
 
@@ -65,7 +65,7 @@ Inspect and verify public keys belonging to colleagues or open-source maintainer
 
 - In the **Lookup Public Keys** bar, type a username (e.g. `torvalds`) and select a provider (**GitHub**, **GitLab**, or a custom self-hosted instance).
 - sshs3 fetches the public `<username>.keys` endpoint and displays each key alongside its SHA256 fingerprint.
-- Click **Copy** to copy the key string, or click **Deploy** to add it to your server's `~/.ssh/authorized_keys`.
+- Click **Fetch keys** to look the user up, then **Copy** to copy a key string or **Git Sign** to use it for commit signing. To add a fetched key to a server's `~/.ssh/authorized_keys`, use **Fetch from Git Provider (username.keys)** in the **Install public key** dialog.
 - Only public profiles are queried; a self-hosted GitLab instance must be reachable from your workstation.
 
 ---

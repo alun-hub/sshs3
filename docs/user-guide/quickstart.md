@@ -58,7 +58,7 @@ Hover your mouse over any file path printed in the terminal (e.g. `/var/log/ngin
 
 - **Live Quick Peek:** Displays the first 3 lines, total line count, and file size over the active connection.
 - **Image Thumbnails:** Hovering over an image (`.png`, `.jpg`, `.svg`, `.webp`) renders a live thumbnail directly in the hover card.
-- **Instant Actions:** Click **Reveal in File Manager**, **Copy Absolute Path**, or **Edit File**.
+- **Instant Actions:** Click **Reveal** (or **Browse** for a folder), **Copy Path**, or **Edit** (or **View** for images and PDFs).
 
 > [!NOTE]
 > **Noise & Latency Prevention:** sshs3 verifies that paths actually exist over the active connection before rendering cards, automatically filtering out package names (`Node.js`), domains (`example.com`), and abbreviations. A 500 ms safety timeout aborts background lookups silently over high-latency WAN links.
