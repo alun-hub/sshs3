@@ -81,7 +81,6 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
               className="h-4 w-4 rounded border-border-subtle text-sky-600 focus:ring-sky-500"
             />
             <span className="text-xs font-semibold text-txt-primary">Enable AWS features</span>
-            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">Experimental</span>
           </label>
         </ManagedGroup>
         <FeatureBlockedNotice blocked={blocked} id="aws-blocked" />

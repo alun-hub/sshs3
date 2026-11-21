@@ -78,7 +78,6 @@ export const SshSsmFields: React.FC<Props> = ({ ssm, host, onChange }) => {
           className="rounded border-border-subtle bg-app-input text-sky-600 focus:ring-sky-500"
         />
         <span>Connect via AWS Systems Manager (SSM)</span>
-        <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">Experimental</span>
       </label>
 
       <FeatureBlockedNotice blocked={blocked} id="aws-ssm-blocked" />
