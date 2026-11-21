@@ -113,7 +113,7 @@ export class S3StorageProvider extends BaseStorageProvider implements IStoragePr
       credentials:
         config.authMode === 'sso' && config.sso
           ? fromSSO({
-              ssoStartUrl: normalizeStartUrl(config.sso.startUrl), // sign-ins write the token under the normalised URL (old profiles may hold it as typed)
+              ssoStartUrl: normalizeStartUrl(config.sso.startUrl ?? ''), // sign-ins write the token under the normalised URL (old profiles may hold it as typed)
               ssoRegion: config.sso.region,
               ssoAccountId: config.sso.accountId,
               ssoRoleName: config.sso.roleName,

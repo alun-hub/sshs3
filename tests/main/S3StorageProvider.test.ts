@@ -314,6 +314,12 @@ describe('S3StorageProvider', () => {
       expect(fromSSOMock).toHaveBeenCalledWith(expect.objectContaining({ ssoStartUrl: 'https://example.awsapps.com/start' }));
     });
 
+    it('does not throw when a synced or old profile has an SSO block without a start URL (the SDK reports it when connecting)', () => {
+      fromSSOMock.mockReturnValueOnce(vi.fn());
+      expect(() => new S3StorageProvider({ ...defaultS3Config, authMode: 'sso', sso: { region: 'us-east-1' } as never })).not.toThrow();
+      expect(fromSSOMock).toHaveBeenLastCalledWith(expect.objectContaining({ ssoStartUrl: '' }));
+    });
+
     it('should include sessionToken in credentials if provided', () => {
       new S3StorageProvider({
         ...defaultS3Config,
