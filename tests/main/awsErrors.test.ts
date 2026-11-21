@@ -58,4 +58,24 @@ describe('awsErrors credentials failures', () => {
     expect(describeS3Error(new Error(msg, { cause: err }), true)).toBe(msg);
     expect(describeS3Error(err, false)).toBe(err.message);
   });
+
+  it("names the bucket's region when a request went to the wrong one (301 with x-amz-bucket-region)", () => {
+    const redirect = Object.assign(named('PermanentRedirect', 'The bucket you are attempting to access must be addressed using the specified endpoint.'), {
+      $metadata: { httpStatusCode: 301 },
+      $response: { headers: { 'x-amz-bucket-region': 'eu-north-1' } },
+    });
+    expect(describeS3Error(redirect, true)).toBe('This bucket is in the region eu-north-1, but this profile uses another region. Edit the profile and set Region to eu-north-1.');
+    // HeadBucket (the connection test) has no body, so the SDK reports an unnamed 301.
+    const head = Object.assign(named('UnknownError', 'UnknownError'), { $metadata: { httpStatusCode: 301 }, $response: { headers: { 'x-amz-bucket-region': 'eu-north-1' } } });
+    expect(describeS3Error(head, false)).toContain('set Region to eu-north-1');
+  });
+
+  it('does not trust a region header that is not a region name, and leaves other 301s alone', () => {
+    const odd = Object.assign(named('PermanentRedirect', 'must be addressed using the specified endpoint'), {
+      $metadata: { httpStatusCode: 301 },
+      $response: { headers: { 'x-amz-bucket-region': 'x"; rm -rf /' } },
+    });
+    expect(describeS3Error(odd, false)).toBe('must be addressed using the specified endpoint');
+    expect(describeS3Error(Object.assign(named('PermanentRedirect', 'moved'), { $metadata: { httpStatusCode: 301 } }), false)).toBe('moved');
+  });
 });

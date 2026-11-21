@@ -146,3 +146,61 @@ describe('AwsSsoSignInPanel', () => {
     expect(screen.queryByText('Account ID')).toBeNull(); // still the picker, not manual entry
   });
 });
+
+describe('AwsSsoSignInPanel with the saved sign-ins of Settings → AWS', () => {
+  const A = { id: 'a', name: 'Work', startUrl: 'https://d-aaa.awsapps.com/start', region: 'eu-west-1' };
+  const B = { id: 'b', name: 'Lab', startUrl: 'https://d-bbb.awsapps.com/start', region: 'us-east-1' };
+  const SavedHarness: React.FC<{ initial?: Partial<AwsSsoValue>; useSaved?: boolean; spy?: (v: AwsSsoValue) => void }> = ({ initial, useSaved = true, spy }) => {
+    const [value, setValue] = useState<AwsSsoValue>({ startUrl: '', region: 'us-east-1', ...initial });
+    spy?.(value);
+    return <AwsSsoSignInPanel value={value} onChange={(p) => setValue((v) => ({ ...v, ...p }))} useSavedSignIns={useSaved} />;
+  };
+  const withSettings = (awsSignIns: unknown[], awsManagedSignIns?: string) => {
+    window.multissh = { ...api, settingsGet: vi.fn(async () => ({ awsSignIns, awsManagedSignIns })) } as never;
+  };
+
+  it('fills in a new, empty form from the only saved sign-in', async () => {
+    withSettings([A]);
+    let latest!: AwsSsoValue;
+    render(<SavedHarness spy={(v) => { latest = v; }} />);
+    await waitFor(() => expect(latest.startUrl).toBe(A.startUrl));
+    expect(latest.region).toBe('eu-west-1');
+    expect(screen.getByTestId('aws-sso-saved-signin')).toHaveValue('a');
+  });
+
+  it('offers a list but fills nothing in when there are several, and choosing one fills in the URL and region and clears the account and role', async () => {
+    withSettings([A, B]);
+    let latest!: AwsSsoValue;
+    render(<SavedHarness initial={{ accountId: '123456789012', roleName: 'Admin' }} spy={(v) => { latest = v; }} />);
+    const list = await screen.findByTestId('aws-sso-saved-signin');
+    expect(latest.startUrl).toBe('');
+    fireEvent.change(list, { target: { value: 'b' } });
+    expect(latest).toMatchObject({ startUrl: B.startUrl, region: 'us-east-1' });
+    expect(latest.accountId).toBeUndefined();
+    expect(latest.roleName).toBeUndefined();
+  });
+
+  it('never changes a form that already has a start URL', async () => {
+    withSettings([A]);
+    let latest!: AwsSsoValue;
+    render(<SavedHarness initial={{ startUrl: 'https://d-own.awsapps.com/start', region: 'us-east-2' }} spy={(v) => { latest = v; }} />);
+    await screen.findByTestId('aws-sso-saved-signin');
+    expect(latest).toMatchObject({ startUrl: 'https://d-own.awsapps.com/start', region: 'us-east-2' });
+    expect(screen.getByTestId('aws-sso-saved-signin')).toHaveValue(''); // shown as "Other…"
+  });
+
+  it('includes the sign-ins from policy', async () => {
+    withSettings([], 'Corp|https://d-corp.awsapps.com/start|eu-north-1');
+    let latest!: AwsSsoValue;
+    render(<SavedHarness spy={(v) => { latest = v; }} />);
+    await waitFor(() => expect(latest.startUrl).toBe('https://d-corp.awsapps.com/start'));
+  });
+
+  it('shows no list and reads no settings unless asked to (the editor that creates the sign-ins)', async () => {
+    withSettings([A]);
+    render(<SavedHarness useSaved={false} />);
+    await waitFor(() => expect(screen.getByTestId('aws-sso-status')).toBeInTheDocument());
+    expect(screen.queryByTestId('aws-sso-saved-signin')).toBeNull();
+    expect((window.multissh as unknown as { settingsGet: ReturnType<typeof vi.fn> }).settingsGet).not.toHaveBeenCalled();
+  });
+});

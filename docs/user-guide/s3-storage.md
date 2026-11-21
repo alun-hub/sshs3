@@ -30,7 +30,7 @@ Configure your S3 profile using one of three authentication strategies:
 
 ### A. AWS SSO / IAM Identity Center (Enterprise Zero Trust)
 For organizations managing AWS accounts through corporate Single Sign-On:
-1. Provide your **SSO Start URL** (e.g. `https://my-org.awsapps.com/start`) and **SSO Region**.
+1. Provide your **SSO Start URL** (e.g. `https://my-org.awsapps.com/start`) and **SSO Region**, or pick a sign-in that you saved under **Settings → AWS** from the **Saved sign-in** list. With exactly one saved sign-in, a new profile starts from it; a profile that already has a start URL is never changed.
 2. Click **Sign in with AWS SSO**. sshs3 initiates an OIDC device authorization and opens your default browser with an 8-character verification code.
 3. Once approved, sshs3 retrieves temporary STS session credentials and displays an interactive selector to choose your target AWS Account and IAM Role.
 4. **AWS CLI Cache Reuse:** In environments already running the AWS CLI, sshs3 automatically checks `~/.aws/sso/cache/`, reusing valid tokens to eliminate redundant browser logins.
@@ -107,5 +107,6 @@ Manage cloud storage policies without opening the AWS or cloud provider web cons
 | :--- | :--- | :--- |
 | `ENOTFOUND <bucket>.192.168.1.50` | Virtual-hosted addressing used against an IP address | Tick **Path-style addressing** in your S3 connection profile. |
 | `SignatureDoesNotMatch` | Invalid Secret Key or workstation clock skew | Verify credentials. Synchronize system clock via NTP (SigV4 allows max 15m skew). |
+| *This bucket is in the region … but this profile uses another region.* (S3 itself says *must be addressed using the specified endpoint*) | The profile's **Region** (not the SSO Region) differs from the region of the bucket | Edit the profile and set **Region** to the region named in the message. |
 | `AccessDenied (403 Forbidden)` | IAM policy lacks required S3 verbs | Ensure IAM policy grants `s3:ListBucket`, `s3:GetObject`, and `s3:PutObject`. |
 | Presigned URL expires after 1 hour | Generated using short-lived AWS SSO/STS credentials | For 7-day links, use a profile configured with static IAM credentials. |

@@ -754,6 +754,7 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
             <div className="space-y-2.5 rounded-lg border border-border-subtle bg-app/50 p-3">
               <AwsSsoSignInPanel
                 idPrefix="sync-sso"
+                useSavedSignIns
                 value={{
                   startUrl: draft.sso?.startUrl ?? '',
                   region: draft.sso?.region || draft.region || 'us-east-1',

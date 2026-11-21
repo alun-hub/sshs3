@@ -43,6 +43,14 @@ export function describeS3Error(err: unknown, ssoProfile: boolean): string {
   if (err instanceof Error) {
     const code = err.name && err.name !== 'Error' ? err.name : '';
     const text = err.message || code;
+    // S3 answers a request sent to the wrong region with a 301 and the bucket's region in a header (the message itself only
+    // says "must be addressed using the specified endpoint"). It is not followed automatically: the SDK does that by swapping the
+    // region of the shared client for the duration of the request, which is not safe for parallel transfers.
+    const bucketRegion = (err as { $response?: { headers?: Record<string, string> } }).$response?.headers?.['x-amz-bucket-region'];
+    const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+    if (bucketRegion && /^[a-z0-9-]{2,30}$/.test(bucketRegion) && (status === 301 || code === 'PermanentRedirect')) {
+      return `This bucket is in the region ${bucketRegion}, but this profile uses another region. Edit the profile and set Region to ${bucketRegion}.`;
+    }
     if (code === 'AccessDenied' || code === 'AccessDeniedException' || code === 'Forbidden') {
       return `Access denied: ${text}. The signed-in role is not allowed to do this.`;
     }
