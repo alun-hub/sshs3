@@ -4,6 +4,7 @@ import { detectAwsSsmTools } from '../aws/AwsSsmToolchain';
 import { isFeatureAllowed } from '../policy/policyApply';
 import { setAwsNetworkSettings } from '../aws/awsNetworkSettings';
 import { setSsmAllowed, setSsoSignedInCheck } from '../ssh/ssmProxy';
+import { registerAwsS3BucketHandlers } from './awsS3BucketHandlers';
 import { registerAwsScanHandlers } from './awsScanHandlers';
 import { registerAwsSsoCachedHandlers } from './awsSsoCachedHandlers';
 import type { IpcBridge } from '../IpcBridge';
@@ -18,6 +19,7 @@ export function registerAwsSsmHandlers(bridge: AwsSsmHost): void {
   void bridge.settingsStore.getSettings().then((s) => setAwsNetworkSettings(s.awsNetwork)).catch(() => {});
   registerAwsScanHandlers(bridge);
   registerAwsSsoCachedHandlers(bridge);
+  registerAwsS3BucketHandlers(bridge);
 
   // No arguments and no secrets cross this channel; the result is tool paths and versions only.
   bridge.registerHandler(IPC_CHANNELS.AWS_SSM_CHECK_TOOLS, async (): Promise<AwsSsmTools> => detectAwsSsmTools());

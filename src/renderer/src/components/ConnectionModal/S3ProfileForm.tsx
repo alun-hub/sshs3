@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Cloud, FolderOpen, KeyRound, Loader2 } fro
 import type { S3Config } from '@shared/types/storage';
 import { describeIpcError } from '../../lib/format';
 import { AwsSsoSignInPanel } from '../AwsSsoSignInPanel';
+import { S3BucketPickerModal } from '../S3BucketPickerModal';
 import { ProfileOrganizationFields } from './ProfileOrganizationFields';
 
 interface S3ProfileFormProps {
@@ -45,6 +46,25 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const selfSigned = config.rejectUnauthorized === false;
   const authMode = config.authMode ?? 'static';
+  const [pickingBucket, setPickingBucket] = useState(false);
+  const [bucketNote, setBucketNote] = useState<string | null>(null);
+  // "Pick bucket" needs a complete SSO choice; the list itself is fetched by the main process from the cached sign-in.
+  const bucketRequest =
+    authMode === 'sso' && config.sso?.startUrl && config.sso.accountId && config.sso.roleName
+      ? {
+          startUrl: config.sso.startUrl,
+          region: config.sso.region || config.region || 'us-east-1',
+          accountId: config.sso.accountId,
+          roleName: config.sso.roleName,
+          s3ProfileId: initial ? config.id : undefined,
+        }
+      : null;
+  const pickBucket = (bucket: string, region: string | undefined) => {
+    setConfig((prev) => ({ ...prev, initialPath: bucket, name: prev.name.trim() ? prev.name : bucket, ...(region ? { region } : {}) }));
+    setBucketNote(region ? `Region set to ${region}.` : 'The region of this bucket could not be told: check the Region field.');
+    if (testResult) setTestResult(null);
+    setPickingBucket(false);
+  };
 
   const update = <K extends keyof S3Config>(key: K, value: S3Config[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -256,6 +276,20 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
             network={ssoNetworkOptions()}
             s3ProfileId={initial ? config.id : undefined}
           />
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              data-testid="s3-pick-bucket"
+              disabled={!bucketRequest}
+              title={bucketRequest ? undefined : 'Sign in and choose an account and role first'}
+              onClick={() => setPickingBucket(true)}
+              className="rounded-lg border border-border-subtle bg-app-surface px-3 py-1.5 text-xs text-txt-primary hover:bg-app-surface-hover disabled:opacity-40"
+            >
+              Pick bucket…
+            </button>
+            {bucketNote && <span role="status" className="text-xs text-txt-muted">{bucketNote}</span>}
+          </div>
+          {pickingBucket && bucketRequest && <S3BucketPickerModal request={bucketRequest} onPick={pickBucket} onClose={() => setPickingBucket(false)} />}
         </div>
       )}
 

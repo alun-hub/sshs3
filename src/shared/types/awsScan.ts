@@ -100,6 +100,20 @@ export interface AwsSsoCachedRequest {
   s3ProfileId?: string;
 }
 
+/** The S3 buckets one account/role can list, or the region of one of them. The token is read in the main process. */
+export interface AwsS3BucketsRequest {
+  startUrl: string;
+  region: string;
+  accountId: string;
+  roleName: string;
+  /** Only an id of a SAVED S3 profile, as in `AwsSsoCachedRequest`: its proxy/CA are looked up in the main process. */
+  s3ProfileId?: string;
+}
+
+export interface AwsS3Bucket {
+  name: string;
+}
+
 export interface AwsScanIpcRequest {
   /** Chosen by the renderer so progress events and a cancel can be matched to this scan. */
   scanId: string;
