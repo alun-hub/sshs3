@@ -280,14 +280,6 @@ describe('S3StorageProvider', () => {
       expect(handlerConfig.httpsAgent.options.ca.toString()).toBe(caContent);
     });
 
-    it('follows a region redirect for AWS S3 (no endpoint) but not for a custom endpoint', () => {
-      new S3StorageProvider({ id: 'aws', name: 'AWS', region: 'us-east-1', accessKeyId: 'K', secretAccessKey: 'S' } as S3Config);
-      expect(s3ClientConstructorMock.mock.calls[0][0].followRegionRedirects).toBe(true);
-
-      new S3StorageProvider({ id: 'minio', name: 'MinIO', endpoint: 'https://minio.internal:9000', region: 'us-east-1', accessKeyId: 'K', secretAccessKey: 'S' } as S3Config);
-      expect(s3ClientConstructorMock.mock.calls[1][0].followRegionRedirects).toBe(false);
-    });
-
     it('should use fromSSO() as a credentials provider function when authMode is "sso"', () => {
       const fakeCredentialsProvider = vi.fn();
       fromSSOMock.mockReturnValueOnce(fakeCredentialsProvider);

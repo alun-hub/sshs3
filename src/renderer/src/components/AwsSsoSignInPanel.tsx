@@ -3,6 +3,7 @@ import { CheckCircle2, Cloud, Loader2 } from 'lucide-react';
 import { allSignIns } from '@shared/awsSignIns';
 import { normalizeStartUrl } from '@shared/ssm';
 import type { AwsSignIn, AwsSsoNetworkOptions } from '@shared/types/aws';
+import { matchSavedSignIn, patchForSavedChoice, prefillFromSaved } from '../lib/awsSavedSignIn';
 import { describeSsoStatus } from '../lib/awsSsoStatus';
 import { useAwsSsoSignIn, type AwsSsoValue } from '../lib/useAwsSsoSignIn';
 
@@ -127,14 +128,14 @@ export const AwsSsoSignInPanel: React.FC<Props> = ({ value, onChange, network, s
   useEffect(() => {
     if (prefilled.current || saved.length === 0) return;
     prefilled.current = true;
-    if (saved.length === 1 && !value.startUrl) onChange({ startUrl: saved[0].startUrl, region: saved[0].region });
-  }, [saved, value.startUrl, onChange]);
+    const start = prefillFromSaved(saved, value);
+    if (start) onChange(start);
+  }, [saved, value, onChange]);
 
-  const savedId = saved.find((x) => x.startUrl === value.startUrl && x.region === value.region)?.id ?? '';
+  const savedId = matchSavedSignIn(saved, value)?.id ?? '';
   const chooseSaved = (id: string) => {
-    const pick = saved.find((x) => x.id === id);
-    if (!pick || id === savedId) return; // "Other…" keeps what is typed
-    onChange({ startUrl: pick.startUrl, region: pick.region, accountId: undefined, roleName: undefined });
+    const patch = patchForSavedChoice(saved, value, id);
+    if (patch) onChange(patch);
   };
 
   return (
