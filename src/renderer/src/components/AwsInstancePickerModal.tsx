@@ -215,7 +215,7 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
     setSaving(true);
     setError(null);
     try {
-      await onPick({ items: buildPickItems(chosen, lastTargets.current, usernames, takenNamesByFolder(profiles), single ? {} : { mode: connect.mode, authType: connect.authType, privateKeyPath: connect.privateKeyPath || undefined }) });
+      await onPick({ items: buildPickItems(chosen, lastTargets.current, usernames, takenNamesByFolder(profiles), single ? {} : { mode: connect.mode, authType: connect.authType, privateKeyPath: connect.privateKeyPath.trim() || undefined }) });
     } catch (err) {
       setError(describeIpcError(err, 'Could not import the selected instances'));
       setSaving(false);
@@ -320,11 +320,11 @@ export const AwsInstancePickerModal: React.FC<Props> = ({ mode, initialSso, onCl
         )}
 
         <div className="flex justify-end gap-2 border-t border-divider pt-2">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-txt-secondary hover:bg-app-hover">Cancel</button>
+          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary">Cancel</button>
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={saving || chosen.length === 0 || (!single && connect.mode === 'ssh' && connect.authType === 'privateKey' && !connect.privateKeyPath)}
+            disabled={saving || chosen.length === 0 || (!single && connect.mode === 'ssh' && connect.authType === 'privateKey' && !connect.privateKeyPath.trim())}
             className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
           >
             {single ? 'Use selected' : `Import selected${chosen.length ? ` (${chosen.length})` : ''}`}

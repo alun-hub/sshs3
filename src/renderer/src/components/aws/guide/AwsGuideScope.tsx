@@ -5,7 +5,7 @@ import type { AwsSsoAccount } from '@shared/types/aws';
 import type { AccountRoles } from '../../../lib/awsGuide';
 
 const input = 'rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500';
-const link = 'text-xs text-sky-400 hover:underline';
+const link = 'inline-flex min-h-6 items-center rounded px-1.5 text-xs text-sky-400 hover:underline';
 
 interface Props {
   /** The portal would not list accounts: let the user type account ids instead (SSO sign-in only). */
@@ -72,7 +72,7 @@ export const AwsGuideScope: React.FC<Props> = (p) => {
           <div className="flex items-center gap-2">
             <input aria-label="Filter accounts" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter accounts" className={`${input} flex-1`} />
             <button type="button" className={link} onClick={() => p.onSelectAccounts?.(visible.map((a) => a.accountId))}>Select shown</button>
-            <button type="button" className={link} onClick={() => p.onSelectAccounts?.([])}>None</button>
+            <button type="button" className={link} aria-label="Clear account selection" onClick={() => p.onSelectAccounts?.([])}>None</button>
           </div>
           <ul aria-label="Accounts" className="max-h-56 space-y-0.5 overflow-y-auto rounded-lg border border-border-subtle bg-app-card p-1">
             {visible.length === 0 && <li className="px-2 py-1.5 text-txt-muted">{p.accounts.length === 0 ? 'No accounts found for this sign-in.' : 'No account matches the filter.'}</li>}
@@ -119,7 +119,7 @@ export const AwsGuideScope: React.FC<Props> = (p) => {
             })}
           </ul>
           <div className="flex items-center justify-between gap-3">
-            <p className="text-txt-muted">{p.selectedAccounts?.size ?? 0} of {p.accounts.length} selected.</p>
+            <p role="status" className="text-txt-muted">{p.selectedAccounts?.size ?? 0} of {p.accounts.length} selected.</p>
             {(p.commonOptions?.length ?? 0) > 0 && (
               <label className="flex items-center gap-2 text-txt-secondary">
                 Same role everywhere
@@ -140,7 +140,7 @@ export const AwsGuideScope: React.FC<Props> = (p) => {
           <span className="font-medium text-txt-secondary">Regions to search</span>
           <span className="flex gap-3">
             <button type="button" className={link} onClick={() => p.onRegions([...new Set([...AWS_DEFAULT_REGIONS, ...custom])])}>All regions</button>
-            <button type="button" className={link} onClick={() => p.onRegions([])}>None</button>
+            <button type="button" className={link} aria-label="Clear region selection" onClick={() => p.onRegions([])}>None</button>
           </span>
         </div>
         <div className="grid grid-cols-3 gap-x-3 gap-y-1">
@@ -160,7 +160,7 @@ export const AwsGuideScope: React.FC<Props> = (p) => {
             placeholder="Another region, e.g. ap-east-1"
             className={`${input} flex-1 font-mono`}
           />
-          <button type="button" className={link} onClick={addExtra}>Add</button>
+          <button type="button" className={link} aria-label="Add region" onClick={addExtra}>Add</button>
         </div>
         <p className="text-txt-muted">Searching many regions in many accounts takes longer; organizations often restrict regions, and those searches are skipped.</p>
       </section>

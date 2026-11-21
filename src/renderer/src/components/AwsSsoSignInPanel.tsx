@@ -28,9 +28,16 @@ export const AwsSsoSignInFields: React.FC<{
   /** State from `useAwsSsoSignIn`, owned by the caller so it can also use the account list. */
   s: SignInState;
   idPrefix?: string;
-}> = ({ value, onChange, s, idPrefix = 'aws-sso' }) => {
+  /** Enter in the start URL or region signs in (when both are valid). Off where the fields sit in a form that owns Enter. */
+  submitOnEnter?: boolean;
+}> = ({ value, onChange, s, idPrefix = 'aws-sso', submitOnEnter = false }) => {
   const info = describeSsoStatus(s.status, s.checking);
   const signedIn = s.status?.status === 'valid';
+  const enterSignsIn = (e: React.KeyboardEvent) => {
+    if (!submitOnEnter || e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    if (s.ready && !s.signingIn) void s.signIn();
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -41,6 +48,7 @@ export const AwsSsoSignInFields: React.FC<{
             data-testid={`${idPrefix}-start-url`}
             value={value.startUrl}
             onChange={(e) => onChange({ startUrl: normalizeStartUrl(e.target.value) })}
+            onKeyDown={enterSignsIn}
             placeholder="https://my-sso.awsapps.com/start"
             className={`${input} font-mono`}
           />
@@ -51,6 +59,7 @@ export const AwsSsoSignInFields: React.FC<{
             data-testid={`${idPrefix}-region`}
             value={value.region}
             onChange={(e) => onChange({ region: e.target.value.trim() })}
+            onKeyDown={enterSignsIn}
             placeholder="us-east-1"
             className={`${input} font-mono`}
           />

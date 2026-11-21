@@ -85,7 +85,7 @@ export const AwsSsoLoginModal: React.FC = () => {
       <div className="w-full max-w-md rounded-xl border border-border-subtle bg-app-card p-6 shadow-2xl">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
-            <Cloud className="h-5 w-5" />
+            <Cloud className="h-5 w-5" aria-hidden="true" />
           </div>
           <div>
             <h2 id="aws-sso-modal-title" className="text-base font-semibold text-txt-primary">
@@ -106,27 +106,30 @@ export const AwsSsoLoginModal: React.FC = () => {
             <button
               type="button"
               onClick={() => void copyToClipboard('code', currentPrompt.userCode)}
-              className="flex items-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              className="flex min-h-7 items-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              aria-label="Copy code"
               title="Copy code"
             >
-              {copied === 'code' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied === 'code' ? <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           </div>
 
           <div className="flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-app-input px-3 py-2">
-            <span className="truncate text-txt-secondary">{currentPrompt.verificationUri}</span>
+            <span className="min-w-0 break-all text-txt-secondary">{currentPrompt.verificationUri}</span>
             <button
               type="button"
               onClick={() => void copyToClipboard('link', currentPrompt.verificationUriComplete || currentPrompt.verificationUri)}
-              className="flex shrink-0 items-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              className="flex min-h-7 shrink-0 items-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
+              aria-label={currentPrompt.verificationUriComplete ? 'Copy link (with code pre-filled)' : 'Copy link'}
               title={currentPrompt.verificationUriComplete ? 'Copy link (with code pre-filled)' : 'Copy link'}
             >
-              {copied === 'link' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied === 'link' ? <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           </div>
+          <span role="status" className="sr-only">{copied === 'code' ? 'Code copied' : copied === 'link' ? 'Link copied' : ''}</span>
 
-          <div className="flex items-center gap-2 text-txt-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <div role="status" className="flex items-center gap-2 text-txt-muted">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
             <span>Waiting for approval in your browser…</span>
           </div>
         </div>
