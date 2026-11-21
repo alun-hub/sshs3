@@ -15,7 +15,7 @@ import { moveWithSystems } from '../../lib/systemEdit';
 import { createSystemActions } from '../../lib/systemActions';
 import { TeamSshProfileRow, TeamS3ProfileRow } from './TeamProfileRows';
 import { buildTeamFolderTree, collectTeamFolderSuggestions, filterTeamFolderNamesForTab } from './teamFolderTree';
-import { filterSshProfiles, filterS3Profiles } from './connectionGrouping';
+import { filterSshProfiles, filterS3Profiles, withoutSsmShell } from './connectionGrouping';
 import { describeIpcError } from '../../lib/format';
 import { useConfirm } from '../ConfirmDialog';
 
@@ -59,6 +59,8 @@ interface TeamProfileTreeListProps {
    * without it the position is kept here. */
   folderPaths?: Record<string, string[]>;
   onFolderPathChange?: (key: string, path: string[]) => void;
+  /** The list is a place to pick an SSH endpoint (SFTP pane, directory sync): Session Manager shell profiles cannot be one and are left out. */
+  needsSsh?: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
     onVaultsMetaChange,
     folderPaths,
     onFolderPathChange,
+    needsSsh = false,
   },
   ref
 ) {
@@ -210,12 +213,12 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
         matchCount: !trimmedQuery
           ? 0
           : tab === 'ssh'
-            ? filterSshProfiles(e.payload?.ssh ?? [], trimmedQuery).length
+            ? filterSshProfiles(withoutSsmShell(e.payload?.ssh ?? [], needsSsh), trimmedQuery).length
             : filterS3Profiles(e.payload?.s3 ?? [], trimmedQuery).length,
       }));
     onVaultsMetaChange(metas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries, vaultOrder, tab, query]);
+  }, [entries, vaultOrder, tab, query, needsSsh]);
 
   const updateEntry = (vaultId: string, patch: Partial<VaultEntry>) => {
     setEntries((prev) => (prev[vaultId] ? { ...prev, [vaultId]: { ...prev[vaultId], ...patch } } : prev));
@@ -549,7 +552,7 @@ export const TeamProfileTreeList = forwardRef<TeamProfileTreeListHandle, TeamPro
           confirm,
         });
         const s3WithRef = s3.map((p) => ({ ...p, teamVaultProfileRef: { vaultId, profileId: p.id } }));
-        const filteredSSH = filterSshProfiles(sshWithRef, query);
+        const filteredSSH = filterSshProfiles(withoutSsmShell(sshWithRef, needsSsh), query);
         const filteredS3 = filterS3Profiles(s3WithRef, query);
         const activeProfiles = tab === 'ssh' ? filteredSSH : filteredS3;
         // Scope the folder registry to this tab's type (§13) before building the tree — a folder

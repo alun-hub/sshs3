@@ -16,6 +16,7 @@ import type { SSHActiveTunnel, SSHConnectionConfig, SSHTunnelConfig } from '@sha
 import { formatDateTime, describeIpcError } from '../../lib/format';
 import { SSHTunnelWizard } from './SSHTunnelWizard';
 import { useConfirm } from '../ConfirmDialog';
+import { withoutSsmShell } from '../ConnectionModal/connectionGrouping';
 import { useEscapeToClose } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 
@@ -198,7 +199,8 @@ export const SSHGlobalTunnelsModal: React.FC<SSHGlobalTunnelsModalProps> = ({ op
                 className="flex-1 rounded-lg border border-border-subtle bg-app-surface-subtle px-2.5 py-1.5 text-sm text-txt-primary focus:border-sky-500/50 focus:outline-none"
               >
                 <option value="">Select a connection...</option>
-                {profiles.map((p) => (
+                {/* A Session Manager shell has no SSH to carry a tunnel (it would only fail when started). */}
+                {withoutSsmShell(profiles, true).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.username}@{p.host})
                   </option>
