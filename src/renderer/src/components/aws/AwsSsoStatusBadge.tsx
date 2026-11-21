@@ -143,7 +143,7 @@ export const AwsSsoStatusBadge: React.FC<Props> = ({ onOpenAwsSettings }) => {
                         {info.text}
                       </div>
                     </div>
-                    <button type="button" className={secondary} disabled={busyId === row.id} onClick={() => void signIn(row)}>
+                    <button type="button" className={secondary} aria-label={`${signedIn ? 'Sign in again to' : 'Sign in to'} ${row.name}`} disabled={busyId === row.id} onClick={() => void signIn(row)}>
                       {busyId === row.id ? 'Signing in…' : signedIn ? 'Sign in again' : 'Sign in'}
                     </button>
                   </li>

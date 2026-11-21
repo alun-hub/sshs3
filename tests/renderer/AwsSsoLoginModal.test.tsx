@@ -45,6 +45,30 @@ describe('AwsSsoLoginModal Component', () => {
     expect(screen.queryByTestId('aws-sso-login-modal')).not.toBeInTheDocument();
   });
 
+  it('names its icon-only copy buttons and says out loud when something was copied', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<AwsSsoLoginModal />);
+    act(() => {
+      promptCallback!({ id: 'sso-1', userCode: 'ABCD-1234', verificationUri: 'https://x.awsapps.com/device', verificationUriComplete: 'https://x.awsapps.com/device?user_code=ABCD-1234', expiresIn: 600 });
+    });
+    const copyCode = screen.getByRole('button', { name: 'Copy code' });
+    const copyLink = screen.getByRole('button', { name: 'Copy link (with code pre-filled)' });
+    await act(async () => { fireEvent.click(copyCode); });
+    expect(writeText).toHaveBeenCalledWith('ABCD-1234');
+    expect(screen.getAllByRole('status').map((s) => s.textContent)).toContain('Code copied');
+    await act(async () => { fireEvent.click(copyLink); });
+    expect(screen.getAllByRole('status').map((s) => s.textContent)).toContain('Link copied');
+  });
+
+  it('announces that it is waiting for the approval in the browser', () => {
+    render(<AwsSsoLoginModal />);
+    act(() => {
+      promptCallback!({ id: 'sso-1', userCode: 'ABCD-1234', verificationUri: 'https://x.awsapps.com/device', expiresIn: 600 });
+    });
+    expect(screen.getAllByRole('status').some((s) => /Waiting for approval/.test(s.textContent ?? ''))).toBe(true);
+  });
+
   it('renders nothing when there is no active prompt', () => {
     render(<AwsSsoLoginModal />);
     expect(screen.queryByTestId('aws-sso-login-modal')).not.toBeInTheDocument();

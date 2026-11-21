@@ -64,10 +64,10 @@ describe('AwsSsoStatusBadge', () => {
     const popover = await screen.findByRole('dialog', { name: 'AWS sign-ins' });
     expect(within(popover).getByText('Corp')).toBeInTheDocument();
     expect(await within(popover).findByText('Sign-in expired. Sign in again.')).toBeInTheDocument();
-    fireEvent.click(within(popover).getByRole('button', { name: 'Sign in' }));
+    fireEvent.click(within(popover).getByRole('button', { name: 'Sign in to Corp' }));
     await waitFor(() => expect(api.awsSsoLogin).toHaveBeenCalledWith(CORP, 'us-east-1'));
     await waitFor(() => expect(button).toHaveAttribute('title', 'AWS: signed in'));
-    expect(within(popover).getByRole('button', { name: 'Sign in again' })).toBeInTheDocument();
+    expect(within(popover).getByRole('button', { name: 'Sign in again to Corp' })).toBeInTheDocument();
   });
 
   it('shows a helpful empty state and opens the AWS settings', async () => {

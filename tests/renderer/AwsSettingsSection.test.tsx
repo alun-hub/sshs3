@@ -55,7 +55,7 @@ describe('AwsSettingsSection', () => {
     expect(within(items[0]).queryByLabelText(/^Remove /)).toBeNull();
     await waitFor(() => expect(within(items[0]).getByText('Signed in until 2030-05-06 07:08')).toBeInTheDocument());
     await waitFor(() => expect(within(items[1]).getByText('Not signed in')).toBeInTheDocument());
-    expect(within(items[1]).getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+    expect(within(items[1]).getByRole('button', { name: 'Sign in to Mine' })).toBeInTheDocument();
     fireEvent.click(within(items[1]).getByLabelText('Remove Mine'));
     expect(latest.awsSignIns).toEqual([]);
   });
@@ -77,7 +77,7 @@ describe('AwsSettingsSection', () => {
 
   it('signs in from the list without sending any network settings (main reads them from the saved AWS settings)', async () => {
     render(<Harness initial={{ enableAws: true, awsSignIns: [{ id: 'u1', name: 'Mine', startUrl: 'https://mine.awsapps.com/start', region: 'eu-north-1' }], awsNetwork: { customCaPath: '/ca.pem' } }} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in to Mine' }));
     await waitFor(() => expect(api.awsSsoLogin).toHaveBeenCalledWith('https://mine.awsapps.com/start', 'eu-north-1'));
   });
 
@@ -97,6 +97,62 @@ describe('AwsSettingsSection', () => {
     fireEvent.click(screen.getByLabelText('Verify TLS certificates'));
     expect(latest.awsNetwork.rejectUnauthorized).toBe(false);
     expect(await screen.findByText(/Detected 3 AWS CLI profiles: 2 SSO, 1 access keys\./)).toBeInTheDocument();
+  });
+
+  it('Enter in the sign-in editor adds the sign-in and is not left to the surrounding Settings form', async () => {
+    render(<Harness initial={{ enableAws: true }} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add sign-in/ }));
+    const group = screen.getByRole('group', { name: 'New sign-in' });
+    fireEvent.change(within(group).getByPlaceholderText('e.g. Company'), { target: { value: 'Company' } });
+    fireEvent.change(within(group).getByTestId('settings-sso-start-url'), { target: { value: 'https://d-123.awsapps.com/start' } });
+    await waitFor(() => expect(within(group).getByRole('button', { name: 'Add sign-in' })).toBeEnabled());
+    // fireEvent returns false when the default action (here: submitting the Settings form) was prevented.
+    const notPrevented = fireEvent.keyDown(within(group).getByPlaceholderText('e.g. Company'), { key: 'Enter' });
+    expect(notPrevented).toBe(false);
+    expect(latest.awsSignIns).toHaveLength(1);
+    expect(latest.awsSignIns[0]).toMatchObject({ name: 'Company' });
+    expect(screen.queryByRole('group', { name: 'New sign-in' })).toBeNull();
+  });
+
+  it('Enter does nothing while the sign-in is not valid yet, but still does not submit Settings', async () => {
+    render(<Harness initial={{ enableAws: true }} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add sign-in/ }));
+    const group = screen.getByRole('group', { name: 'New sign-in' });
+    const notPrevented = fireEvent.keyDown(within(group).getByPlaceholderText('e.g. Company'), { key: 'Enter' });
+    expect(notPrevented).toBe(false);
+    expect(latest.awsSignIns).toEqual([]);
+    expect(screen.getByRole('group', { name: 'New sign-in' })).toBeInTheDocument();
+  });
+
+  it('Escape closes the sign-in editor without saving it', async () => {
+    render(<Harness initial={{ enableAws: true }} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add sign-in/ }));
+    expect(screen.getByRole('group', { name: 'New sign-in' })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'New sign-in' })).toBeNull());
+    expect(latest.awsSignIns).toEqual([]);
+  });
+
+  it('warns while TLS certificates are not verified, and only then', async () => {
+    render(<Harness initial={{ enableAws: true }} />);
+    const verify = await screen.findByLabelText('Verify TLS certificates');
+    expect(screen.queryByText(/Certificates are not verified/)).toBeNull();
+    fireEvent.click(verify);
+    expect(screen.getByText(/Certificates are not verified/)).toBeInTheDocument();
+    fireEvent.click(verify);
+    expect(screen.queryByText(/Certificates are not verified/)).toBeNull();
+  });
+
+  it('groups the tool status under one name', async () => {
+    render(<Harness initial={{ enableAws: true }} />);
+    expect(await screen.findByRole('group', { name: 'Required tools' })).toBeInTheDocument();
+  });
+
+  it('labels the CA certificate field by its own text and names the Browse button', async () => {
+    render(<Harness initial={{ enableAws: true }} />);
+    const field = await screen.findByLabelText('Custom CA certificate (PEM)');
+    expect(field.tagName).toBe('INPUT');
+    expect(screen.getByRole('button', { name: 'Browse for a CA certificate' })).toBeInTheDocument();
   });
 
   it('locks the switch when the policy blocks AWS', () => {

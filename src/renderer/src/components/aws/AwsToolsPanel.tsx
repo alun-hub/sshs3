@@ -33,7 +33,7 @@ export const AwsToolsPanel: React.FC<{ enabled?: boolean; /** One line once ever
     );
   }
   return (
-    <div className="rounded-lg border border-border-subtle p-2" aria-label="Required tools">
+    <div role="group" className="rounded-lg border border-border-subtle p-2" aria-label="Required tools">
       <div role="status" aria-live="polite" className="flex flex-col gap-1 text-xs">
         {readiness === 'checking' && (
           <span className="flex items-center gap-1.5 text-txt-muted">
@@ -61,7 +61,7 @@ export const AwsToolsPanel: React.FC<{ enabled?: boolean; /** One line once ever
               </ul>
             </div>
           ))}
-          <button type="button" onClick={refresh} className="mt-1.5 rounded border border-border-subtle px-2 py-0.5 hover:bg-app-hover">
+          <button type="button" onClick={refresh} className="mt-1.5 inline-flex min-h-6 items-center rounded border border-border-subtle px-2 hover:bg-app-surface-hover hover:text-txt-primary">
             Check again
           </button>
         </details>

@@ -9,6 +9,8 @@ import { AwsToolsPanel } from '../aws/AwsToolsPanel';
 import { describeSsoStatus } from '../../lib/awsSsoStatus';
 import { useAwsSignInStatuses } from '../../lib/useAwsSignInStatuses';
 import { useAwsRowSignIn } from '../../lib/useAwsRowSignIn';
+import { plural } from '../../lib/plural';
+import { useEscapeToClose } from '../../lib/useModalDismiss';
 import { isFeatureBlocked, usePolicy } from '../../lib/usePolicy';
 import { FeatureBlockedNotice, ManagedGroup } from './Managed';
 import type { SettingsForm } from './useSettingsForm';
@@ -42,6 +44,8 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
   const { statuses, refresh } = useAwsSignInStatuses(rows, enableAws);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [profiles, setProfiles] = useState<AwsCliProfile[] | null>(null);
+  // Escape closes the sign-in editor first, not the whole Settings dialog behind it.
+  useEscapeToClose(() => setDraft(null), draft !== null);
 
   useEffect(() => {
     if (!enableAws) return;
@@ -109,17 +113,17 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
                   <li key={row.id} className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-app-card px-3 py-2 text-xs">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 font-medium text-txt-primary">
-                        {row.managed && <Lock className="h-3 w-3 text-amber-300" aria-label="Managed by your organization" />}
-                        <span className="truncate">{row.name}</span>
+                        {row.managed && <Lock className="h-3 w-3 text-amber-300" role="img" aria-label="Managed by your organization" />}
+                        <span className="truncate" title={row.name}>{row.name}</span>
                       </div>
-                      <div className="truncate font-mono text-txt-muted">{row.startUrl} · {row.region}</div>
+                      <div className="truncate font-mono text-txt-muted" title={`${row.startUrl} · ${row.region}`}>{row.startUrl} · {row.region}</div>
                       <div role="status" className={`flex items-center gap-1 ${info.tone === 'ok' ? 'text-emerald-400' : info.tone === 'warn' ? 'text-amber-300' : 'text-txt-muted'}`}>
                         {info.tone === 'ok' && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
                         {info.text}
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <button type="button" className={secondaryButton} disabled={busyId === row.id} onClick={() => void signIn(row)}>
+                      <button type="button" className={secondaryButton} aria-label={`${signedIn ? 'Sign in again to' : 'Sign in to'} ${row.name}`} disabled={busyId === row.id} onClick={() => void signIn(row)}>
                         {busyId === row.id && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                         {busyId === row.id ? 'Signing in…' : signedIn ? 'Sign in again' : 'Sign in'}
                       </button>
@@ -141,7 +145,19 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
             {error && <p role="alert" className="rounded-lg border border-red-800/60 bg-red-950/40 px-3 py-2 text-xs text-red-300">{error}</p>}
 
             {draft && (
-              <div className="space-y-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3" role="group" aria-label={draft.id ? 'Edit sign-in' : 'New sign-in'}>
+              <div
+                className="space-y-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3"
+                role="group"
+                aria-label={draft.id ? 'Edit sign-in' : 'New sign-in'}
+                onKeyDown={(e) => {
+                  // These fields sit inside the Settings <form>: Enter would submit it (saving and closing Settings and
+                  // losing the sign-in). Enter in a field adds the sign-in instead.
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.target instanceof HTMLInputElement) {
+                    e.preventDefault();
+                    saveDraft();
+                  }
+                }}
+              >
                 <label className="flex flex-col gap-1 text-xs text-txt-secondary">
                   Name
                   <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Company" className={input} autoFocus />
@@ -171,7 +187,7 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
             </ManagedGroup>
             <p className="text-xs text-txt-muted">
               Used by Add from AWS. Comma separated; leave empty to choose each time. Searching many regions in many accounts takes longer, and organizations often restrict regions.
-              {regionList.length > 0 && ` Searching ${regionList.length} region${regionList.length === 1 ? '' : 's'}.`}
+              {regionList.length > 0 && ` Searching ${plural(regionList.length, 'region')}.`}
             </p>
             {ignoredRegions.length > 0 && <p role="note" className="text-xs text-amber-300">Not a region, ignored: {ignoredRegions.join(', ')}</p>}
           </div>
@@ -187,10 +203,11 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
                 className={`${input} font-mono`}
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs text-txt-secondary">
-              Custom CA certificate (PEM)
+            <div className="flex flex-col gap-1 text-xs text-txt-secondary">
+              <label htmlFor="aws-network-ca">Custom CA certificate (PEM)</label>
               <div className="flex gap-2">
                 <input
+                  id="aws-network-ca"
                   value={awsNetwork.customCaPath ?? ''}
                   onChange={(e) => setAwsNetwork({ ...awsNetwork, customCaPath: e.target.value.trim() || undefined })}
                   placeholder="/etc/ssl/corp-ca.pem"
@@ -198,13 +215,14 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
                 />
                 <button
                   type="button"
+                  aria-label="Browse for a CA certificate"
                   className={secondaryButton}
                   onClick={() => void window.multissh.dialogOpenFile({ title: 'Choose CA Certificate' }).then((p) => p && setAwsNetwork({ ...awsNetwork, customCaPath: p }))}
                 >
                   <FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /> Browse
                 </button>
               </div>
-            </label>
+            </div>
             <label className="flex cursor-pointer items-center gap-2 text-xs text-txt-primary">
               <input
                 type="checkbox"
@@ -214,6 +232,11 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
               />
               Verify TLS certificates
             </label>
+            {awsNetwork.rejectUnauthorized === false && (
+              <p role="note" className="text-xs text-amber-300">
+                Certificates are not verified, so a proxy or anyone on the network path could read the sign-in token. Prefer adding your proxy's CA certificate above.
+              </p>
+            )}
             <p className="text-xs text-txt-muted">
               Used for sign-in, listing and instance search, and passed to the aws CLI as HTTPS_PROXY and AWS_CA_BUNDLE. A proxy that needs a login is not supported for the CLI; use the system proxy settings in that case. Sign-in, listing and search use the saved settings, so save before signing in after a change.
             </p>
@@ -227,7 +250,7 @@ export const AwsSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) =
                 ? 'Looking for AWS CLI profiles…'
                 : profiles.length === 0
                   ? 'No AWS CLI profiles found in ~/.aws/config or ~/.aws/credentials.'
-                  : `Detected ${profiles.length} AWS CLI profile${profiles.length === 1 ? '' : 's'}: ${Object.entries(
+                  : `Detected ${plural(profiles.length, 'AWS CLI profile')}: ${Object.entries(
                       profiles.reduce<Record<string, number>>((acc, p) => ({ ...acc, [KIND_LABEL[p.kind]]: (acc[KIND_LABEL[p.kind]] ?? 0) + 1 }), {})
                     )
                       .map(([k, n]) => `${n} ${k}`)

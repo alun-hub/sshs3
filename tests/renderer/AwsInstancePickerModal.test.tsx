@@ -51,6 +51,47 @@ async function chooseAccount() {
   fireEvent.click(await within(list).findByLabelText(/Prod/));
 }
 
+describe('AwsInstancePickerModal (keyboard)', () => {
+  it('puts initial focus on the selected credentials choice, not on the Close button', async () => {
+    open();
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'AWS sign-in (SSO)' })).toHaveFocus());
+  });
+
+  it('shows the three credential sources as one native radio group (one Tab stop, arrow keys)', async () => {
+    open();
+    const group = await screen.findByRole('radiogroup', { name: 'Credentials source' });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.map((r) => r.getAttribute('name'))).toEqual([radios[0].getAttribute('name'), radios[0].getAttribute('name'), radios[0].getAttribute('name')]);
+    expect(radios[0].getAttribute('name')).toBeTruthy();
+    expect(radios).toHaveLength(3);
+  });
+
+  it('Enter in the start URL signs in once the start URL and region are valid', async () => {
+    settings = { awsSignIns: [], awsRegions: 'eu-north-1' };
+    api.awsSsoStatus.mockResolvedValue({ status: 'missing' } as never);
+    open();
+    fireEvent.click(await screen.findByRole('radio', { name: 'AWS sign-in (SSO)' })); // with CLI profiles but no saved sign-in the guide starts on the profiles
+    const url = await screen.findByTestId('guide-sso-start-url');
+    fireEvent.change(url, { target: { value: CORP } });
+    await waitFor(() => expect(screen.getByTestId('guide-sso-sign-in')).toBeEnabled());
+    const notPrevented = fireEvent.keyDown(url, { key: 'Enter' });
+    expect(notPrevented).toBe(false);
+    await waitFor(() => expect(api.awsSsoLogin).toHaveBeenCalledTimes(1));
+    api.awsSsoStatus.mockResolvedValue({ status: 'valid', expiresAt: '2030-05-06T07:08:00' } as never);
+  });
+
+  it('Enter does not sign in while the start URL is still empty', async () => {
+    settings = { awsSignIns: [], awsRegions: 'eu-north-1' };
+    api.awsSsoStatus.mockResolvedValue({ status: 'missing' } as never);
+    open();
+    fireEvent.click(await screen.findByRole('radio', { name: 'AWS sign-in (SSO)' }));
+    const url = await screen.findByTestId('guide-sso-start-url');
+    fireEvent.keyDown(url, { key: 'Enter' });
+    expect(api.awsSsoLogin).not.toHaveBeenCalled();
+    api.awsSsoStatus.mockResolvedValue({ status: 'valid', expiresAt: '2030-05-06T07:08:00' } as never);
+  });
+});
+
 describe('AwsInstancePickerModal (SSO sign-in)', () => {
   it('starts from the saved sign-in, role and regions, searches the chosen accounts and imports with folder, name and login', async () => {
     const onPick = open();
@@ -60,15 +101,15 @@ describe('AwsInstancePickerModal (SSO sign-in)', () => {
     await waitFor(() => expect(screen.getByLabelText('Role for Prod')).toHaveValue('Dev'));
     expect(screen.getByLabelText('eu-north-1')).toBeChecked();
     fireEvent.click(screen.getByTestId('guide-search'));
-    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    await screen.findByRole('group', { name: 'SSM-managed instances' });
     expect(api.awsSsmScan).toHaveBeenCalledTimes(1);
     const { request } = (api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: Array<{ id: string; source: unknown }>; regions: string[] } }])[0];
     expect(request.regions).toEqual(['eu-north-1']);
     expect(request.targets).toEqual([expect.objectContaining({ id: 'acct-111111111111', source: { kind: 'sso', sso: { startUrl: CORP, region: 'us-east-1', accountId: '111111111111', roleName: 'Dev' } } })]);
 
-    fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
+    fireEvent.click(screen.getByLabelText(/^web-1,/));
     fireEvent.change(screen.getByLabelText('SSH login for web-1'), { target: { value: 'deploy' } });
-    fireEvent.click(screen.getByRole('option', { name: /db-1/ }));
+    fireEvent.click(screen.getByLabelText(/^db-1,/));
     fireEvent.click(screen.getByRole('button', { name: 'Import selected (2)' }));
     await waitFor(() => expect(onPick).toHaveBeenCalled());
     const items = onPick.mock.calls[0][0].items;
@@ -85,7 +126,7 @@ describe('AwsInstancePickerModal (SSO sign-in)', () => {
     expect(screen.getByText('Select at least one account.')).toBeInTheDocument();
     await chooseAccount();
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
-    fireEvent.click(within(screen.getByRole('region', { name: 'Regions' })).getByRole('button', { name: 'None' }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Regions' })).getByRole('button', { name: 'Clear region selection' }));
     expect(screen.getByTestId('guide-search')).toBeDisabled();
     expect(screen.getByText('Select at least one region.')).toBeInTheDocument();
   });
@@ -96,10 +137,11 @@ describe('AwsInstancePickerModal (SSO sign-in)', () => {
     await chooseAccount();
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    const row = await screen.findByRole('option', { name: /web-1/ });
-    expect(row).toHaveTextContent('Already added');
-    expect(row).toHaveAttribute('aria-disabled', 'true');
-    fireEvent.click(row);
+    const box = await screen.findByLabelText(/^web-1,.*already added/);
+    expect(box.closest('div')).toHaveTextContent('Already added');
+    expect(box).toBeDisabled();
+    fireEvent.click(box.closest('div')!); // a click on the row does not pick it either
+    expect(box).not.toBeChecked();
     expect(screen.getByRole('button', { name: 'Import selected' })).toBeDisabled();
   });
 
@@ -140,7 +182,7 @@ describe('AwsInstancePickerModal (a role per account)', () => {
     fireEvent.change(screen.getByLabelText('Role for Prod'), { target: { value: 'Admin' } });
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    await screen.findByRole('group', { name: 'SSM-managed instances' });
     const req = (api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: Array<{ id: string; source: { sso: { roleName: string } } }> } }])[0].request;
     expect(req.targets.map((t) => [t.id, t.source.sso.roleName])).toEqual([['acct-111111111111', 'Admin'], ['acct-222222222222', 'ReadOnly']]);
     api.awsSsoListRolesCached.mockResolvedValue([{ roleName: 'Dev' }, { roleName: 'Admin' }] as never);
@@ -189,69 +231,97 @@ describe('AwsInstancePickerModal (choosing instances)', () => {
     await chooseAccount();
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    await screen.findByRole('group', { name: 'SSM-managed instances' });
   }
-  const box = (name: RegExp) => screen.getByRole('option', { name }).querySelector('input') as HTMLInputElement;
+  const box = (name: RegExp) => screen.getByLabelText(name) as HTMLInputElement;
 
   it('shows a checkbox on every row that follows the selection, with a running count', async () => {
     await results();
-    expect(box(/web-1/).type).toBe('checkbox');
-    expect(box(/web-1/).checked).toBe(false);
+    expect(box(/^web-1,/).type).toBe('checkbox');
+    expect(box(/^web-1,/).checked).toBe(false);
     expect(screen.getByText('0 selected')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
-    expect(box(/web-1/).checked).toBe(true);
+    fireEvent.click(screen.getByLabelText(/^web-1,/));
+    expect(box(/^web-1,/).checked).toBe(true);
     expect(screen.getByText('1 selected')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
-    expect(box(/web-1/).checked).toBe(false);
+    fireEvent.click(screen.getByLabelText(/^web-1,/));
+    expect(box(/^web-1,/).checked).toBe(false);
   });
 
   it('selects everything shown (except nodes that already have a profile) and clears again', async () => {
     profiles = [{ id: 'p', name: 'old', host: id(2), username: 'u', authType: 'agent', ssm: { enabled: true } }];
     await results();
     fireEvent.click(screen.getByRole('button', { name: 'Select all shown (1)' })); // db-1 is already added
-    expect(box(/web-1/).checked).toBe(true);
+    expect(box(/^web-1,/).checked).toBe(true);
     expect(screen.getByText('1 selected')).toBeInTheDocument();
     const instances = screen.getByRole('region', { name: 'Instances' });
-    fireEvent.click(within(instances).getByRole('button', { name: 'None' }));
-    expect(box(/web-1/).checked).toBe(false);
+    fireEvent.click(within(instances).getByRole('button', { name: 'Clear instance selection' }));
+    expect(box(/^web-1,/).checked).toBe(false);
     expect(screen.getByText('0 selected')).toBeInTheDocument();
   });
 
   it('an instance that already has a profile can still be picked when filling one profile (single mode, e.g. a Team Vault)', async () => {
     profiles = [{ id: 'p', name: 'old', host: id(2), username: 'u', authType: 'agent', ssm: { enabled: true } }];
     await results('single');
-    const row = screen.getByRole('option', { name: /db-1/ });
-    expect(row).toHaveTextContent('Already added'); // still shown as information
-    expect(row).toHaveAttribute('aria-disabled', 'false');
-    fireEvent.click(row);
+    const box = screen.getByLabelText(/^db-1,/);
+    expect(box.closest('div')).toHaveTextContent('Already added'); // still shown as information
+    expect(box).toBeEnabled();
+    fireEvent.click(box);
     expect(screen.getByText('1 selected')).toBeInTheDocument();
-    expect((row.querySelector('input') as HTMLInputElement).checked).toBe(true);
+    expect(box).toBeChecked();
     expect(screen.getByRole('button', { name: 'Use selected' })).toBeEnabled();
   });
 
   it('in import mode the same row stays blocked', async () => {
     profiles = [{ id: 'p', name: 'old', host: id(2), username: 'u', authType: 'agent', ssm: { enabled: true } }];
     await results('multi');
-    const row = screen.getByRole('option', { name: /db-1/ });
-    expect(row).toHaveAttribute('aria-disabled', 'true');
-    fireEvent.click(row);
+    const box = screen.getByLabelText(/^db-1,/);
+    expect(box).toBeDisabled();
+    fireEvent.click(box.closest('div')!);
     expect(screen.getByText('0 selected')).toBeInTheDocument();
   });
 
   it('only selects what the filter shows, and keeps earlier picks', async () => {
     await results();
-    fireEvent.click(screen.getByRole('option', { name: /web-1/ }));
+    fireEvent.click(screen.getByLabelText(/^web-1,/));
     fireEvent.change(screen.getByLabelText('Filter instances'), { target: { value: 'db' } });
     fireEvent.click(screen.getByRole('button', { name: 'Select all shown (1)' }));
     fireEvent.change(screen.getByLabelText('Filter instances'), { target: { value: '' } });
-    expect(box(/web-1/).checked).toBe(true);
-    expect(box(/db-1/).checked).toBe(true);
+    expect(box(/^web-1,/).checked).toBe(true);
+    expect(box(/^db-1,/).checked).toBe(true);
     expect(screen.getByText('2 selected')).toBeInTheDocument();
+  });
+
+  it('picks a row when its text is clicked, and Enter picks it as well as Space (keyboard-first rule)', async () => {
+    await results();
+    fireEvent.click(screen.getByText('web-1')); // the name cell, not the checkbox
+    expect(box(/^web-1,/).checked).toBe(true);
+    fireEvent.keyDown(box(/^db-1,/), { key: 'Enter' });
+    expect(box(/^db-1,/).checked).toBe(true);
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+  });
+
+  it('does not pick the row when the SSH login is edited or Enter is pressed in it', async () => {
+    await results();
+    const login = screen.getByLabelText('SSH login for web-1');
+    fireEvent.click(login);
+    fireEvent.keyDown(login, { key: 'Enter' });
+    fireEvent.change(login, { target: { value: 'deploy' } });
+    expect(box(/^web-1,/).checked).toBe(false);
+    expect(screen.getByText('0 selected')).toBeInTheDocument();
+  });
+
+  it('names the instance list, the progress bar and every bulk control so none is ambiguous', async () => {
+    await results();
+    expect(screen.getByRole('group', { name: 'SSM-managed instances' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear instance selection' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear account selection' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear region selection' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add region' })).toBeInTheDocument();
   });
 
   it('uses radio buttons and no bulk controls in single mode', async () => {
     await results('single');
-    expect(box(/web-1/).type).toBe('radio');
+    expect(box(/^web-1,/).type).toBe('radio');
     expect(screen.queryByRole('button', { name: /Select all shown/ })).toBeNull();
   });
 });
@@ -262,14 +332,14 @@ describe('AwsInstancePickerModal (how the imported profiles connect)', () => {
     await chooseAccount();
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    fireEvent.click(await screen.findByRole('option', { name: /web-1/ }));
+    fireEvent.click(await screen.findByLabelText(/^web-1,/));
     return onPick;
   }
 
   it('defaults to SSH over SSM with the SSH agent', async () => {
     const onPick = await toResults();
-    expect(screen.getByRole('radio', { name: 'SSH over SSM' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('radio', { name: 'SSH agent' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'SSH over SSM' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'SSH agent' })).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
     await waitFor(() => expect(onPick).toHaveBeenCalled());
     expect(onPick.mock.calls[0][0].items[0]).toMatchObject({ mode: 'ssh', authType: 'agent' });
@@ -283,6 +353,24 @@ describe('AwsInstancePickerModal (how the imported profiles connect)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
     await waitFor(() => expect(onPick).toHaveBeenCalled());
     expect(onPick.mock.calls[0][0].items[0]).toMatchObject({ mode: 'ssh', authType: 'privateKey', privateKeyPath: '~/.ssh/sshs3-ssm-test' });
+  });
+
+  it('keeps spaces typed inside the key path (and around it while typing) and trims only when importing', async () => {
+    const onPick = await toResults();
+    fireEvent.click(screen.getByRole('radio', { name: 'Private key file' }));
+    const field = screen.getByTestId('guide-key-path') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '/home/me/My Keys/id_ed25519 ' } });
+    expect(field.value).toBe('/home/me/My Keys/id_ed25519 ');
+    fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
+    await waitFor(() => expect(onPick).toHaveBeenCalled());
+    expect(onPick.mock.calls[0][0].items[0]).toMatchObject({ privateKeyPath: '/home/me/My Keys/id_ed25519' });
+  });
+
+  it('a key path of only spaces does not count as a key file', async () => {
+    await toResults();
+    fireEvent.click(screen.getByRole('radio', { name: 'Private key file' }));
+    fireEvent.change(screen.getByTestId('guide-key-path'), { target: { value: '   ' } });
+    expect(screen.getByRole('button', { name: 'Import selected (1)' })).toBeDisabled();
   });
 
   it('imports Session Manager shell profiles without SSH login or key questions', async () => {
@@ -302,7 +390,7 @@ describe('AwsInstancePickerModal (how the imported profiles connect)', () => {
     await chooseAccount();
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    await screen.findByRole('group', { name: 'SSM-managed instances' });
     expect(screen.queryByRole('radiogroup', { name: 'Connection type' })).toBeNull();
   });
 });
@@ -319,7 +407,7 @@ describe('AwsInstancePickerModal (portal cannot list accounts)', () => {
     fireEvent.change(screen.getByTestId('guide-role'), { target: { value: 'Dev' } });
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    await screen.findByRole('group', { name: 'SSM-managed instances' });
     const req = (api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: Array<{ id: string; source: { sso: { accountId: string; roleName: string } } }> } }])[0].request;
     expect(req.targets.map((t) => [t.id, t.source.sso.accountId, t.source.sso.roleName])).toEqual([['acct-111111111111', '111111111111', 'Dev'], ['acct-222222222222', '222222222222', 'Dev']]);
     api.awsSsoListAccountsCached.mockResolvedValue([{ accountId: '111111111111', accountName: 'Prod' }, { accountId: '222222222222', accountName: 'Dev' }] as never);
@@ -331,13 +419,13 @@ describe('AwsInstancePickerModal (AWS CLI profiles and default credentials)', ()
     settings = { awsRegions: 'eu-north-1' }; // no saved sign-in: the profile source is offered first
     const onPick = open();
     await screen.findByRole('list', { name: 'AWS CLI profiles' });
-    fireEvent.click(screen.getByLabelText(/keys/));
+    fireEvent.click(screen.getByRole('checkbox', { name: /keys/ }));
     await waitFor(() => expect(api.awsSsmProfileStatus).toHaveBeenCalledWith('keys'));
     expect(await screen.findByText('Ready')).toBeInTheDocument();
     scanResult = { instances: [found(3, { targetId: 'profile-keys', accountName: undefined })], skipped: [], truncated: false, searched: 1 };
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    fireEvent.click(await screen.findByRole('option', { name: /web-3/ }));
+    fireEvent.click(await screen.findByLabelText(/^web-3,/));
     fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
     await waitFor(() => expect(onPick).toHaveBeenCalled());
     expect(onPick.mock.calls[0][0].items[0]).toMatchObject({ folder: 'AWS/keys/eu-north-1', source: { kind: 'profile', name: 'keys' } });
@@ -350,9 +438,9 @@ describe('AwsInstancePickerModal (AWS CLI profiles and default credentials)', ()
     api.awsSsmProfileStatus.mockResolvedValueOnce({ ok: false, message: 'The sign-in for this profile has expired. Sign in again.' } as never);
     open();
     await screen.findByRole('list', { name: 'AWS CLI profiles' });
-    fireEvent.click(screen.getByLabelText(/corp-sso/));
+    fireEvent.click(screen.getByRole('checkbox', { name: /corp-sso/ }));
     const item = (await screen.findByText(/has expired/)).closest('li')!;
-    fireEvent.click(within(item).getByRole('button', { name: 'Sign in' }));
+    fireEvent.click(within(item).getByRole('button', { name: 'Sign in to corp-sso' }));
     await waitFor(() => expect(api.awsSsmProfileLogin).toHaveBeenCalledWith('corp-sso'));
     await waitFor(() => expect(within(item).getByText('Ready')).toBeInTheDocument());
   });
@@ -363,7 +451,7 @@ describe('AwsInstancePickerModal (AWS CLI profiles and default credentials)', ()
     fireEvent.click(await screen.findByRole('radio', { name: 'Default credentials' }));
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    await screen.findByRole('listbox', { name: 'SSM-managed instances' });
+    await screen.findByRole('group', { name: 'SSM-managed instances' });
     expect((api.awsSsmScan.mock.calls[0] as unknown as [{ request: { targets: Array<{ source: unknown }> } }])[0].request.targets[0].source).toEqual({ kind: 'default' });
   });
 });
@@ -374,9 +462,9 @@ describe('AwsInstancePickerModal (single mode)', () => {
     await chooseAccount();
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    fireEvent.click(await screen.findByRole('option', { name: /web-1/ }));
-    fireEvent.click(screen.getByRole('option', { name: /db-1/ }));
-    expect(screen.getByRole('option', { name: /web-1/ })).toHaveAttribute('aria-selected', 'false');
+    fireEvent.click(await screen.findByLabelText(/^web-1,/));
+    fireEvent.click(screen.getByLabelText(/^db-1,/));
+    expect(screen.getByLabelText(/^web-1,/)).not.toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Use selected' }));
     await waitFor(() => expect(onPick).toHaveBeenCalled());
     expect(onPick.mock.calls[0][0].items).toHaveLength(1);
@@ -399,7 +487,7 @@ describe('AwsAddButton', () => {
     await chooseAccount();
     await waitFor(() => expect(screen.getByTestId('guide-search')).toBeEnabled());
     fireEvent.click(screen.getByTestId('guide-search'));
-    fireEvent.click(await screen.findByRole('option', { name: /web-1/ }));
+    fireEvent.click(await screen.findByLabelText(/^web-1,/));
     fireEvent.click(screen.getByRole('button', { name: 'Import selected (1)' }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(1));
     const saved = api.profilesSaveSSH.mock.calls.map((c) => (c as unknown as [Record<string, unknown>])[0]);

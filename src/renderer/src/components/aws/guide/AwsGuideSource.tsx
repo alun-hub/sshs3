@@ -5,8 +5,15 @@ import type { AwsCliProfile, AwsProfileStatus } from '@shared/types/awsScan';
 import type { AwsSsoValue } from '../../../lib/useAwsSsoSignIn';
 import { useAwsSsoSignIn } from '../../../lib/useAwsSsoSignIn';
 import { AwsSsoSignInFields } from '../../AwsSsoSignInPanel';
+import { SegmentedChoice, type SegmentedOption } from '../../ui/SegmentedChoice';
 
 export type SourceKind = 'sso' | 'profile' | 'default';
+
+const SOURCES: readonly SegmentedOption<SourceKind>[] = [
+  { value: 'sso', label: 'AWS sign-in (SSO)' },
+  { value: 'profile', label: 'AWS CLI profiles' },
+  { value: 'default', label: 'Default credentials' },
+];
 
 const KIND_LABEL: Record<AwsCliProfile['kind'], string> = {
   sso: 'SSO', 'assume-role': 'assume-role', process: 'credential process', login: 'aws login', keys: 'access keys', other: 'other',
@@ -35,23 +42,9 @@ interface Props {
 
 /** Step 1 of "Add from AWS": where the credentials come from. */
 export const AwsGuideSource: React.FC<Props> = (p) => {
-  const kinds: Array<[SourceKind, string]> = [['sso', 'AWS sign-in (SSO)'], ['profile', 'AWS CLI profiles'], ['default', 'Default credentials']];
   return (
     <section className="flex flex-col gap-3" aria-label="Credentials">
-      <div role="radiogroup" aria-label="Credentials source" className="flex flex-wrap gap-2">
-        {kinds.map(([k, label]) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={p.kind === k}
-            onClick={() => p.onKind(k)}
-            className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${p.kind === k ? 'border-sky-500 bg-sky-500/15 text-sky-300' : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedChoice label="Credentials source" options={SOURCES} value={p.kind} onChange={p.onKind} autoFocus />
 
       {p.kind === 'sso' && (
         <div className="flex flex-col gap-3">
@@ -66,13 +59,13 @@ export const AwsGuideSource: React.FC<Props> = (p) => {
               </select>
             </label>
           )}
-          <AwsSsoSignInFields value={p.sso} onChange={p.onSso} s={p.signInState} idPrefix="guide-sso" />
+          <AwsSsoSignInFields value={p.sso} onChange={p.onSso} s={p.signInState} idPrefix="guide-sso" submitOnEnter />
         </div>
       )}
 
       {p.kind === 'profile' && (
         <div className="flex flex-col gap-2">
-          {p.profiles === null && <p className="text-txt-muted">Looking for AWS CLI profiles…</p>}
+          {p.profiles === null && <p role="status" className="text-txt-muted">Looking for AWS CLI profiles…</p>}
           {p.profiles !== null && p.profiles.length === 0 && (
             <p className="text-txt-muted">No profiles found in ~/.aws/config or ~/.aws/credentials. Use the AWS CLI (<code>aws configure</code>, <code>aws configure sso</code> or <code>aws login</code>) to create one.</p>
           )}
@@ -88,17 +81,17 @@ export const AwsGuideSource: React.FC<Props> = (p) => {
                     <span className="shrink-0 text-txt-muted">{KIND_LABEL[prof.kind]}{prof.region ? ` · ${prof.region}` : ''}</span>
                   </label>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {st === 'checking' && <Loader2 className="h-3.5 w-3.5 animate-spin text-txt-muted" aria-label="Checking" />}
+                    {st === 'checking' && <Loader2 className="h-3.5 w-3.5 animate-spin text-txt-muted" role="img" aria-label="Checking" />}
                     {st && st !== 'checking' && st.ok && (
                       <span role="status" className="flex items-center gap-1 text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Ready</span>
                     )}
                     {st && st !== 'checking' && !st.ok && (
-                      <span role="status" className="max-w-[16rem] truncate text-amber-300" title={st.message}>{st.message}</span>
+                      <span role="status" className="max-w-[16rem] break-words text-amber-300">{st.message}</span>
                     )}
                     {st && st !== 'checking' && !st.ok && prof.kind === 'sso' && (
-                      <button type="button" className={secondary} onClick={() => p.onLoginProfile(prof.name)}>Sign in</button>
+                      <button type="button" className={secondary} aria-label={`Sign in to ${prof.name}`} onClick={() => p.onLoginProfile(prof.name)}>Sign in</button>
                     )}
-                    <button type="button" className={secondary} disabled={st === 'checking'} onClick={() => p.onCheckProfile(prof.name)}>Check</button>
+                    <button type="button" className={secondary} aria-label={`Check ${prof.name}`} disabled={st === 'checking'} onClick={() => p.onCheckProfile(prof.name)}>Check</button>
                   </div>
                 </li>
               );

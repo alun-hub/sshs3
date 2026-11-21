@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { groupInstances, summarizeScan } from '@shared/awsScan';
 import { suggestLoginName } from '@shared/ssm';
@@ -8,6 +8,7 @@ import { filterInstances } from '../../../lib/ssmInstancePicker';
 import type { AwsScanState } from '../../../lib/useAwsScan';
 
 const input = 'rounded-lg border border-border-subtle bg-app-input px-2.5 py-1.5 text-sm text-txt-primary outline-none focus:border-sky-500';
+const link = 'inline-flex min-h-6 items-center rounded px-1.5 text-xs hover:underline';
 
 interface Props {
   state: AwsScanState;
@@ -31,6 +32,7 @@ interface Props {
 /** Steps 4 and 5 of "Add from AWS": progress while searching, then the nodes found, grouped by account and region. */
 export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selected, onToggle, onSelectMany, showLogin = true, usernames, onUsername, added, blockAdded = true, onCancel }) => {
   const [query, setQuery] = useState('');
+  const radioName = useId();
   const result = state.result;
   const groups = useMemo(() => {
     if (!result) return [];
@@ -44,14 +46,14 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
   if (state.phase === 'idle') return null;
 
   return (
-    <section className="flex flex-col gap-2" aria-label="Instances" aria-live="polite">
+    <section className="flex flex-col gap-2" aria-label="Instances">
       {state.phase === 'running' && (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between text-txt-secondary">
             <span className="flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Searching… {state.progress.done} of {state.progress.total}</span>
-            <button type="button" className="text-xs text-sky-400 hover:underline" onClick={onCancel}>Cancel search</button>
+            <button type="button" className={`${link} text-sky-400`} onClick={onCancel}>Cancel search</button>
           </div>
-          <div role="progressbar" aria-valuemin={0} aria-valuemax={state.progress.total} aria-valuenow={state.progress.done} className="h-1.5 overflow-hidden rounded bg-app-surface">
+          <div role="progressbar" aria-label="Search progress" aria-valuemin={0} aria-valuemax={state.progress.total} aria-valuenow={state.progress.done} className="h-1.5 overflow-hidden rounded bg-app-surface">
             <div className="h-full bg-sky-500 transition-all" style={{ width: `${state.progress.total ? Math.round((100 * state.progress.done) / state.progress.total) : 0}%` }} />
           </div>
         </div>
@@ -59,7 +61,7 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
 
       {state.phase === 'done' && result && (
         <>
-          <p className="text-txt-muted" data-testid="guide-summary">
+          <p role="status" className="text-txt-muted" data-testid="guide-summary">
             {state.cancelled ? 'Search stopped. ' : ''}{summarizeScan(result.searched, result.skipped)}
             {result.truncated && ' Only the first instances are shown; choose fewer accounts or regions.'}
           </p>
@@ -80,14 +82,14 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
               <div className="flex items-center gap-3">
                 <input aria-label="Filter instances" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by name, ID, platform or IP" className={`${input} flex-1`} />
                 {!single && onSelectMany && (
-                  <span className="flex shrink-0 items-center gap-3 text-xs">
-                    <button type="button" className="text-sky-400 hover:underline" onClick={() => onSelectMany(selectable.map(instanceKey))}>Select all shown ({selectable.length})</button>
-                    <button type="button" className="text-txt-muted hover:underline" onClick={() => onSelectMany([])}>None</button>
+                  <span className="flex shrink-0 items-center gap-1 text-xs">
+                    <button type="button" className={`${link} text-sky-400`} onClick={() => onSelectMany(selectable.map(instanceKey))}>Select all shown ({selectable.length})</button>
+                    <button type="button" className={`${link} text-txt-muted`} aria-label="Clear instance selection" onClick={() => onSelectMany([])}>None</button>
                   </span>
                 )}
               </div>
-              <p className="text-txt-muted" aria-live="polite">{selected.size} selected</p>
-              <div role="listbox" aria-label="SSM-managed instances" aria-multiselectable={!single} className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-border-subtle bg-app-card p-1.5">
+              <p role="status" className="text-txt-muted">{selected.size} selected</p>
+              <div role="group" aria-label="SSM-managed instances" className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-border-subtle bg-app-card p-1.5">
                 {groups.map((g) => {
                   const target = targets.get(g.targetId);
                   return (
@@ -101,44 +103,42 @@ export const AwsGuideResults: React.FC<Props> = ({ state, targets, single, selec
                         return (
                           <div
                             key={key}
-                            role="option"
-                            aria-selected={on}
-                            aria-disabled={blocked}
-                            tabIndex={blocked ? -1 : 0}
-                            onClick={() => !blocked && onToggle(key)}
-                            onKeyDown={(e) => {
-                              if (!blocked && (e.key === 'Enter' || e.key === ' ')) {
-                                e.preventDefault();
-                                onToggle(key);
-                              }
+                            // A click on the row (not on one of its inputs) picks it, like a click on the checkbox itself.
+                            onClick={(e) => {
+                              if (!blocked && !(e.target instanceof HTMLInputElement)) onToggle(key);
                             }}
-                            className={`grid cursor-pointer ${showLogin ? 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr_7rem]' : 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr]'} items-center gap-2 rounded-md px-2 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'} ${blocked ? 'cursor-default opacity-60' : ''}`}
+                            className={`grid ${blocked ? 'cursor-default opacity-60' : 'cursor-pointer'} ${showLogin ? 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr_7rem]' : 'grid-cols-[1.25rem_1.3fr_1.2fr_0.9fr_0.9fr]'} items-center gap-2 rounded-md px-2 py-1.5 ${on ? 'bg-sky-500/20' : 'hover:bg-app-surface-hover'}`}
                           >
                             <input
                               type={single ? 'radio' : 'checkbox'}
+                              name={single ? radioName : undefined}
                               checked={on}
-                              readOnly
-                              tabIndex={-1}
-                              aria-hidden="true"
+                              onChange={() => onToggle(key)}
+                              // Enter picks the row as well as Space (keyboard-first rule); Space is the native toggle.
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  if (!blocked) onToggle(key);
+                                }
+                              }}
                               disabled={blocked}
-                              className="pointer-events-none h-3.5 w-3.5 text-sky-600"
+                              aria-label={`${i.name}, ${i.instanceId}${isAdded ? ', already added' : ''}`}
+                              className="h-3.5 w-3.5 text-sky-600"
                             />
                             <span className="flex min-w-0 items-center gap-1.5">
-                              <span className="truncate font-medium text-txt-primary">{i.name}</span>
-                              {isAdded && <span title="A profile for this instance already exists" className="shrink-0 rounded bg-emerald-500/20 px-1 text-[10px] text-emerald-300">Already added</span>}
+                              <span className="truncate font-medium text-txt-primary" title={i.name}>{i.name}</span>
+                              {isAdded && <span title="A profile for this instance already exists" className="shrink-0 rounded bg-emerald-500/20 px-1 text-2xs text-emerald-300">Already added</span>}
                             </span>
-                            <span className="truncate font-mono text-txt-muted">{i.instanceId}</span>
-                            <span className="truncate text-txt-secondary">{i.platformName ?? i.platformType ?? ''}</span>
+                            <span className="truncate font-mono text-txt-muted" title={i.instanceId}>{i.instanceId}</span>
+                            <span className="truncate text-txt-secondary" title={i.platformName ?? i.platformType ?? ''}>{i.platformName ?? i.platformType ?? ''}</span>
                             <span className="truncate text-txt-muted">{i.ipAddress ?? ''}</span>
                             {showLogin && (
                             <input
                               aria-label={`SSH login for ${i.name}`}
                               value={usernames[i.instanceId] ?? suggestLoginName(i.platformName)}
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => e.stopPropagation()}
                               onChange={(e) => onUsername(i.instanceId, e.target.value)}
                               disabled={blocked}
-                              className="rounded border border-border-subtle bg-app-input px-1.5 py-0.5 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
+                              className="rounded border border-border-subtle bg-app-input px-1.5 py-1 font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
                             />
                             )}
                           </div>
