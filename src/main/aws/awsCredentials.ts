@@ -47,6 +47,10 @@ export function shareCredentials(provider: () => Promise<{ expiration?: Date }>)
  * own provider chain, which reads the AWS CLI configuration like the CLI does (SSO sessions, assume-role, `aws login`,
  * credential_process, environment, instance role). Nothing here prompts: a profile that needs MFA fails with the
  * SDK's error and the UI explains how to sign in once from a terminal.
+ *
+ * `ignoreCache`: the SDK keeps the parsed ~/.aws/config for the life of the process. A long-running app would then not see
+ * a profile that `aws login`, `aws configure` or `aws sso login` adds or changes after sshs3 started, and the chain answered
+ * 'Could not load credentials from any providers' for a profile the CLI itself could use.
  */
 export function buildCredentialProvider(source: AwsCredentialSource, network: AwsSsoNetworkOptions = {}): AwsCredentials {
   const handler = buildAwsNodeHttpHandler(network);
@@ -65,7 +69,7 @@ export function buildCredentialProvider(source: AwsCredentialSource, network: Aw
   }
   if (source.kind === 'profile') {
     if (!isValidAwsProfile(source.name)) throw new Error('Invalid AWS CLI profile name');
-    return shareCredentials(defaultProvider({ profile: source.name, clientConfig: { requestHandler: handler } }));
+    return shareCredentials(defaultProvider({ profile: source.name, ignoreCache: true, clientConfig: { requestHandler: handler } }));
   }
-  return shareCredentials(defaultProvider({ clientConfig: { requestHandler: handler } }));
+  return shareCredentials(defaultProvider({ ignoreCache: true, clientConfig: { requestHandler: handler } }));
 }

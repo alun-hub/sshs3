@@ -135,3 +135,29 @@ describe('buildCredentialProvider validation', () => {
     expect(typeof buildCredentialProvider({ kind: 'sso', sso: { startUrl: 'https://d-1.awsapps.com/start', region: 'us-east-1', accountId: '123456789012', roleName: 'Dev' } })).toBe('function');
   });
 });
+
+describe('buildCredentialProvider and a config file that changes while the app runs', () => {
+  it('sees a profile that was added after the provider chain first read the file', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-awscfg-'));
+    const config = path.join(dir, 'config');
+    const saved = { cfg: process.env.AWS_CONFIG_FILE, creds: process.env.AWS_SHARED_CREDENTIALS_FILE };
+    process.env.AWS_CONFIG_FILE = config;
+    process.env.AWS_SHARED_CREDENTIALS_FILE = path.join(dir, 'none');
+    try {
+      fs.writeFileSync(config, '[profile other]\nregion = eu-north-1\n');
+      const first = buildCredentialProvider({ kind: 'profile', name: 'late-added' }) as () => Promise<unknown>;
+      await expect(first()).rejects.toThrow();
+      // The user runs `aws configure` (or `aws login`) in a terminal while sshs3 is open.
+      fs.appendFileSync(config, '\n[profile late-added]\naws_access_key_id = testid\naws_secret_access_key = testsecret\n'); // pragma: allowlist secret
+      const second = buildCredentialProvider({ kind: 'profile', name: 'late-added' }) as () => Promise<{ accessKeyId: string }>;
+      await expect(second()).resolves.toMatchObject({ accessKeyId: 'testid' });
+    } finally {
+      if (saved.cfg === undefined) delete process.env.AWS_CONFIG_FILE; else process.env.AWS_CONFIG_FILE = saved.cfg;
+      if (saved.creds === undefined) delete process.env.AWS_SHARED_CREDENTIALS_FILE; else process.env.AWS_SHARED_CREDENTIALS_FILE = saved.creds;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20000);
+});
