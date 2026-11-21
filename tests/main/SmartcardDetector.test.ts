@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -6,6 +6,7 @@ import net from 'node:net';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { SmartcardDetector } from '../../src/main/smartcard/SmartcardDetector';
+import { configureResolvedHostNameForTests } from '../../src/main/ssh/resolvedHostName';
 import { AskpassServer } from '../../src/main/smartcard/AskpassServer';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 
@@ -209,6 +210,40 @@ describe('SmartcardDetector', () => {
         expect(pinned(SmartcardDetector.buildSSHArguments(base))).toBe(false);
         expect(pinned(SmartcardDetector.buildSSHArguments({ ...base, proxy: { enabled: false, type: 'http', host: 'proxy.corp', port: 3128 } }))).toBe(false);
         expect(pinned(SmartcardDetector.buildSSHArguments({ ...base, proxyJump: '   ' }))).toBe(false);
+      });
+
+      describe('a host that is an ssh_config alias', () => {
+        const alias: SSHConnectionConfig = { ...base, host: 'prod-db' };
+        const proxied = { ...alias, proxyJump: 'ops@bastion.example.com:2222' };
+        const hostNameOf = (args: string[]) => args.find((a) => a.startsWith('HostName='));
+
+        it('pins the host name ssh resolves for it, so the alias still reaches the real host through a jump host or proxy', () => {
+          const run = vi.fn().mockReturnValue('user alice\nhostname 10.0.3.7\nport 22\n');
+          configureResolvedHostNameForTests({ runner: run });
+          expect(hostNameOf(SmartcardDetector.buildSSHArguments(proxied))).toBe('HostName=10.0.3.7');
+          expect(hostNameOf(SmartcardDetector.buildSSHArguments({ ...alias, proxy: { enabled: true, type: 'http', host: 'proxy.corp', port: 3128 } }))).toBe('HostName=10.0.3.7');
+          expect(run).toHaveBeenCalledWith(['-G', '-p', '22', '--', 'alice@prod-db']);
+        });
+
+        it('never pins a resolved value that could carry shell syntax: a hostile synced HostName falls back to the profile host', () => {
+          configureResolvedHostNameForTests({ runner: () => 'hostname x$(touch /tmp/pwned)\n' });
+          const args = SmartcardDetector.buildSSHArguments(proxied);
+          expect(hostNameOf(args)).toBe('HostName=prod-db');
+          expect(args.join(' ')).not.toContain('$(');
+        });
+
+        it('falls back to the profile host when ssh -G fails', () => {
+          configureResolvedHostNameForTests({ runner: () => { throw new Error('ETIMEDOUT'); } });
+          expect(hostNameOf(SmartcardDetector.buildSSHArguments(proxied))).toBe('HostName=prod-db');
+        });
+
+        it('does not run ssh -G for a plain connection or for SSM, which keep their own behaviour', () => {
+          const run = vi.fn().mockReturnValue('hostname 10.0.3.7\n');
+          configureResolvedHostNameForTests({ runner: run });
+          SmartcardDetector.buildSSHArguments(alias);
+          SmartcardDetector.buildSSHArguments({ ...base, host: 'i-0123456789abcdef0', ssm: { enabled: true, region: 'eu-north-1' } });
+          expect(run).not.toHaveBeenCalled();
+        });
       });
 
       it('is added exactly once for an SSM profile (which has its own pin)', () => {

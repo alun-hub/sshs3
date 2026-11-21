@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DetectedSmartcardLib, SSHConnectionConfig } from '../../shared/types/ssh';
 import { isAllowedExtraOption } from '../ssh/blockedSshDirectives';
+import { isSafeHostToken } from '../ssh/hostToken';
+import { resolveHostNamePin } from '../ssh/resolvedHostName';
 import { isSsmShellProfile } from '../../shared/ssm';
 import { assertValidSsm, SSM_SHELL_NO_SSH_MESSAGE, ssmEnvOverlay, ssmHostNameOption, ssmProxyOption } from '../ssh/ssmProxy';
 import { createLogger } from '../log';
@@ -12,20 +14,6 @@ const smartcardLog = createLogger('smartcard');
 export interface DetectOptions {
   customPaths?: Array<{ name: string; path: string; platform: 'linux' | 'win32' }>;
   onlyExisting?: boolean;
-}
-
-/**
- * Whether a string is safe to embed, unquoted, inside an OpenSSH
- * `ProxyCommand=...` value that is executed via `/bin/sh -c` (or `cmd.exe`)
- * by the `ssh` client itself. This gates both `config.host` (substituted by
- * ssh's own `%h` expansion into the ProxyCommand string) and `config.proxy.host`
- * (interpolated directly by buildSSHArguments below) — any character outside
- * this allowlist could otherwise break out of the command and execute
- * arbitrary shell commands when the connection is established.
- * Restricted to characters valid in a DNS hostname or IPv4/IPv6 literal.
- */
-function isSafeHostToken(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 255 && /^[A-Za-z0-9.\-_[\]:]+$/.test(value);
 }
 
 // One ProxyJump hop: [user@]host[:port]. ssh turns -J into a shell-run ProxyCommand, so older
@@ -495,9 +483,12 @@ export class SmartcardDetector {
     }
 
     // An outgoing proxy or ProxyJump is a shell-run command in which ssh expands %h from the HostName it RESOLVES, and a
-    // synced ~/.ssh/config block can set that HostName for the alias. Pin it to the host validated above: a command-line
-    // -o beats the config, so no config entry can put another value into the shell string (SSM pins it below the same way).
-    if ((config.proxy?.enabled && config.proxy.host) || config.proxyJump?.trim()) args.push('-o', `HostName=${config.host}`);
+    // synced ~/.ssh/config block can set that HostName for the alias. Pin it on the command line, where it beats the config:
+    // the host name ssh itself resolves for the profile's host (so an ssh_config alias still works) when that is made of
+    // host name characters only, otherwise the validated profile host (see resolvedHostName.ts). SSM pins its own below.
+    if ((config.proxy?.enabled && config.proxy.host) || config.proxyJump?.trim()) {
+      args.push('-o', `HostName=${resolveHostNamePin({ host: config.host, username: config.username || undefined, port })}`);
+    }
 
     // SSH over AWS SSM (-o ProxyCommand=aws ssm start-session …). A command-line -o beats any
     // hand-written ~/.ssh/config entry for the same host, so the two never double up. HostName is pinned the same way:
