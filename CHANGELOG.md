@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.0] - 2026-11-21
+
+AWS Systems Manager: reach EC2 instances that have no open SSH port, find them across accounts and regions, and import them as profiles.
+
+### Added
+- **SSH over AWS Systems Manager (SSM).** A profile can connect through Session Manager instead of a public SSH port. There are two connection types: **SSH over SSM** keeps everything an SSH profile does (terminal, file manager, editor, search, directory sync, tunnels, key install, and every normal authentication choice: password, key file, agent, smartcard, security key), and a **Session Manager shell** opens a terminal like *Connect → Session Manager* in the EC2 console, with no sshd and no key (IAM decides who may connect; files, tunnels and key install need SSH). Needs the AWS CLI v2 and the Session Manager plugin, which sshs3 finds on `PATH` and in the standard install folders, with install steps and a status that updates by itself.
+- **Add from AWS.** A guide in the connection manager, and **Pick from AWS…** in the profile form: choose where the credentials come from, tick accounts (a role per account, or one role for all), search the chosen regions in parallel with progress and a cancel button, tick the instances and import them into `AWS/<account>/<region>`. Names come from the EC2 `Name` tag when the role may read it. Instances that already have a profile are marked, and several imported profiles can connect as SSH over SSM (with the SSH agent or a key file) or as Session Manager shells.
+- **Three credential sources:** sshs3's own **AWS IAM Identity Center sign-in** (in your browser; the access token stays in the main process and never reaches the window), an **AWS CLI profile** (SSO, assume-role, access keys, `aws login`, credential process; with *Check* and *Sign in*), or the **default credentials**. If an Identity Center sign-in has expired when you connect, a terminal asks you to sign in again and then continues.
+- **Settings → AWS** with an **Enable AWS features** switch (AWS features are off until you turn them on), saved sign-ins with their status, the regions to search, and **Network**: an HTTPS proxy, a custom CA certificate and TLS verification, used for sign-in, listing and searching and passed to the `aws` CLI. An **AWS** button in the top bar (next to the SSH CA button) shows the sign-in state, green when signed in and amber when a sign-in your profiles use has expired.
+- **Enterprise policy:** `awsSsm` blocks connections through SSM (SSH over SSM and Session Manager shells) and the instance search, `enableAws` shows or hides the AWS interface and locks the switch (it does not block connections), `awsRegions` sets the regions, and `awsManagedSignIns` adds locked IAM Identity Center sign-ins for every user (Group Policy ADMX/ADML and `policy.conf`). The AWS settings stay on the machine and are not synced.
+- Team Vault: a change to a shared profile's SSM settings counts as a routing change, like a changed host or jump host. Session Manager shell profiles show an **SSM shell** badge in lists, also in a Team Vault.
+- User guide: a new *SSH over AWS Systems Manager* page (setup, IAM permissions, organizations, limits, troubleshooting), described in the README and on sshs3.com. The privacy policy has a section on the website, and there are Terms of Use.
+
+### Security
+- A synced `~/.ssh/config` block can no longer put shell syntax into the host name that `ssh` expands into a shell-run `ProxyCommand` (the SSM command and the outgoing-proxy and `ProxyJump` commands). `HostName`, `Port`, `User` and `ProxyJump` values in a synced block are checked (a value that cannot be read is refused, and a carriage return or a Unicode line separator inside quotes no longer slips past), and for SSM, outgoing-proxy and `ProxyJump` connections the validated host is also set on the command line (`-o HostName=…`), which takes precedence over the config file.
+- The network used for the AWS sign-in is never taken from the window: it comes from the AWS settings or from a *saved* S3 profile (looked up by id, only for its own start URL and region), and TLS verification is never weaker than the AWS settings allow. The IPC calls that handed the sign-in token back to the window are gone.
+
+### Changed
+- An S3 profile's *do not verify TLS certificates* no longer applies to the AWS SSO sign-in and the account and role lists (use a CA certificate or the AWS settings). Signing in from a profile you have not saved uses the AWS settings.
+- Profiles with an outgoing proxy or a `ProxyJump` now pass `-o HostName=<host>`, so an `ssh_config` alias in a profile's host is not resolved for them (the proxy or jump host receives the alias itself, and the host key is stored under it in `known_hosts`).
+- **S3 profiles that use AWS SSO:** the sign-in now stores its token under the start URL without `#…`, `?…` and surrounding spaces, and the S3 connection reads it the same way, so a profile that was saved with such an address (the old form saved it as typed) shows *Signed in* and connects. If you have such a profile, sign in to it once more after updating.
+- The `awsSsm` policy no longer disables the account and role lists of the S3 and sync target forms, which sign in to IAM Identity Center for S3 and have nothing to do with Systems Manager.
+- The results and errors of importing and exporting profiles, a missing `~/.ssh/config` entry, and some connection errors (S3, Kubernetes pod, SFTP) used to appear in the system's own alert box and now appear in an in-app dialog.
+- Libraries: Electron 45.2.1 → 45.3.3, the AWS SDK 3.1161 → 3.1170 (3.1171 for the new EC2 and SSM clients), Vite 8.3.5 → 8.3.8, lucide-react 1.67 → 1.73, an indirect dependency (node-forge 1.4.2 → 1.4.3), and the usual lint, test and password-strength libraries.
+- Under the hood, with no change in behaviour: the Microsoft Store build can optionally submit to Partner Center from CI.
+
 ## [0.97.9] - 2026-11-13
 
 ### Fixed
