@@ -11,6 +11,8 @@ app:quit-confirm-respond
 archive:compress
 archive:extract
 askpass:submit-pin
+aws-s3:bucket-region
+aws-s3:list-buckets
 aws-ssm:check-tools
 aws-ssm:list-profiles
 aws-ssm:profile-login

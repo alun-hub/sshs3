@@ -19,4 +19,6 @@ export const awsScanApi: AwsScanElectronApi = {
   awsSsoStatus: (startUrl) => ipcRenderer.invoke(AWS_SCAN_CHANNELS.AWS_SSO_STATUS, startUrl),
   awsSsoListAccountsCached: (request) => ipcRenderer.invoke(AWS_SCAN_CHANNELS.AWS_SSO_LIST_ACCOUNTS_CACHED, request),
   awsSsoListRolesCached: (request) => ipcRenderer.invoke(AWS_SCAN_CHANNELS.AWS_SSO_LIST_ROLES_CACHED, request),
+  awsS3ListBuckets: (request) => ipcRenderer.invoke(AWS_SCAN_CHANNELS.AWS_S3_LIST_BUCKETS, request),
+  awsS3BucketRegion: (request) => ipcRenderer.invoke(AWS_SCAN_CHANNELS.AWS_S3_BUCKET_REGION, request),
 };

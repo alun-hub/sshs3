@@ -33,6 +33,7 @@ For organizations managing AWS accounts through corporate Single Sign-On:
 1. Provide your **SSO Start URL** (e.g. `https://my-org.awsapps.com/start`) and **SSO Region**, or pick a sign-in that you saved under **Settings → AWS** from the **Saved sign-in** list. With exactly one saved sign-in, a new profile starts from it; a profile that already has a start URL is never changed.
 2. Click **Sign in with AWS SSO**. sshs3 initiates an OIDC device authorization and opens your default browser with an 8-character verification code.
 3. Once approved, sshs3 retrieves temporary STS session credentials and displays an interactive selector to choose your target AWS Account and IAM Role.
+   Then click **Pick bucket…** to choose one of the account's buckets from a list: **Initial Path** is set to the bucket, **Region** to the region the bucket is in, and an empty **Profile Name** to the bucket name. Listing buckets needs the permission `s3:ListAllMyBuckets` for the role; without it the list shows the S3 error and you type the bucket name in **Initial Path** yourself. Buckets that belong to another account (shared through a bucket policy) are not listed.
 4. **AWS CLI Cache Reuse:** In environments already running the AWS CLI, sshs3 automatically checks `~/.aws/sso/cache/`, reusing valid tokens to eliminate redundant browser logins.
 
 ### Technical Architecture: OIDC Device Code Exchange
