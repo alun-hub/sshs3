@@ -246,6 +246,7 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
         <div className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-app-surface-subtle p-3">
           <AwsSsoSignInPanel
             idPrefix="s3-sso"
+            useSavedSignIns
             value={{
               startUrl: config.sso?.startUrl ?? '',
               region: config.sso?.region || config.region || 'us-east-1',

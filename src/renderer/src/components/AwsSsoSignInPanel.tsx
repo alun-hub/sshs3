@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Cloud, Loader2 } from 'lucide-react';
+import { allSignIns } from '@shared/awsSignIns';
 import { normalizeStartUrl } from '@shared/ssm';
-import type { AwsSsoNetworkOptions } from '@shared/types/aws';
+import type { AwsSignIn, AwsSsoNetworkOptions } from '@shared/types/aws';
 import { describeSsoStatus } from '../lib/awsSsoStatus';
 import { useAwsSsoSignIn, type AwsSsoValue } from '../lib/useAwsSsoSignIn';
 
@@ -16,6 +17,11 @@ interface Props {
   pickAccountRole?: boolean;
   /** Prefix for element ids and test ids when a page shows more than one panel. */
   idPrefix?: string;
+  /**
+   * Offer the sign-ins saved in Settings → AWS (and those from policy) as a **Saved sign-in** list, and fill in a new
+   * form that is still empty when there is exactly one. Off in the editor that creates those sign-ins.
+   */
+  useSavedSignIns?: boolean;
 }
 
 const input =
@@ -101,12 +107,49 @@ export const AwsSsoSignInFields: React.FC<{
  * in, account and role pickers. Shared by the S3 profile form, the AWS sign-in list, the SSM profile form and the
  * instance import dialog so that signing in looks and behaves the same everywhere.
  */
-export const AwsSsoSignInPanel: React.FC<Props> = ({ value, onChange, network, s3ProfileId, pickAccountRole = true, idPrefix = 'aws-sso' }) => {
+export const AwsSsoSignInPanel: React.FC<Props> = ({ value, onChange, network, s3ProfileId, pickAccountRole = true, idPrefix = 'aws-sso', useSavedSignIns = false }) => {
   const s = useAwsSsoSignIn({ value, onChange, network, s3ProfileId, pickAccountRole });
   const signedIn = s.status?.status === 'valid';
 
+  const [saved, setSaved] = useState<AwsSignIn[]>([]);
+  useEffect(() => {
+    if (!useSavedSignIns) return;
+    let alive = true;
+    window.multissh?.settingsGet?.().then((st) => alive && setSaved(allSignIns(st.awsSignIns, st.awsManagedSignIns))).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [useSavedSignIns]);
+
+  // A new, still empty form with exactly one saved sign-in starts from it, once. With several the user chooses, and a profile
+  // that already has a start URL is never touched.
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || saved.length === 0) return;
+    prefilled.current = true;
+    if (saved.length === 1 && !value.startUrl) onChange({ startUrl: saved[0].startUrl, region: saved[0].region });
+  }, [saved, value.startUrl, onChange]);
+
+  const savedId = saved.find((x) => x.startUrl === value.startUrl && x.region === value.region)?.id ?? '';
+  const chooseSaved = (id: string) => {
+    const pick = saved.find((x) => x.id === id);
+    if (!pick || id === savedId) return; // "Other…" keeps what is typed
+    onChange({ startUrl: pick.startUrl, region: pick.region, accountId: undefined, roleName: undefined });
+  };
+
   return (
     <div className="flex flex-col gap-3">
+      {useSavedSignIns && saved.length > 0 && (
+        <label className="flex flex-col gap-1 text-txt-secondary">
+          Saved sign-in
+          <select data-testid={`${idPrefix}-saved-signin`} value={savedId} onChange={(e) => chooseSaved(e.target.value)} className={input}>
+            <option value="">Other…</option>
+            {saved.map((x) => (
+              <option key={x.id} value={x.id}>{x.name} ({x.region})</option>
+            ))}
+          </select>
+        </label>
+      )}
       <AwsSsoSignInFields value={value} onChange={onChange} s={s} idPrefix={idPrefix} />
 
       {pickAccountRole && signedIn && !s.manualEntry && (
