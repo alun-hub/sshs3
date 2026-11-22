@@ -94,6 +94,7 @@
   },
   "appx": {
     "identityName": "alun.sshs3",
+    "minVersion": "10.0.17763.0",
     "publisher": "CN=DD4654AA-1C62-4E5D-AE38-CB3BE9A1F062",
     "publisherDisplayName": "alun",
     "applicationId": "sshs3",

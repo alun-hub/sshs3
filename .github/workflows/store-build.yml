@@ -130,6 +130,10 @@ jobs:
             if ($manifest -match $c.Pattern) { Write-Host "OK   $($c.Name)" }
             else { Write-Host "FAIL $($c.Name)"; $failed = $true }
           }
+          # Partner Center refuses an .msix that targets Windows 10.0.17134.0 or older (electron-builder defaults to 10.0.14316.0).
+          $min = [regex]::Match($manifest, 'TargetDeviceFamily[^>]*\bMinVersion="([^"]+)"').Groups[1].Value
+          if ($min -and [version]$min -gt [version]'10.0.17134.0') { Write-Host "OK   MinVersion $min" }
+          else { Write-Host "FAIL MinVersion '$min' (must be newer than 10.0.17134.0, see appx.minVersion in electron-builder.json)"; $failed = $true }
           if ($failed) { throw "AppxManifest.xml does not match the Partner Center identity" }
 
       - name: Upload Store package
