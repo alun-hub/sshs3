@@ -5,12 +5,18 @@ name: Microsoft Store build
 # is used here.
 # Optional submit job (input "submit"): uploads the package to Partner Center with the Microsoft Store
 # Developer CLI. It runs in the "store" environment (holds the Partner Center credentials; configure
-# required reviewers there). Without "commit" (--noCommit) msstore creates the submission and uploads the package to
-# Partner Center's storage but never commits it, and Partner Center only processes and shows an uploaded package after the
-# commit call (observed 2026-11-21: the draft still listed the old package). So "submit" without "commit" does NOT give a
-# draft with the new package: upload the artifact by hand in Partner Center, or tick "commit". A commit sends the submission to
-# certification with the texts of the last submission (What's new cannot be edited in between); publishing can be held with
-# "Don't publish until I select Publish now" under Submission options.
+# required reviewers there).
+# "commit" (default on) commits the submission: it goes to certification, and nothing has to be done by hand in Partner Center
+# except "Publish now" when the submission holds publishing ("Don't publish until I select Publish now" under Submission
+# options, which the draft that CI created in 2026-11 inherited). The texts (What's new etc.) are those of the last submission.
+# Without "commit" (--noCommit) msstore creates the submission and uploads the package but never commits it, and Partner
+# Center only processes and shows an uploaded package after the commit call (observed 2026-11-21: the draft still listed the old
+# package; msstore source, IStorePackagedAPIExtensions.PublishAsync: 'Skipping submission commit'). There is no API mode for a
+# draft to review in the browser, so "commit" off only makes sense for checking that the upload works.
+# A submission that is in certification cannot be replaced: msstore deletes a pending submission before it creates a new one and
+# that fails for one in certification, so run this when the previous submission is published.
+# The step logs no raw msstore output beyond the publish itself: --verbose prints the upload URL with its signature (a SAS
+# token that can write to the ingestion blob), and the logs of this public repository are readable by anyone.
 # The bundled-tool steps (age, age-plugin-yubikey, VcXsrv) mirror release.yml (same pinned versions and
 # checksums); update both files together.
 
@@ -22,9 +28,9 @@ on:
         type: boolean
         default: false
       commit:
-        description: Commit the submission for certification (without it the uploaded package is not shown in Partner Center)
+        description: Commit the submission (it goes to certification). Without it the uploaded package is NOT shown in Partner Center
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -176,7 +182,21 @@ jobs:
           $msix = Join-Path (Get-Location) ($appx.BaseName + '.msix')
           Copy-Item $appx.FullName $msix
           Write-Host "Submitting $($appx.Name) to product $env:PRODUCT_ID (commit=$env:COMMIT)"
-          $args = @('publish', $msix, '--appId', $env:PRODUCT_ID, '--verbose')
+          $args = @('publish', $msix, '--appId', $env:PRODUCT_ID)
           if ($env:COMMIT -ne 'true') { $args += '--noCommit' }
           msstore @args
           if ($LASTEXITCODE -ne 0) { throw "msstore publish failed" }
+
+      # Best effort: only a few fields are printed (the raw submission JSON contains the upload URL with its signature).
+      - name: Show the submission state
+        continue-on-error: true
+        shell: pwsh
+        env:
+          PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+        run: |
+          $raw = (msstore submission get $env:PRODUCT_ID 2>&1 | Out-String)
+          $start = $raw.IndexOf('{')
+          if ($start -lt 0) { Write-Host "No submission data in the output."; return }
+          try { $s = $raw.Substring($start) | ConvertFrom-Json } catch { Write-Host "Could not read the submission data."; return }
+          Write-Host "id: $($s.id)  status: $($s.status)  targetPublishMode: $($s.targetPublishMode)"
+          foreach ($p in $s.applicationPackages) { Write-Host "package: $($p.fileName)  $($p.fileStatus)  version: $($p.version)" }
