@@ -148,7 +148,7 @@ describe('ConnectionManagerModal', () => {
       expect(screen.getByText('Dev Sandbox')).toBeInTheDocument();
     });
 
-    const searchInput = screen.getByPlaceholderText('Search profiles, or type user@host to connect...');
+    const searchInput = screen.getByPlaceholderText('Search profiles, or type user@host to connect…');
     fireEvent.change(searchInput, { target: { value: 'sandbox' } });
 
     // Sandbox should remain, Prod should be filtered out
@@ -290,6 +290,59 @@ describe('ConnectionManagerModal', () => {
     fireEvent.click(container.firstElementChild as Element);
 
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('accessibility', () => {
+    it('names and configures the search field', async () => {
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
+
+      const search = screen.getByRole('textbox', { name: 'Search profiles' });
+      expect(search).toHaveAttribute('autocomplete', 'off');
+      expect(search).toHaveAttribute('spellcheck', 'false');
+    });
+
+    it('announces the loading state as a status', async () => {
+      window.multissh.profilesGet = vi.fn(() => new Promise(() => {})) as unknown as typeof window.multissh.profilesGet;
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      expect(await screen.findByRole('status')).toHaveTextContent('Loading profiles…');
+    });
+
+    it('closes only the Import / Export menu on Escape, hands focus back to its button and keeps the dialog open', async () => {
+      const onClose = vi.fn();
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={onClose} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
+
+      const menuButton = screen.getByRole('button', { name: /Sync/ });
+      expect(menuButton).toHaveAttribute('aria-haspopup', 'true');
+      expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+
+      fireEvent.click(menuButton);
+      expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('Export JSON Backup')).toBeInTheDocument();
+
+      fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+      expect(screen.queryByText('Export JSON Backup')).not.toBeInTheDocument();
+      expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+      expect(document.activeElement).toBe(menuButton);
+      expect(onClose).not.toHaveBeenCalled();
+
+      // With the menu closed, the next Escape closes the dialog as before.
+      fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
   });
 
   // LOW finding (code review): deleting a connection profile used to go
@@ -437,7 +490,7 @@ describe('ConnectionManagerModal', () => {
       // via the HTML `hidden` attribute or a `display:none` class is excluded from the
       // accessibility tree and wouldn't be findable this way, exactly the bug this
       // regression-tests. The team tab's pin button is the second one (Personal's is first).
-      const pinButtons = screen.getAllByRole('button', { name: 'Set as default tab' });
+      const pinButtons = screen.getAllByRole('button', { name: /^Set .+ as default tab$/ });
       expect(pinButtons).toHaveLength(2);
       const pinButton = pinButtons[1];
 
@@ -498,6 +551,65 @@ describe('ConnectionManagerModal', () => {
       await waitFor(() => {
         expect(window.multissh.teamVaultSetDescription).toHaveBeenCalledWith(VAULT_ID, 'New multi-line\ndescription');
       });
+    });
+
+    it('names the description editor controls', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus({ vaultDescription: 'Old text' })]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await screen.findByText('Old text');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit description' }));
+      expect(screen.getByRole('textbox', { name: 'Team description' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save description' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    });
+
+    it('cancels the description edit on Escape without closing the dialog, and returns focus to the edit button', async () => {
+      const onClose = vi.fn();
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus({ vaultDescription: 'Old text' })]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      window.multissh.teamVaultSetDescription = vi.fn().mockResolvedValue(undefined);
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={onClose} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await screen.findByText('Old text');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit description' }));
+      const textarea = screen.getByRole('textbox', { name: 'Team description' });
+      fireEvent.change(textarea, { target: { value: 'A half-written draft' } });
+      fireEvent.keyDown(textarea, { key: 'Escape', code: 'Escape' });
+
+      await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Team description' })).not.toBeInTheDocument());
+      expect(onClose).not.toHaveBeenCalled();
+      expect(window.multissh.teamVaultSetDescription).not.toHaveBeenCalled();
+      expect(screen.getByText('Old text')).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit description' })));
+    });
+
+    it('describes each team tab with its lock and sync state without changing the tab name', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      const tab = await screen.findByRole('button', { name: 'Acme Infra Team' });
+      expect(tab).toHaveAccessibleDescription('Unlocked. Not synced yet');
     });
 
     it('does not offer an edit affordance to a non-admin member', async () => {

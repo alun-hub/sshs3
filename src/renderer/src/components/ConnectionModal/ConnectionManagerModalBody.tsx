@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   Boxes,
-  Check,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -11,7 +10,6 @@ import {
   FolderPlus,
   Loader2,
   Lock,
-  Pencil,
   Pin,
   Plus,
   Search,
@@ -45,6 +43,7 @@ import { collectFolderNames, filterS3Profiles, filterSshProfiles, withoutSsmShel
 import { ProfileFolderHeader } from './ProfileFolderHeader';
 import { EmptyFolderDropZone } from './EmptyFolderDropZone';
 import { ImportCandidatesModal } from './ImportCandidatesModal';
+import { TeamDescriptionEditor } from './TeamDescriptionEditor';
 import { AwsAddButton } from '../aws/AwsAddButton';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
@@ -54,7 +53,7 @@ import { saveInOrder } from '../../lib/saveInOrder';
 import { moveWithSystems } from '../../lib/systemEdit';
 import { createSystemActions } from '../../lib/systemActions';
 import { usePersonalBulkEdit } from '../../lib/usePersonalBulkEdit';
-import { useModalDismiss } from '../../lib/useModalDismiss';
+import { useEscapeToClose, useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useConfirm } from '../ConfirmDialog';
 import { useNotice } from '../../lib/confirmContext';
@@ -210,29 +209,6 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
     setUnlockingAllTeams(false);
     if (failed.length > 0) {
       setError(`Failed to unlock: ${failed.join(', ')}`);
-    }
-  };
-
-  // Editing a team's description directly from its tab row — the same `teamVaultSetDescription`
-  // call `TeamVaultDetailPanel` (Settings) makes, just reachable without leaving the Connection
-  // Manager too. `editingTabDescription` holds the vaultId currently being edited (not a bool —
-  // only one tab's editor is open at a time, and this doubles as "which tab" for the save call).
-  const [editingTabDescription, setEditingTabDescription] = useState<string | null>(null);
-  const [tabDescriptionDraft, setTabDescriptionDraft] = useState('');
-  const [savingTabDescription, setSavingTabDescription] = useState(false);
-  const [tabDescriptionError, setTabDescriptionError] = useState<string | null>(null);
-
-  const handleSaveTabDescription = async (vaultId: string) => {
-    setSavingTabDescription(true);
-    setTabDescriptionError(null);
-    try {
-      await window.multissh.teamVaultSetDescription(vaultId, tabDescriptionDraft.trim());
-      await loadTeamVaultTabs();
-      setEditingTabDescription(null);
-    } catch (err) {
-      setTabDescriptionError(describeIpcError(err, 'Failed to save the description'));
-    } finally {
-      setSavingTabDescription(false);
     }
   };
 
@@ -729,6 +705,12 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
   // silently discard it, since there's no unsaved-changes warning here.
   const handleBackdropClick = useModalDismiss(onClose, open, !editing);
   useModalDismiss(() => setImportCandidates(null), !!importCandidates);
+  // Escape closes the Import / Export menu first, not the whole dialog behind it, and hands focus back to its button.
+  const importMenuButtonRef = useRef<HTMLButtonElement>(null);
+  useEscapeToClose(() => {
+    setImportMenuOpen(false);
+    importMenuButtonRef.current?.focus();
+  }, importMenuOpen);
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(dialogRef, open);
 
@@ -802,6 +784,7 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                     type="button"
                     onClick={() => setSource(key)}
                     title={vault?.vaultDescription || undefined}
+                    aria-describedby={vault ? `team-tab-state-${key}` : undefined}
                     className={
                       'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ' +
                       (source === key
@@ -821,6 +804,7 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                     {label}
                     {vault && (
                       <span
+                        aria-hidden="true"
                         title={syncingVaultIds[vault.vaultId!] ? 'Syncing now' : vault.lastSyncAt ? `Last synced ${formatDateTime(vault.lastSyncAt)}` : 'Not synced yet'}
                         className={
                           'h-1.5 w-1.5 rounded-full ' +
@@ -829,9 +813,17 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                       />
                     )}
                   </button>
+                  {/* The lock icon and the sync dot say this with colour and a tooltip only; a description keeps the tab's name as the team's. */}
+                  {vault && (
+                    <span id={`team-tab-state-${key}`} className="sr-only">
+                      {vault.unlocked ? 'Unlocked' : 'Locked'}.{' '}
+                      {syncingVaultIds[vault.vaultId!] ? 'Syncing now' : vault.lastSyncAt ? `Last synced ${formatDateTime(vault.lastSyncAt)}` : 'Not synced yet'}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => void handleSetDefaultTab(key)}
+                    aria-label={`Set ${label} as default tab`}
                     title="Set as default tab"
                     // Opacity-based reveal, not `hidden`/`display:none` — per CLAUDE.md's
                     // keyboard-first mandate, this button must stay in the tab order and
@@ -858,70 +850,13 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
               )}
             </div>
             {source !== 'personal' && activeTeamVaultTab && (
-              <div className="mt-1.5">
-                {editingTabDescription === activeTeamVaultTab.vaultId ? (
-                  <div className="flex items-start gap-1.5">
-                    <textarea
-                      autoFocus
-                      value={tabDescriptionDraft}
-                      onChange={(e) => setTabDescriptionDraft(e.target.value)}
-                      maxLength={500}
-                      rows={2}
-                      placeholder="What is this team for? (shown to every member here)"
-                      className="min-w-0 flex-1 rounded border border-border-subtle bg-app-input px-1.5 py-0.5 text-2xs text-txt-primary outline-none focus:border-sky-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveTabDescription(activeTeamVaultTab.vaultId!)}
-                      disabled={savingTabDescription}
-                      className="text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
-                      title="Save"
-                    >
-                      {savingTabDescription ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Check className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                    <button
-                      aria-label="Cancel"
-                      type="button"
-                      onClick={() => setEditingTabDescription(null)}
-                      disabled={savingTabDescription}
-                      className="text-txt-muted hover:text-txt-secondary disabled:opacity-50"
-                      title="Cancel"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  (activeTeamVaultTab.vaultDescription || activeTeamVaultTab.selfRole === 'admin') && (
-                    <div className="flex items-start gap-1.5">
-                      <p className="max-h-16 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap text-2xs text-txt-muted">
-                        {activeTeamVaultTab.vaultDescription || 'No description yet.'}
-                      </p>
-                      {activeTeamVaultTab.selfRole === 'admin' && (
-                        <button
-                          aria-label="Edit description"
-                          type="button"
-                          onClick={() => {
-                            setTabDescriptionDraft(activeTeamVaultTab.vaultDescription ?? '');
-                            setTabDescriptionError(null);
-                            setEditingTabDescription(activeTeamVaultTab.vaultId!);
-                          }}
-                          className="shrink-0 text-txt-muted hover:text-txt-secondary"
-                          title="Edit description"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  )
-                )}
-                {editingTabDescription === activeTeamVaultTab.vaultId && tabDescriptionError && (
-                  <p className="mt-1 text-2xs text-red-400">{tabDescriptionError}</p>
-                )}
-              </div>
+              <TeamDescriptionEditor
+                key={activeTeamVaultTab.vaultId}
+                vaultId={activeTeamVaultTab.vaultId!}
+                description={activeTeamVaultTab.vaultDescription}
+                canEdit={activeTeamVaultTab.selfRole === 'admin'}
+                onSaved={loadTeamVaultTabs}
+              />
             )}
           </div>
         )}
@@ -978,6 +913,9 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                       <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-txt-muted" />
                       <input
                         type="text"
+                        aria-label="Search profiles"
+                        autoComplete="off"
+                        spellCheck={false}
                         data-autofocus
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -1001,8 +939,8 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                         }}
                         placeholder={
                           tab === 'ssh'
-                            ? 'Search profiles, or type user@host to connect...'
-                            : 'Search profiles or folders...'
+                            ? 'Search profiles, or type user@host to connect…'
+                            : 'Search profiles or folders…'
                         }
                         className="w-full rounded-lg border border-border-subtle bg-app-input py-1.5 pl-8 pr-3 text-xs text-txt-primary outline-none focus:border-sky-500 placeholder-txt-muted"
                       />
@@ -1039,7 +977,10 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                         {/* Import / Export Menu */}
                         <div className="relative">
                           <button
+                            ref={importMenuButtonRef}
                             type="button"
+                            aria-haspopup="true"
+                            aria-expanded={importMenuOpen}
                             onClick={() => setImportMenuOpen((prev) => !prev)}
                             title="Import and Export Profiles"
                             className="flex items-center gap-1 rounded-lg border border-border-subtle bg-app-surface px-2 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary shrink-0 transition-colors"
@@ -1107,7 +1048,9 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                         aria-label="Folder name"
                         type="text"
                         autoFocus
-                        placeholder="Folder name..."
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder="Folder name…"
                         value={newFolderName}
                         onChange={(e) => setNewFolderName(e.target.value)}
                         onKeyDown={(e) => {
@@ -1178,9 +1121,9 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
               )}
 
               {loading && (
-                <div className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
+                <div role="status" className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading profiles...
+                  Loading profiles…
                 </div>
               )}
 
