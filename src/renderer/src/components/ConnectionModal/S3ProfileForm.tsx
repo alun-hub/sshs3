@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Cloud, FolderOpen, KeyRound, Loader2 } from 'lucide-react';
 import type { S3Config } from '@shared/types/storage';
 import { describeIpcError } from '../../lib/format';
+import { useAwsEnabled } from '../../lib/awsEnabled';
 import { AwsSsoSignInPanel } from '../AwsSsoSignInPanel';
 import { S3BucketPickerModal } from '../S3BucketPickerModal';
 import { ProfileOrganizationFields } from './ProfileOrganizationFields';
@@ -46,6 +47,9 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const selfSigned = config.rejectUnauthorized === false;
   const authMode = config.authMode ?? 'static';
+  // AWS features off: only access keys are offered. A profile that uses SSO keeps the choice (and keeps working).
+  const awsEnabled = useAwsEnabled();
+  const showAuthToggle = awsEnabled || authMode === 'sso';
   const [pickingBucket, setPickingBucket] = useState(false);
   const [bucketNote, setBucketNote] = useState<string | null>(null);
   // "Pick bucket" needs a complete SSO choice; the list itself is fetched by the main process from the cached sign-in.
@@ -191,32 +195,39 @@ export const S3ProfileForm: React.FC<S3ProfileFormProps> = ({
         />
       </label>
 
-      <div className="flex gap-1.5 rounded-lg border border-border-subtle bg-app-surface-subtle p-1">
-        <button
-          type="button"
-          onClick={() => setAuthMode('static')}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-            authMode === 'static'
-              ? 'bg-sky-600 text-white shadow-sm'
-              : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
-          }`}
-        >
-          <KeyRound className="h-3.5 w-3.5" />
-          Access Keys
-        </button>
-        <button
-          type="button"
-          onClick={() => setAuthMode('sso')}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-            authMode === 'sso'
-              ? 'bg-sky-600 text-white shadow-sm'
-              : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
-          }`}
-        >
-          <Cloud className="h-3.5 w-3.5" />
-          AWS SSO
-        </button>
-      </div>
+      {showAuthToggle && (
+        <div className="flex gap-1.5 rounded-lg border border-border-subtle bg-app-surface-subtle p-1">
+          <button
+            type="button"
+            onClick={() => setAuthMode('static')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              authMode === 'static'
+                ? 'bg-sky-600 text-white shadow-sm'
+                : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+            }`}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            Access Keys
+          </button>
+          <button
+            type="button"
+            onClick={() => setAuthMode('sso')}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              authMode === 'sso'
+                ? 'bg-sky-600 text-white shadow-sm'
+                : 'text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary'
+            }`}
+          >
+            <Cloud className="h-3.5 w-3.5" />
+            AWS SSO
+          </button>
+        </div>
+      )}
+      {!awsEnabled && authMode === 'sso' && (
+        <p role="note" className="text-xs text-amber-300">
+          AWS features are off (Settings → AWS). This profile keeps working.
+        </p>
+      )}
 
       {authMode === 'static' ? (
         <>

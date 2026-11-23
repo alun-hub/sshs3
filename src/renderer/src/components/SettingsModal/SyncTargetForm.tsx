@@ -1,6 +1,7 @@
 import { isSsmShellProfile } from '@shared/ssm';
 import React, { useEffect, useState } from 'react';
 import { pkcs11PlaceholderPath } from '../../lib/smartcard';
+import { useAwsEnabled } from '../../lib/awsEnabled';
 import {
   Server,
   Cloud,
@@ -219,6 +220,10 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
     ssh: [],
     s3: [],
   });
+
+  // AWS features off: only static credentials are offered. A target that uses SSO keeps the choice (and keeps working).
+  const awsEnabled = useAwsEnabled();
+  const showAuthToggle = awsEnabled || draft.authMode === 'sso';
 
   const [smartcardLibs, setSmartcardLibs] = useState<DetectedSmartcardLib[]>([]);
   const [detecting, setDetecting] = useState(false);
@@ -678,34 +683,41 @@ export const SyncTargetForm: React.FC<SyncTargetFormProps> = ({ draft, onChange,
         </div>
       ) : (
         <div className="space-y-2.5">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => set('authMode', 'static')}
-              className={`flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                draft.authMode !== 'sso'
-                  ? 'border-sky-500 bg-sky-500/15 text-sky-300'
-                  : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover'
-              }`}
-            >
-              <KeyRound className="h-3.5 w-3.5" />
-              Static Credentials
-            </button>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => set('authMode', 'sso')}
-              className={`flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                draft.authMode === 'sso'
-                  ? 'border-sky-500 bg-sky-500/15 text-sky-300'
-                  : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover'
-              }`}
-            >
-              <Cloud className="h-3.5 w-3.5" />
-              AWS SSO (Identity Center)
-            </button>
-          </div>
+          {!awsEnabled && draft.authMode === 'sso' && (
+            <p role="note" className="text-xs text-amber-300">
+              AWS features are off (Settings → AWS). This target keeps working.
+            </p>
+          )}
+          {showAuthToggle && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => set('authMode', 'static')}
+                className={`flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  draft.authMode !== 'sso'
+                    ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                    : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover'
+                }`}
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                Static Credentials
+              </button>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => set('authMode', 'sso')}
+                className={`flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  draft.authMode === 'sso'
+                    ? 'border-sky-500 bg-sky-500/15 text-sky-300'
+                    : 'border-border-subtle bg-app-surface text-txt-secondary hover:bg-app-surface-hover'
+                }`}
+              >
+                <Cloud className="h-3.5 w-3.5" />
+                AWS SSO (Identity Center)
+              </button>
+            </div>
+          )}
 
           {draft.authMode !== 'sso' ? (
             <div className="space-y-2.5">
