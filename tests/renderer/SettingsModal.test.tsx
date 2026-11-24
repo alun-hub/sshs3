@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render as rtlRender, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { SettingsModal } from '../../src/renderer/src/components/SettingsModal/SettingsModal';
 import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
@@ -91,6 +91,110 @@ describe('SettingsModal', () => {
       })
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  describe('closing with unsaved changes', () => {
+    const escape = () => fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    const confirmDialog = () => screen.queryByTestId('confirm-dialog');
+    const change = () => fireEvent.click(screen.getByLabelText('Confirm before quitting the app'));
+
+    function open(props: Partial<React.ComponentProps<typeof SettingsModal>> = {}) {
+      const onClose = vi.fn();
+      const onSave = vi.fn();
+      const result = render(
+        <SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={onSave} onClose={onClose} {...props} />
+      );
+      return { onClose, onSave, ...result };
+    }
+
+    it('closes at once on Escape when nothing was changed', () => {
+      const { onClose } = open();
+      escape();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(confirmDialog()).toBeNull();
+    });
+
+    it('asks first when something was changed, and keeps the draft when told to keep editing', async () => {
+      const { onClose, onSave } = open();
+      change();
+
+      escape();
+      expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
+      expect(screen.getByText('Discard changes?')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Keep Editing' }));
+      await waitFor(() => expect(confirmDialog()).toBeNull());
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onSave).not.toHaveBeenCalled();
+
+      // The edit is still there: saving stores it.
+      fireEvent.click(screen.getByText('Save Settings'));
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ confirmBeforeQuit: !DEFAULT_SETTINGS.confirmBeforeQuit }));
+    });
+
+    it('closes without saving once the user chooses to discard', async () => {
+      const { onClose, onSave } = open();
+      change();
+
+      escape();
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard Changes' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('asks the same way from Cancel, from the X and from a click on the backdrop', async () => {
+      const { onClose, container } = open();
+      change();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep Editing' }));
+      await waitFor(() => expect(confirmDialog()).toBeNull());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep Editing' }));
+      await waitFor(() => expect(confirmDialog()).toBeNull());
+
+      fireEvent.click(container.querySelector('.fixed.inset-0') as Element);
+      expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('does not ask when a change was put back the way it was', () => {
+      const { onClose } = open();
+      change();
+      change();
+      escape();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(confirmDialog()).toBeNull();
+    });
+
+    it('does not ask when saving', () => {
+      const { onClose, onSave } = open();
+      change();
+      fireEvent.click(screen.getByText('Save Settings'));
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(confirmDialog()).toBeNull();
+    });
+
+    it('starts over on the next opening: the draft and what counts as a change are taken afresh', async () => {
+      const { onClose, rerender } = open();
+      change();
+      escape();
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard Changes' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+
+      const props = { currentSettings: DEFAULT_SETTINGS, onSave: vi.fn(), onClose };
+      rerender(<SettingsModal open={false} {...props} />);
+      rerender(<SettingsModal open={true} {...props} />);
+
+      escape();
+      expect(onClose).toHaveBeenCalledTimes(2);
+      expect(confirmDialog()).toBeNull();
+    });
   });
 
   it('lets a two-digit font size and a scrollback size be typed digit by digit, and saves them', () => {
