@@ -93,6 +93,40 @@ describe('SettingsModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('lets a two-digit font size and a scrollback size be typed digit by digit, and saves them', () => {
+    const onSave = vi.fn();
+    render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+
+    const size = screen.getByRole('spinbutton', { name: 'Terminal font size in pixels' }) as HTMLInputElement;
+    fireEvent.change(size, { target: { value: '1' } });
+    expect(size.value).toBe('1');
+    fireEvent.change(size, { target: { value: '16' } });
+    expect(screen.getByText('16 px')).toBeInTheDocument();
+
+    const scrollback = screen.getByRole('spinbutton', { name: 'Scrollback Buffer (lines)' }) as HTMLInputElement;
+    for (const typed of ['2', '20', '200', '2000', '20000']) fireEvent.change(scrollback, { target: { value: typed } });
+    expect(scrollback.value).toBe('20000');
+
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ terminalFontSize: 16, terminalScrollback: 20000 }));
+  });
+
+  it('never saves a scrollback size outside its range: a too-small value settles on the minimum when the field is left', () => {
+    const onSave = vi.fn();
+    render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+
+    const scrollback = screen.getByRole('spinbutton', { name: 'Scrollback Buffer (lines)' }) as HTMLInputElement;
+    fireEvent.change(scrollback, { target: { value: '2' } });
+    expect(onSave).not.toHaveBeenCalled();
+    // Clicking Save moves focus out of the field first, which is what settles the half-typed value.
+    fireEvent.blur(scrollback);
+    expect(scrollback.value).toBe('500');
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ terminalScrollback: 500 }));
+  });
+
   it('keeps unsaved edits when currentSettings changes while open, and re-seeds on the next open', () => {
     const onSave = vi.fn();
     const props = { onSave, onClose: vi.fn() };
