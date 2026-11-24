@@ -1,7 +1,45 @@
+import type { Dispatch, SetStateAction } from 'react';
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { S3Config } from '@shared/types/storage';
+import type { K8sTerminalTarget } from '@shared/types/kubernetes';
 
 export type Tab = 'ssh' | 's3' | 'k8s';
+
+export interface ConnectionManagerModalProps {
+  open: boolean;
+  onClose: () => void;
+  initialTab?: Tab;
+  /** Opens straight into the empty "new profile" form for `initialTab` (e.g. from the welcome screen). */
+  startNewProfile?: boolean;
+  /** When set, shows a "Connect" action per profile and invokes this instead of only managing profiles. */
+  onConnectSSH?: (config: SSHConnectionConfig) => void;
+  /** When set, opens SFTP dual-pane file manager for the given SSH profile. */
+  onConnectSFTP?: (config: SSHConnectionConfig) => void;
+  onConnectS3?: (config: S3Config) => void;
+  /** SSH is required (file manager, directory sync): Session Manager shell profiles are hidden. */
+  needsSsh?: boolean;
+  /** Connects to every server of a system ("Connect all"); `source` is 'personal' or the Team Vault id. Omit to hide the button. */
+  onConnectSystem?: (members: SSHConnectionConfig[], source: string) => void;
+  onConnectK8s?: (target: K8sTerminalTarget) => void;
+  /** Opens a new tab following a container's logs. */
+  onViewK8sLogs?: (target: K8sTerminalTarget) => void;
+  /** Opens file manager targeting the container filesystem. */
+  onBrowseK8sFiles?: (target: K8sTerminalTarget) => void;
+  /** Master switch from Settings > Files & Storage. Off by default; hides the dotfiles pool field in the SSH form. */
+  dotfilesPoolEnabled?: boolean;
+  /** Master switch from Settings > Kubernetes & Debug. Off by default; enables OpenShift login and tools. */
+  enableOpenShift?: boolean;
+  /** Master switch from Settings > Files & Storage. Off by default; when off, a tab only shows folders that hold a profile of its own type (or no profiles anywhere yet). */
+  shareFoldersAcrossTypes?: boolean;
+}
+
+/** State owned by `ConnectionManagerModal` so that it outlives a single opening of the dialog. */
+export interface PersistedPanelState {
+  collapsedGroups: Record<string, boolean>;
+  setCollapsedGroups: Dispatch<SetStateAction<Record<string, boolean>>>;
+  teamFolderPaths: Record<string, string[]>;
+  setTeamFolderPaths: Dispatch<SetStateAction<Record<string, string[]>>>;
+}
 
 /** The profile being created or edited in the form shown inside the manager.
  *

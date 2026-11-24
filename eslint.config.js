@@ -13,7 +13,7 @@ const LARGE_FILE_CEILINGS = {
   'src/main/services/TeamVaultService.ts': 1975,
   'src/main/IpcBridge.ts': 1800,
   'src/main/services/ProfileSyncService.ts': 1650,
-  'src/renderer/src/components/ConnectionModal/ConnectionManagerModal.tsx': 1550,
+  'src/renderer/src/components/ConnectionModal/ConnectionManagerModalBody.tsx': 1475,
   'src/main/smartcard/SmartcardCoordinator.ts': 1375,
   'src/renderer/src/components/TerminalView.tsx': 1325,
   'src/renderer/src/components/ConnectionModal/SSHProfileForm.tsx': 1275,
