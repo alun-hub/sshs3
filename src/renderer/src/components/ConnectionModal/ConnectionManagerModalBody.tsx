@@ -47,7 +47,8 @@ import { TeamDescriptionEditor } from './TeamDescriptionEditor';
 import { AwsAddButton } from '../aws/AwsAddButton';
 import { SSHTunnelsModal } from '../SSH/SSHTunnelsModal';
 import { InstallKeyModal } from '../SSH/InstallKeyModal';
-import { formatDateTime, describeIpcError } from '../../lib/format';
+import { describeIpcError } from '../../lib/format';
+import { teamSyncLabel } from './teamTabLabels';
 import { prepareConnect } from '../../lib/openProfile';
 import { saveInOrder } from '../../lib/saveInOrder';
 import { moveWithSystems } from '../../lib/systemEdit';
@@ -84,12 +85,14 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
   const [sshProfiles, setSshProfiles] = useState<SSHConnectionConfig[]>([]);
   const [s3Profiles, setS3Profiles] = useState<S3Config[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  // The dialog is mounted on open and loads its profiles in an effect: start out loading, so the first frame is not
+  // an empty-state message, and in the form when it is opened straight into "new profile".
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const confirm = useConfirm();
   const notice = useNotice();
   const [searchQuery, setSearchQuery] = useState('');
-  const [editing, setEditing] = useState<EditingState | null>(null);
+  const [editing, setEditing] = useState<EditingState | null>(startNewProfile ? { type: initialTab } : null);
   const [tunnelsProfile, setTunnelsProfile] = useState<SSHConnectionConfig | null>(null);
   const [installKeyProfile, setInstallKeyProfile] = useState<SSHConnectionConfig | null>(null);
 
@@ -706,11 +709,13 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
   const handleBackdropClick = useModalDismiss(onClose, open, !editing);
   useModalDismiss(() => setImportCandidates(null), !!importCandidates);
   // Escape closes the Import / Export menu first, not the whole dialog behind it, and hands focus back to its button.
+  // Only while the menu can be seen: `importMenuOpen` stays set when the user switches to a team tab or starts an
+  // edit, and a menu nobody can see must not take the Escape.
   const importMenuButtonRef = useRef<HTMLButtonElement>(null);
   useEscapeToClose(() => {
     setImportMenuOpen(false);
     importMenuButtonRef.current?.focus();
-  }, importMenuOpen);
+  }, importMenuOpen && source === 'personal' && !editing);
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(dialogRef, open);
 
@@ -805,7 +810,7 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                     {vault && (
                       <span
                         aria-hidden="true"
-                        title={syncingVaultIds[vault.vaultId!] ? 'Syncing now' : vault.lastSyncAt ? `Last synced ${formatDateTime(vault.lastSyncAt)}` : 'Not synced yet'}
+                        title={teamSyncLabel(Boolean(syncingVaultIds[vault.vaultId!]), vault.lastSyncAt)}
                         className={
                           'h-1.5 w-1.5 rounded-full ' +
                           (syncingVaultIds[vault.vaultId!] ? 'animate-pulse bg-emerald-400' : 'bg-txt-muted/40')
@@ -816,8 +821,7 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                   {/* The lock icon and the sync dot say this with colour and a tooltip only; a description keeps the tab's name as the team's. */}
                   {vault && (
                     <span id={`team-tab-state-${key}`} className="sr-only">
-                      {vault.unlocked ? 'Unlocked' : 'Locked'}.{' '}
-                      {syncingVaultIds[vault.vaultId!] ? 'Syncing now' : vault.lastSyncAt ? `Last synced ${formatDateTime(vault.lastSyncAt)}` : 'Not synced yet'}
+                      {vault.unlocked ? 'Unlocked' : 'Locked'}. {teamSyncLabel(Boolean(syncingVaultIds[vault.vaultId!]), vault.lastSyncAt)}
                     </span>
                   )}
                   <button
@@ -1120,12 +1124,15 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                 />
               )}
 
-              {loading && (
-                <div role="status" className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading profiles…
-                </div>
-              )}
+              {/* Always in the document, so a screen reader is already watching it when the text appears. */}
+              <div role="status">
+                {loading && (
+                  <div className="flex items-center justify-center gap-2 py-8 text-sm text-txt-muted">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading profiles…
+                  </div>
+                )}
+              </div>
 
               {!loading && tab === 'ssh' && source === 'personal' && (
                 <div className="space-y-4">

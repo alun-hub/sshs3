@@ -314,6 +314,18 @@ describe('ConnectionManagerModal', () => {
         </ConfirmProvider>
       );
       expect(await screen.findByRole('status')).toHaveTextContent('Loading profiles…');
+      // The first frame is the loading state, not an empty-state message.
+      expect(screen.queryByText('No SSH profiles yet')).not.toBeInTheDocument();
+    });
+
+    it('keeps the status region in the document once loading is done, so the next announcement is not lost', async () => {
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
+      expect(screen.getByRole('status')).toBeEmptyDOMElement();
     });
 
     it('closes only the Import / Export menu on Escape, hands focus back to its button and keeps the dialog open', async () => {
@@ -551,6 +563,28 @@ describe('ConnectionManagerModal', () => {
       await waitFor(() => {
         expect(window.multissh.teamVaultSetDescription).toHaveBeenCalledWith(VAULT_ID, 'New multi-line\ndescription');
       });
+    });
+
+    it('does not let an Import / Export menu that is out of sight swallow Escape after switching to a team tab', async () => {
+      const onClose = vi.fn();
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={onClose} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Acme Infra Team' })).toBeInTheDocument());
+
+      // Open the menu, then leave Personal: the menu (and its button) are no longer on screen, but its state is still set.
+      fireEvent.click(screen.getByTitle('Import and Export Profiles'));
+      fireEvent.click(screen.getByRole('button', { name: 'Acme Infra Team' }));
+      await waitFor(() => expect(screen.queryByTitle('Import and Export Profiles')).not.toBeInTheDocument());
+
+      // The very first Escape closes the dialog.
+      fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+      expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it('names the description editor controls', async () => {
