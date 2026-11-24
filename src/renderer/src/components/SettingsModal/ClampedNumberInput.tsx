@@ -13,10 +13,11 @@ interface ClampedNumberInputProps {
 }
 
 /**
- * A whole-number field that can be typed into. It keeps the text being typed apart from the stored value: a
- * number in [min, max] is passed on as soon as it is complete, so "16" works although "1" alone is below `min`,
- * and when the field is left the text settles on the nearest allowed number (or goes back to the stored value if
- * it was empty). A value outside the range is never passed on.
+ * A whole-number field that can be typed into. It keeps the text being typed apart from the stored value: an
+ * allowed number (in [min, max], and on the `step` grid from `min`) is passed on as soon as it is complete, so
+ * "16" works although "1" alone is below `min`, and when the field is left the text settles on the nearest
+ * allowed number (or goes back to the stored value if it was empty). A value that is not allowed is never passed
+ * on, so it cannot be saved.
  */
 export const ClampedNumberInput: React.FC<ClampedNumberInputProps> = ({
   value,
@@ -41,12 +42,12 @@ export const ClampedNumberInput: React.FC<ClampedNumberInputProps> = ({
       value={draft ?? String(value)}
       onChange={(e) => {
         setDraft(e.target.value);
-        const next = parseNumberDraft(e.target.value, min, max);
+        const next = parseNumberDraft(e.target.value, min, max, step);
         if (next !== null) onChange(next);
       }}
       onBlur={() => {
         if (draft === null) return;
-        const settled = settleNumberDraft(draft, min, max);
+        const settled = settleNumberDraft(draft, min, max, step);
         if (settled !== null) onChange(settled);
         setDraft(null);
       }}

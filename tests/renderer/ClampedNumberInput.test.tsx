@@ -85,6 +85,19 @@ describe('ClampedNumberInput', () => {
     expect(input.value).toBe('20');
   });
 
+  it('holds back a number that is off the step and settles it on the nearest step when the field is left', () => {
+    const onChange = vi.fn();
+    render(<ClampedNumberInput aria-label="Lines" min={500} max={50000} step={500} value={5000} onChange={onChange} />);
+    const input = screen.getByRole('spinbutton', { name: 'Lines' }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: '750' } });
+    expect(input.value).toBe('750');
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.blur(input);
+    expect(onChange).toHaveBeenCalledWith(1000);
+  });
+
   it('follows the stored value again after the field is left', () => {
     const { input, type, stored } = setup();
     type('21');

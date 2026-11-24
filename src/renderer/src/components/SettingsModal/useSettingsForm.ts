@@ -321,8 +321,8 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     }
   };
 
-  // What Save stores. Also what "unsaved changes" is measured against (see `isDirty`).
-  const buildSettings = (): AppSettings => {
+  // Everything this form owns, as Save stores it. What "unsaved changes" is measured against (see `isDirty`).
+  const buildDraft = (): AppSettings => {
     return {
       theme,
       terminalFontSize: fontSize,
@@ -373,15 +373,20 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       k8sDebugImages,
       sshCaConfigs,
       defaultSshCaConfigId,
-      // Not edited anywhere in this form (set via the Team Vault detail panel's own toggle/pin
-      // instead) — passed through unchanged so this full-object onSave doesn't silently drop
-      // them from in-memory App state. See SettingsStore.setTeamVaultTabVisible's doc comment
-      // for why the detail panel writes connectionManagerVisibleTeamVaults atomically rather
-      // than through this same submit path.
-      connectionManagerVisibleTeamVaults: currentSettings.connectionManagerVisibleTeamVaults,
-      connectionManagerDefaultTab: currentSettings.connectionManagerDefaultTab,
     };
   };
+
+  // What Save stores: the draft plus what the form merely holds.
+  const buildSettings = (): AppSettings => ({
+    ...buildDraft(),
+    // Not edited anywhere in this form (set via the Team Vault detail panel's own toggle/pin
+    // instead) — passed through unchanged so this full-object onSave doesn't silently drop
+    // them from in-memory App state. See SettingsStore.setTeamVaultTabVisible's doc comment
+    // for why the detail panel writes connectionManagerVisibleTeamVaults atomically rather
+    // than through this same submit path.
+    connectionManagerVisibleTeamVaults: currentSettings.connectionManagerVisibleTeamVaults,
+    connectionManagerDefaultTab: currentSettings.connectionManagerDefaultTab,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -389,13 +394,14 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     onClose();
   };
 
-  // What Save would store right after the draft was seeded, to tell whether the user has changed anything since.
-  // Settings that Sync and Team Vault save on their own are not part of the draft and do not count.
+  // The draft right after it was seeded, to tell whether the user has changed anything since. Only the draft counts,
+  // not what the form merely holds: the app refreshes the Team Vault tab visibility and the Connection Manager's
+  // default tab (written elsewhere) into `currentSettings` while Settings is open, which is no edit of the user's.
   useEffect(() => {
-    if (seeded > 0) baselineRef.current = JSON.stringify(buildSettings());
+    if (seeded > 0) baselineRef.current = JSON.stringify(buildDraft());
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per seeding, not on every edit
   }, [seeded]);
-  const isDirty = (): boolean => baselineRef.current !== null && JSON.stringify(buildSettings()) !== baselineRef.current;
+  const isDirty = (): boolean => baselineRef.current !== null && JSON.stringify(buildDraft()) !== baselineRef.current;
 
   const handleResetShortcuts = () => {
     setShortcuts({ ...DEFAULT_SHORTCUTS });

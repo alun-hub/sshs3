@@ -176,6 +176,32 @@ describe('SettingsModal', () => {
       expect(confirmDialog()).toBeNull();
     });
 
+    it('does not count what the app refreshes behind the form (settings written elsewhere) as an edit, and still passes it on when saving', () => {
+      const { onClose, onSave, rerender } = open();
+      // E.g. another save while Settings is open refreshes the Team Vault tab visibility and the default tab.
+      rerender(
+        <SettingsModal
+          open={true}
+          currentSettings={{
+            ...DEFAULT_SETTINGS,
+            connectionManagerVisibleTeamVaults: { vlt_1: false },
+            connectionManagerDefaultTab: 'vlt_1',
+          }}
+          onSave={onSave}
+          onClose={onClose}
+        />
+      );
+
+      escape();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(confirmDialog()).toBeNull();
+
+      fireEvent.click(screen.getByText('Save Settings'));
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionManagerVisibleTeamVaults: { vlt_1: false }, connectionManagerDefaultTab: 'vlt_1' })
+      );
+    });
+
     it('does not ask when saving', () => {
       const { onClose, onSave } = open();
       change();

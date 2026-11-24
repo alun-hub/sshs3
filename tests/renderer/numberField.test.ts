@@ -45,3 +45,37 @@ describe('settleNumberDraft', () => {
     expect(settleNumberDraft('1.5', 8, 32)).toBeNull();
   });
 });
+
+describe('with a step (min 500, max 50000, step 500)', () => {
+  it('accepts only numbers on the grid that starts at min', () => {
+    expect(parseNumberDraft('500', 500, 50000, 500)).toBe(500);
+    expect(parseNumberDraft('1500', 500, 50000, 500)).toBe(1500);
+    expect(parseNumberDraft('50000', 500, 50000, 500)).toBe(50000);
+    expect(parseNumberDraft('750', 500, 50000, 500)).toBeNull();
+    expect(parseNumberDraft('5200', 500, 50000, 500)).toBeNull();
+  });
+
+  it('counts the grid from min, not from zero', () => {
+    expect(parseNumberDraft('13', 8, 32, 5)).toBe(13);
+    expect(parseNumberDraft('15', 8, 32, 5)).toBeNull();
+  });
+
+  it('settles on the nearest number on the grid, half-way going up', () => {
+    expect(settleNumberDraft('700', 500, 50000, 500)).toBe(500);
+    expect(settleNumberDraft('750', 500, 50000, 500)).toBe(1000);
+    expect(settleNumberDraft('5200', 500, 50000, 500)).toBe(5000);
+    expect(settleNumberDraft('2', 500, 50000, 500)).toBe(500);
+    expect(settleNumberDraft('99999', 500, 50000, 500)).toBe(50000);
+  });
+
+  it('never settles above max when max is not on the grid', () => {
+    expect(settleNumberDraft('31', 8, 32, 5)).toBe(28);
+    expect(settleNumberDraft('99', 8, 32, 5)).toBe(28);
+  });
+
+  it('treats a step of zero or below, or a step that is not a number, as 1', () => {
+    expect(parseNumberDraft('16', 8, 32, 0)).toBe(16);
+    expect(parseNumberDraft('16', 8, 32, -5)).toBe(16);
+    expect(settleNumberDraft('16', 8, 32, Number.NaN)).toBe(16);
+  });
+});
