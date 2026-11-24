@@ -111,6 +111,8 @@ describe('Settings accessible names', () => {
       const group = await screen.findByRole('radiogroup', { name: 'Detected PKCS#11 Hardware Token Libraries' });
       // "Auto-detect" is always offered next to what was found.
       expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(2);
+      // What the choice affects is the group's description, like the PIN caching group's hint.
+      expect(group).toHaveAccessibleDescription(/Pick the driver used for the startup unlock/);
       expect(screen.getByText('Detected PKCS#11 Hardware Token Libraries').tagName).not.toBe('LABEL');
     } finally {
       delete (window as { multissh?: unknown }).multissh;

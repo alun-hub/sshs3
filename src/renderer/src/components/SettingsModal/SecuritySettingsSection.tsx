@@ -262,8 +262,8 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             a PKCS#11 library path in your SSH profiles.
           </div>
         ) : (
-          <div role="radiogroup" aria-labelledby="pkcs11-libs-label" className="space-y-2">
-            <p className="text-xs text-txt-muted">
+          <div role="radiogroup" aria-labelledby="pkcs11-libs-label" aria-describedby="pkcs11-libs-hint" className="space-y-2">
+            <p id="pkcs11-libs-hint" className="text-xs text-txt-muted">
               Pick the driver used for the startup unlock, for linking Remote Profile Sync to your
               card, and as the default for any SSH profile (personal or shared via Team Vault) that
               doesn't set its own. A profile's own driver path, when set, always takes priority.
