@@ -178,6 +178,9 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
   // Re-seed the draft only when the dialog opens. An external settings change while it is open
   // (e.g. the font-size shortcuts) must not throw away what the user has edited.
   const wasOpenRef = useRef(false);
+  // Counts how many times the draft has been seeded; the baseline below is taken once the seeded state has rendered.
+  const [seeded, setSeeded] = useState(0);
+  const baselineRef = useRef<string | null>(null);
   useEffect(() => {
     const justOpened = open && !wasOpenRef.current;
     wasOpenRef.current = open;
@@ -236,6 +239,7 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       setShowAddDebugImage(false);
       setSshCaConfigs(currentSettings.sshCaConfigs ?? []);
       setDefaultSshCaConfigId(currentSettings.defaultSshCaConfigId);
+      setSeeded((n) => n + 1);
 
       // Auto detect smartcards for security tab
       setDetectingSmartcard(true);
@@ -317,9 +321,9 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave({
+  // Everything this form owns, as Save stores it. What "unsaved changes" is measured against (see `isDirty`).
+  const buildDraft = (): AppSettings => {
+    return {
       theme,
       terminalFontSize: fontSize,
       terminalFontFamily: fontFamily,
@@ -369,16 +373,35 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       k8sDebugImages,
       sshCaConfigs,
       defaultSshCaConfigId,
-      // Not edited anywhere in this form (set via the Team Vault detail panel's own toggle/pin
-      // instead) — passed through unchanged so this full-object onSave doesn't silently drop
-      // them from in-memory App state. See SettingsStore.setTeamVaultTabVisible's doc comment
-      // for why the detail panel writes connectionManagerVisibleTeamVaults atomically rather
-      // than through this same submit path.
-      connectionManagerVisibleTeamVaults: currentSettings.connectionManagerVisibleTeamVaults,
-      connectionManagerDefaultTab: currentSettings.connectionManagerDefaultTab,
-    });
+    };
+  };
+
+  // What Save stores: the draft plus what the form merely holds.
+  const buildSettings = (): AppSettings => ({
+    ...buildDraft(),
+    // Not edited anywhere in this form (set via the Team Vault detail panel's own toggle/pin
+    // instead) — passed through unchanged so this full-object onSave doesn't silently drop
+    // them from in-memory App state. See SettingsStore.setTeamVaultTabVisible's doc comment
+    // for why the detail panel writes connectionManagerVisibleTeamVaults atomically rather
+    // than through this same submit path.
+    connectionManagerVisibleTeamVaults: currentSettings.connectionManagerVisibleTeamVaults,
+    connectionManagerDefaultTab: currentSettings.connectionManagerDefaultTab,
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(buildSettings());
     onClose();
   };
+
+  // The draft right after it was seeded, to tell whether the user has changed anything since. Only the draft counts,
+  // not what the form merely holds: the app refreshes the Team Vault tab visibility and the Connection Manager's
+  // default tab (written elsewhere) into `currentSettings` while Settings is open, which is no edit of the user's.
+  useEffect(() => {
+    if (seeded > 0) baselineRef.current = JSON.stringify(buildDraft());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per seeding, not on every edit
+  }, [seeded]);
+  const isDirty = (): boolean => baselineRef.current !== null && JSON.stringify(buildDraft()) !== baselineRef.current;
 
   const handleResetShortcuts = () => {
     setShortcuts({ ...DEFAULT_SHORTCUTS });
@@ -559,6 +582,7 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     handleStopX11,
     handleBrowseX11Path,
     handleSubmit,
+    isDirty,
     handleResetShortcuts,
     handleKeyDownRecord,
     filteredShortcuts,

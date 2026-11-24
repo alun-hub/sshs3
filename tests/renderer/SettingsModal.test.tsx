@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render as rtlRender, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { SettingsModal } from '../../src/renderer/src/components/SettingsModal/SettingsModal';
 import { ConfirmProvider } from '../../src/renderer/src/components/ConfirmDialog';
@@ -91,6 +91,175 @@ describe('SettingsModal', () => {
       })
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  describe('closing with unsaved changes', () => {
+    const escape = () => fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+    const confirmDialog = () => screen.queryByTestId('confirm-dialog');
+    const change = () => fireEvent.click(screen.getByLabelText('Confirm before quitting the app'));
+
+    function open(props: Partial<React.ComponentProps<typeof SettingsModal>> = {}) {
+      const onClose = vi.fn();
+      const onSave = vi.fn();
+      const result = render(
+        <SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={onSave} onClose={onClose} {...props} />
+      );
+      return { onClose, onSave, ...result };
+    }
+
+    it('closes at once on Escape when nothing was changed', () => {
+      const { onClose } = open();
+      escape();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(confirmDialog()).toBeNull();
+    });
+
+    it('asks first when something was changed, and keeps the draft when told to keep editing', async () => {
+      const { onClose, onSave } = open();
+      change();
+
+      escape();
+      expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
+      expect(screen.getByText('Discard unsaved changes')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      // Colour and focus follow the semantic rule in index.css: the edits are lost for good, so the confirming
+      // button is red; and the safe answer holds the focus, so a stray Enter keeps the draft.
+      expect(screen.getByRole('button', { name: 'Discard changes' }).className).toContain('bg-red-600');
+      expect(screen.getByRole('button', { name: 'Keep editing' })).toHaveFocus();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      await waitFor(() => expect(confirmDialog()).toBeNull());
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onSave).not.toHaveBeenCalled();
+
+      // The edit is still there: saving stores it.
+      fireEvent.click(screen.getByText('Save Settings'));
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ confirmBeforeQuit: !DEFAULT_SETTINGS.confirmBeforeQuit }));
+    });
+
+    it('closes without saving once the user chooses to discard', async () => {
+      const { onClose, onSave } = open();
+      change();
+
+      escape();
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('asks the same way from Cancel, from the X and from a click on the backdrop', async () => {
+      const { onClose, container } = open();
+      change();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      await waitFor(() => expect(confirmDialog()).toBeNull());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      await waitFor(() => expect(confirmDialog()).toBeNull());
+
+      fireEvent.click(container.querySelector('.fixed.inset-0') as Element);
+      expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('does not ask when a change was put back the way it was', () => {
+      const { onClose } = open();
+      change();
+      change();
+      escape();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(confirmDialog()).toBeNull();
+    });
+
+    it('does not count what the app refreshes behind the form (settings written elsewhere) as an edit, and still passes it on when saving', () => {
+      const { onClose, onSave, rerender } = open();
+      // E.g. another save while Settings is open refreshes the Team Vault tab visibility and the default tab.
+      rerender(
+        <SettingsModal
+          open={true}
+          currentSettings={{
+            ...DEFAULT_SETTINGS,
+            connectionManagerVisibleTeamVaults: { vlt_1: false },
+            connectionManagerDefaultTab: 'vlt_1',
+          }}
+          onSave={onSave}
+          onClose={onClose}
+        />
+      );
+
+      escape();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(confirmDialog()).toBeNull();
+
+      fireEvent.click(screen.getByText('Save Settings'));
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionManagerVisibleTeamVaults: { vlt_1: false }, connectionManagerDefaultTab: 'vlt_1' })
+      );
+    });
+
+    it('does not ask when saving', () => {
+      const { onClose, onSave } = open();
+      change();
+      fireEvent.click(screen.getByText('Save Settings'));
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(confirmDialog()).toBeNull();
+    });
+
+    it('starts over on the next opening: the draft and what counts as a change are taken afresh', async () => {
+      const { onClose, rerender } = open();
+      change();
+      escape();
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+
+      const props = { currentSettings: DEFAULT_SETTINGS, onSave: vi.fn(), onClose };
+      rerender(<SettingsModal open={false} {...props} />);
+      rerender(<SettingsModal open={true} {...props} />);
+
+      escape();
+      expect(onClose).toHaveBeenCalledTimes(2);
+      expect(confirmDialog()).toBeNull();
+    });
+  });
+
+  it('lets a two-digit font size and a scrollback size be typed digit by digit, and saves them', () => {
+    const onSave = vi.fn();
+    render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+
+    const size = screen.getByRole('spinbutton', { name: 'Terminal font size in pixels' }) as HTMLInputElement;
+    fireEvent.change(size, { target: { value: '1' } });
+    expect(size.value).toBe('1');
+    fireEvent.change(size, { target: { value: '16' } });
+    expect(screen.getByText('16 px')).toBeInTheDocument();
+
+    const scrollback = screen.getByRole('spinbutton', { name: 'Scrollback Buffer (lines)' }) as HTMLInputElement;
+    for (const typed of ['2', '20', '200', '2000', '20000']) fireEvent.change(scrollback, { target: { value: typed } });
+    expect(scrollback.value).toBe('20000');
+
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ terminalFontSize: 16, terminalScrollback: 20000 }));
+  });
+
+  it('never saves a scrollback size outside its range: a too-small value settles on the minimum when the field is left', () => {
+    const onSave = vi.fn();
+    render(<SettingsModal open={true} currentSettings={DEFAULT_SETTINGS} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+
+    const scrollback = screen.getByRole('spinbutton', { name: 'Scrollback Buffer (lines)' }) as HTMLInputElement;
+    fireEvent.change(scrollback, { target: { value: '2' } });
+    expect(onSave).not.toHaveBeenCalled();
+    // Clicking Save moves focus out of the field first, which is what settles the half-typed value.
+    fireEvent.blur(scrollback);
+    expect(scrollback.value).toBe('500');
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ terminalScrollback: 500 }));
   });
 
   it('keeps unsaved edits when currentSettings changes while open, and re-seeds on the next open', () => {

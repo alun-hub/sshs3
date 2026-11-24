@@ -7,6 +7,7 @@ import { TeamVaultListPanel } from './TeamVaultListPanel';
 import { GitSettingsPanel } from './GitSettingsPanel';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { useConfirm } from '../ConfirmDialog';
 import { nextMenuIndex } from '../../lib/rovingNavigation';
 import { useSettingsForm } from './useSettingsForm';
 import type { SettingsCategory } from './settingsConstants';
@@ -43,12 +44,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     poolManagerOpen,
     setPoolManagerOpen,
     handleSubmit,
+    isDirty,
   } = form;
+
+  // Every way of closing without saving (Escape, a click on the backdrop, the X, Cancel) goes through here and
+  // asks first when something was changed, so a stray Escape does not throw the draft away. Save closes through
+  // handleSubmit and never asks.
+  const confirm = useConfirm();
+  const requestClose = async () => {
+    if (isDirty()) {
+      // Worded and coloured like the same question in the file editor: red, because the edits are lost for good
+      // (the semantic colour rule in index.css), and "Keep editing" is the default.
+      const discard = await confirm({
+        title: 'Discard unsaved changes',
+        message: 'Discard your unsaved changes to Settings?',
+        confirmLabel: 'Discard changes',
+        cancelLabel: 'Keep editing',
+      });
+      if (!discard) return;
+    }
+    onClose();
+  };
 
   // Design audit Phase 1: every other modal in the app dismisses on Escape
   // and backdrop click via this shared hook; SettingsModal had never been
   // wired up to it, so Escape silently did nothing here.
-  const handleBackdropClick = useModalDismiss(onClose, open);
+  const handleBackdropClick = useModalDismiss(() => void requestClose(), open);
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogFocus(dialogRef, open);
 
@@ -157,7 +178,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             aria-label="Close"
             title="Close"
             type="button"
-            onClick={onClose}
+            onClick={() => void requestClose()}
             className="rounded-lg p-1.5 text-txt-muted hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
           >
             <X className="h-4 w-4" />
@@ -319,7 +340,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => void requestClose()}
                 className="rounded-lg border border-border-subtle px-3.5 py-1.5 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary transition-colors"
               >
                 Cancel

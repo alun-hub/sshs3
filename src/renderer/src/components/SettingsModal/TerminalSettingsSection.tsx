@@ -6,6 +6,7 @@ import type { SettingsForm } from './useSettingsForm';
 import { validateCustomPortRegex } from '../../lib/portDetection';
 import { useConfirm } from '../ConfirmDialog';
 import { ManagedGroup } from './Managed';
+import { ClampedNumberInput } from './ClampedNumberInput';
 
 /** The "Terminal" page of the settings dialog. */
 export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form }) => {
@@ -73,18 +74,12 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
             className="flex-1 accent-sky-500 cursor-pointer"
           />
-          <input
+          <ClampedNumberInput
             aria-label="Terminal font size in pixels"
-            type="number"
             min={8}
             max={32}
             value={fontSize}
-            onChange={(e) => {
-              const val = parseInt(e.target.value, 10);
-              if (!Number.isNaN(val) && val >= 8 && val <= 32) {
-                setFontSize(val);
-              }
-            }}
+            onChange={setFontSize}
             className="w-16 rounded-lg border border-border-subtle bg-app-input px-2 py-1 text-center font-mono text-xs text-txt-primary outline-none focus:border-sky-500"
           />
         </div>
@@ -163,14 +158,13 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
 
         <div className="space-y-1.5">
           <label htmlFor="terminal-scrollback" className="text-xs font-medium text-txt-primary">Scrollback Buffer (lines)</label>
-          <input
+          <ClampedNumberInput
             id="terminal-scrollback"
-            type="number"
             min={500}
             max={50000}
             step={500}
             value={scrollback}
-            onChange={(e) => setScrollback(Number(e.target.value) || 5000)}
+            onChange={setScrollback}
             className="w-full rounded-lg border border-border-subtle bg-app-input px-3 py-2 text-xs text-txt-primary outline-none focus:border-sky-500"
           />
         </div>
