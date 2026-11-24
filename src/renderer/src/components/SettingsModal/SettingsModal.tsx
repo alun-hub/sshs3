@@ -53,11 +53,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const confirm = useConfirm();
   const requestClose = async () => {
     if (isDirty()) {
+      // Worded and coloured like the same question in the file editor: red, because the edits are lost for good
+      // (the semantic colour rule in index.css), and "Keep editing" is the default.
       const discard = await confirm({
-        title: 'Discard changes?',
-        message: 'You have unsaved changes in Settings. If you close now, they are lost.',
-        confirmLabel: 'Discard Changes',
-        cancelLabel: 'Keep Editing',
+        title: 'Discard unsaved changes',
+        message: 'Discard your unsaved changes to Settings?',
+        confirmLabel: 'Discard changes',
+        cancelLabel: 'Keep editing',
       });
       if (!discard) return;
     }

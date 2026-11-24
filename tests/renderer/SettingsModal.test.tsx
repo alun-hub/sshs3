@@ -120,10 +120,15 @@ describe('SettingsModal', () => {
 
       escape();
       expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
-      expect(screen.getByText('Discard changes?')).toBeInTheDocument();
+      expect(screen.getByText('Discard unsaved changes')).toBeInTheDocument();
       expect(onClose).not.toHaveBeenCalled();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Keep Editing' }));
+      // Colour and focus follow the semantic rule in index.css: the edits are lost for good, so the confirming
+      // button is red; and the safe answer holds the focus, so a stray Enter keeps the draft.
+      expect(screen.getByRole('button', { name: 'Discard changes' }).className).toContain('bg-red-600');
+      expect(screen.getByRole('button', { name: 'Keep editing' })).toHaveFocus();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
       await waitFor(() => expect(confirmDialog()).toBeNull());
       expect(onClose).not.toHaveBeenCalled();
       expect(onSave).not.toHaveBeenCalled();
@@ -138,7 +143,7 @@ describe('SettingsModal', () => {
       change();
 
       escape();
-      fireEvent.click(await screen.findByRole('button', { name: 'Discard Changes' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }));
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
       expect(onSave).not.toHaveBeenCalled();
     });
@@ -149,12 +154,12 @@ describe('SettingsModal', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
       expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Keep Editing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
       await waitFor(() => expect(confirmDialog()).toBeNull());
 
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
       expect(await screen.findByTestId('confirm-dialog')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Keep Editing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
       await waitFor(() => expect(confirmDialog()).toBeNull());
 
       fireEvent.click(container.querySelector('.fixed.inset-0') as Element);
@@ -184,7 +189,7 @@ describe('SettingsModal', () => {
       const { onClose, rerender } = open();
       change();
       escape();
-      fireEvent.click(await screen.findByRole('button', { name: 'Discard Changes' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }));
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
 
       const props = { currentSettings: DEFAULT_SETTINGS, onSave: vi.fn(), onClose };
