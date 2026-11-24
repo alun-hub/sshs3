@@ -24,10 +24,11 @@ export const FilesSettingsSection: React.FC<{ form: SettingsForm }> = ({ form })
     <div className="space-y-4">
       {/* Default Conflict Policy */}
       <div className="space-y-2">
-        <label className="text-xs font-medium text-txt-primary">
+        {/* A span, inline like the label it replaces: as a block it would pick up the `space-y-2` gap below it. */}
+        <span id="conflict-policy-label" className="text-xs font-medium text-txt-primary">
           Default Conflict Resolution for File Transfers
-        </label>
-        <div className="grid grid-cols-2 gap-2">
+        </span>
+        <div role="radiogroup" aria-labelledby="conflict-policy-label" className="grid grid-cols-2 gap-2">
           {[
             { id: 'ask', label: 'Ask each time (Dialog)', desc: 'Show a prompt when files collide' },
             { id: 'overwrite', label: 'Overwrite', desc: 'Replace destination file' },

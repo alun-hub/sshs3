@@ -113,8 +113,9 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
 
       {/* Default New Tab Type */}
       <div className="space-y-2">
-        <label className="text-xs font-medium text-txt-primary">Default Tab Type</label>
-        <div className="grid grid-cols-2 gap-2.5">
+        {/* A span, inline like the label it replaces: as a block it would pick up the `space-y-2` gap below it. */}
+        <span id="default-tab-label" className="text-xs font-medium text-txt-primary">Default Tab Type</span>
+        <div role="radiogroup" aria-labelledby="default-tab-label" className="grid grid-cols-2 gap-2.5">
           <label
             className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-xs font-medium cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               defaultNewTab === 'terminal'

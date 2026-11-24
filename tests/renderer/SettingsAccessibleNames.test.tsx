@@ -71,4 +71,51 @@ describe('Settings accessible names', () => {
     const heading = screen.getByText('Terminal Live Preview');
     expect(heading.tagName).not.toBe('LABEL');
   });
+
+  // A group of radio cards needs a name of its own: without a radiogroup a screen reader announces each card as
+  // a lone radio button, with no hint that it is one of several choices or what the choice is about.
+  it('General page: the default tab choice is a named radio group', () => {
+    openTab(/General/);
+
+    const group = screen.getByRole('radiogroup', { name: 'Default Tab Type' });
+    expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(2);
+    // The title names the group; it is no longer a <label> that belongs to no control.
+    expect(screen.getByText('Default Tab Type').tagName).not.toBe('LABEL');
+  });
+
+  it('Files page: the conflict resolution choice is a named radio group', () => {
+    openTab(/Files/);
+
+    const group = screen.getByRole('radiogroup', { name: 'Default Conflict Resolution for File Transfers' });
+    expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(4);
+    expect(screen.getByText('Default Conflict Resolution for File Transfers').tagName).not.toBe('LABEL');
+  });
+
+  it('Security page: the PIN caching choice is a named radio group, described by its hint', () => {
+    openTab(/Security/);
+
+    const group = screen.getByRole('radiogroup', { name: /PIN Caching$/ });
+    expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(3);
+    expect(group).toHaveAccessibleDescription(/Applies to every Smartcard/);
+  });
+
+  it('Security page: the detected driver list is a named radio group', async () => {
+    window.multissh = {
+      smartcardDetect: vi.fn().mockResolvedValue([
+        { name: 'OpenSC', path: '/usr/lib/opensc-pkcs11.so', platform: 'linux', exists: true },
+      ]),
+    } as unknown as typeof window.multissh;
+    try {
+      openTab(/Security/);
+
+      const group = await screen.findByRole('radiogroup', { name: 'Detected PKCS#11 Hardware Token Libraries' });
+      // "Auto-detect" is always offered next to what was found.
+      expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(2);
+      // What the choice affects is the group's description, like the PIN caching group's hint.
+      expect(group).toHaveAccessibleDescription(/Pick the driver used for the startup unlock/);
+      expect(screen.getByText('Detected PKCS#11 Hardware Token Libraries').tagName).not.toBe('LABEL');
+    } finally {
+      delete (window as { multissh?: unknown }).multissh;
+    }
+  });
 });
