@@ -1,6 +1,6 @@
 ## Connection Profiles & Key Deployment
 
-The Connection Manager in **sshs3** (accessible via <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> or the primary sidebar) centralizes configuration, credentials, and topology management for SSH servers, Kubernetes clusters, and Amazon S3 object storage in a unified, searchable workspace.
+The Connection Manager in **sshs3** (accessible via <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> or the primary sidebar) centralizes configuration, credentials, and topology management for SSH servers, Kubernetes clusters, and Amazon S3 object storage in a unified, searchable workspace. The **SSH / SFTP**, **S3 Object Storage** and **Kubernetes** tabs at the top are a tab strip: <kbd>Left</kbd> and <kbd>Right</kbd> (and <kbd>Home</kbd>/<kbd>End</kbd>) move between them, and <kbd>Enter</kbd> or <kbd>Space</kbd> opens the one in focus. Opening another tab discards a profile form you have not saved.
 
 > [!TIP]
 > **Team Collaboration:** To share connection profiles and folders securely across your team using hardware YubiKeys, see [Team Vault: Shared Connection Profiles](/docs/security/team-vault/). Shared teams appear as dedicated tabs alongside **Personal** profiles.

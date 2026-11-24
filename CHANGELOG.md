@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.3] - 2026-11-24
+
+### Added
+- **Settings asks before closing with unsaved changes.** **Escape**, **Cancel**, the close button or a click outside now asks **Discard unsaved changes**; **Keep editing** returns to the dialog. Before, any of them threw the changes away.
+
+### Changed
+- **AWS SSO is only offered while AWS features are on.** In the S3 profile form and the sync target form a new profile or target shows access keys only; one that already uses SSO keeps working and shows a note that AWS is off.
+
+### Fixed
+- **The terminal font size and scrollback boxes can be typed into.** A two-digit size such as 16 could not be typed (only 8 and 9 got through). A value outside the range, or off the scrollback step of 500, is now adjusted to the nearest allowed one when you leave the field.
+
+### Accessibility and keyboard
+- **Default Tab Type**, **Default Conflict Resolution**, **PIN caching** and the detected PKCS#11 drivers are named radio groups for screen readers.
+- Connection Manager: the **SSH / SFTP**, **S3 Object Storage** and **Kubernetes** tabs are a tab strip (arrow keys move, **Enter** or **Space** opens one, the open one is announced); the Personal and team buttons announce which is chosen.
+- Under the hood, with no change in behaviour: the Connection Manager stops refreshing the Team Vault list in the background while closed, and the Microsoft Store package declares Windows 10 1809 (10.0.17763.0, which Electron needs anyway) as its minimum.
+
 ## [0.98.2] - 2026-11-21
 
 ### Added

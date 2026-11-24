@@ -29,6 +29,8 @@ sshs3 provides native compatibility with all providers implementing the standard
 Configure your S3 profile using one of three authentication strategies:
 
 ### A. AWS SSO / IAM Identity Center (Enterprise Zero Trust)
+This option is offered while AWS features are on (**Settings → AWS**). With them off, a new profile or sync target only offers access keys (see B); one that already uses SSO keeps working and shows a note that AWS is off.
+
 For organizations managing AWS accounts through corporate Single Sign-On:
 1. Provide your **SSO Start URL** (e.g. `https://my-org.awsapps.com/start`) and **SSO Region**, or pick a sign-in that you saved under **Settings → AWS** from the **Saved sign-in** list. With exactly one saved sign-in, a new profile starts from it; a profile that already has a start URL is never changed.
 2. Click **Sign in with AWS SSO**. sshs3 initiates an OIDC device authorization and opens your default browser with an 8-character verification code.

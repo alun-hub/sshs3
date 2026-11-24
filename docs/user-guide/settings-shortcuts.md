@@ -13,6 +13,8 @@ Access the preferences dialog via the gear icon in the top toolbar or via the ke
 > [!NOTE]
 > Settings that an administrator has locked show **Managed by your organization** and cannot be changed here. See [Enterprise Deployment & Policy](/docs/reference/enterprise-deployment/).
 
+Closing Settings with changes you have not saved (<kbd>Escape</kbd>, **Cancel**, the close button, or a click outside) asks **Discard unsaved changes**; **Keep editing** returns to the dialog, **Save Settings** stores the changes.
+
 ### Instant Settings Filter
 The Settings modal features a real-time search filter at the top of the sidebar. Typing a keyword filters the 11 settings categories by their names (for example *git* shows **Git & GitHub**), so you can jump straight to a category. Individual option titles and descriptions are not searched.
 
@@ -27,9 +29,9 @@ The Settings modal features a real-time search filter at the top of the sidebar.
 
 ### 1.2 Terminal
 ![Terminal Settings](/img/docs/settings-terminal.png)
-- **Typography:** Configurable font family and font size with live preview render.
+- **Typography:** Configurable font family and font size (8-32 px) with live preview render.
 - **Cursor Style:** **Block**, **Underline**, or **Vertical Bar**.
-- **Scrollback Buffer:** Retained history per terminal pane (default 5,000 lines). Searchable with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>.
+- **Scrollback Buffer:** Retained history per terminal pane (default 5,000 lines; 500-50,000 in steps of 500, and a typed value is adjusted to the nearest allowed one when you leave the field). Searchable with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>.
 - **Copy text automatically on selection:** Copies highlighted terminal text to the clipboard and stores it in the encrypted clipboard history. Scope can be **Global** or **Per Host**, and **Clear history** deletes every entry after a confirmation. The setting also applies to the Markdown preview in the file editor, which copies to the clipboard only (nothing goes into the history).
 - **Session End Behavior:** **Reconnect (Default)**, **Close Tab Immediately**, or **Keep Open**.
 - **Local Terminal SSH Agent:** Selects `$SSH_AUTH_SOCK` injection for local workstation shell tabs: **Auto** (`AppAgent` under Global PIN caching), **System Only**, or **Disabled**.
