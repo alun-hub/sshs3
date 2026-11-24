@@ -1,10 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState, useMemo } from 'react';
 import {
-  Boxes,
   ChevronDown,
   ChevronRight,
   Clock,
-  Cloud,
   Download,
   Files,
   FolderPlus,
@@ -25,6 +23,8 @@ import { collectTags } from '@shared/tags';
 import { SSHProfileForm } from './SSHProfileForm';
 import { S3ProfileForm } from './S3ProfileForm';
 import { K8sConnectionTree } from './K8sConnectionTree';
+import { ConnectionTabs } from './ConnectionTabs';
+import { protocolPanelId, protocolTabId } from './connectionTabIds';
 import type {
   Tab,
   EditingState,
@@ -82,6 +82,8 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
   shareFoldersAcrossTypes = false,
 }) => {
   const [tab, setTab] = useState<Tab>(initialTab);
+  // Unique per open dialog: ties the connection type tabs to the panel they control.
+  const tabsId = useId();
   const [sshProfiles, setSshProfiles] = useState<SSHConnectionConfig[]>([]);
   const [s3Profiles, setS3Profiles] = useState<S3Config[]>([]);
   const [folders, setFolders] = useState<string[]>([]);
@@ -744,34 +746,15 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
         </div>
 
         {/* Tab switcher */}
-        <div className="flex border-b border-divider bg-app-surface px-2 pt-2">
-          {(
-            [
-              { key: 'ssh' as Tab, label: 'SSH / SFTP', icon: Server },
-              { key: 's3' as Tab, label: 'S3 Object Storage', icon: Cloud },
-              { key: 'k8s' as Tab, label: 'Kubernetes', icon: Boxes },
-            ]
-          ).map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                setTab(key);
-                setEditing(null);
-                setImportMenuOpen(false);
-              }}
-              className={
-                'flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ' +
-                (tab === key
-                  ? 'bg-app-card text-sky-400 border-t-2 border-sky-500 font-semibold'
-                  : 'text-txt-muted hover:text-txt-primary hover:bg-app-surface-hover')
-              }
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
+        <ConnectionTabs
+          tab={tab}
+          idPrefix={tabsId}
+          onSelect={(key) => {
+            setTab(key);
+            setEditing(null);
+            setImportMenuOpen(false);
+          }}
+        />
 
         {/* Personal + one tab per team (§D of the join-flow plan) — a flat tab row, not a binary
             "Personal"/"Teams" toggle: each visible, unlocked-or-not team gets its own tab next to
@@ -779,7 +762,7 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
             Kubernetes, which has no concept of either. */}
         {tab !== 'k8s' && !editing && visibleTeamVaultTabs.length > 0 && (
           <div className="border-b border-divider bg-app-surface px-4 py-2">
-            <div className="flex items-center gap-1.5">
+            <div role="group" aria-label="Profile source" className="flex items-center gap-1.5">
               {[
                 { key: 'personal', label: 'Personal', vault: null as TeamVaultStatus | null },
                 ...visibleTeamVaultTabs.map((v) => ({ key: v.vaultId!, label: v.vaultName || v.vaultId!, vault: v })),
@@ -788,6 +771,7 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
                   <button
                     type="button"
                     onClick={() => setSource(key)}
+                    aria-pressed={source === key}
                     title={vault?.vaultDescription || undefined}
                     aria-describedby={vault ? `team-tab-state-${key}` : undefined}
                     className={
@@ -866,6 +850,9 @@ export const ConnectionManagerModalBody: React.FC<ConnectionManagerModalProps & 
         )}
 
         <div
+          id={protocolPanelId(tabsId)}
+          role="tabpanel"
+          aria-labelledby={protocolTabId(tabsId, tab)}
           className={
             editing
               ? 'flex flex-1 min-h-0 flex-col overflow-hidden'

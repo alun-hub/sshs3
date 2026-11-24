@@ -236,7 +236,7 @@ describe('ConnectionManagerModal', () => {
     });
 
     // Switch to S3 tab
-    const s3TabButton = screen.getByRole('button', { name: /S3/i });
+    const s3TabButton = screen.getByRole('tab', { name: /S3/i });
     fireEvent.click(s3TabButton);
 
     await waitFor(() => {
@@ -326,6 +326,47 @@ describe('ConnectionManagerModal', () => {
       );
       await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
       expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    });
+
+    it('labels the panel with the chosen connection type and follows the choice', async () => {
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
+
+      const ssh = screen.getByRole('tab', { name: /SSH/ });
+      const panel = screen.getByRole('tabpanel');
+      expect(panel).toHaveAccessibleName(/SSH/);
+      expect(panel).toHaveAttribute('id', ssh.getAttribute('aria-controls'));
+
+      fireEvent.click(screen.getByRole('tab', { name: /S3/ }));
+      expect(screen.getByRole('tabpanel')).toHaveAccessibleName(/S3/);
+    });
+
+    it('lets the arrow keys move between the connection types without discarding a profile form that is open', async () => {
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      await waitFor(() => expect(screen.getByText('Dev Sandbox')).toBeInTheDocument());
+      fireEvent.click(screen.getByText('New Profile'));
+      const nameField = await screen.findByLabelText(/Profile Name/i);
+      fireEvent.change(nameField, { target: { value: 'Half-typed host' } });
+
+      // Choosing a tab throws the form away, so an arrow key (which only moves focus) must not.
+      const ssh = screen.getByRole('tab', { name: /SSH/ });
+      ssh.focus();
+      fireEvent.keyDown(ssh, { key: 'ArrowRight' });
+      expect(screen.getByRole('tab', { name: /S3/ })).toHaveFocus();
+      expect(screen.getByLabelText(/Profile Name/i)).toHaveValue('Half-typed host');
+      expect(ssh).toHaveAttribute('aria-selected', 'true');
+
+      // Choosing the tab does.
+      fireEvent.click(screen.getByRole('tab', { name: /S3/ }));
+      expect(screen.queryByLabelText(/Profile Name/i)).not.toBeInTheDocument();
     });
 
     it('closes only the Import / Export menu on Escape, hands focus back to its button and keeps the dialog open', async () => {
@@ -631,6 +672,28 @@ describe('ConnectionManagerModal', () => {
       expect(window.multissh.teamVaultSetDescription).not.toHaveBeenCalled();
       expect(screen.getByText('Old text')).toBeInTheDocument();
       await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit description' })));
+    });
+
+    it('exposes which source is chosen with aria-pressed, in a group of its own, and moves it when another is chosen', async () => {
+      window.multissh.teamVaultList = vi.fn().mockResolvedValue([unlockedStatus()]);
+      window.multissh.teamVaultGetStatus = vi.fn().mockResolvedValue(unlockedStatus());
+      window.multissh.teamVaultGetPayload = vi.fn().mockResolvedValue({ ssh: [], s3: [] });
+      render(
+        <ConfirmProvider>
+          <ConnectionManagerModal open={true} onClose={vi.fn()} />
+        </ConfirmProvider>
+      );
+      const team = await screen.findByRole('button', { name: 'Acme Infra Team' });
+      const group = screen.getByRole('group', { name: 'Profile source' });
+      const personal = within(group).getByRole('button', { name: 'Personal' });
+
+      // Personal is where the dialog opens.
+      expect(personal).toHaveAttribute('aria-pressed', 'true');
+      expect(team).toHaveAttribute('aria-pressed', 'false');
+
+      fireEvent.click(team);
+      expect(team).toHaveAttribute('aria-pressed', 'true');
+      expect(personal).toHaveAttribute('aria-pressed', 'false');
     });
 
     it('describes each team tab with its lock and sync state without changing the tab name', async () => {
@@ -1185,10 +1248,10 @@ describe('ConnectionManagerModal multi-select', () => {
     await openList();
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Prod Web 01' }));
     expect(screen.getByText('1 selected')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /S3/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /S3/i }));
     await screen.findByRole('checkbox', { name: 'Select Backup Bucket' });
     expect(screen.queryByText(/\d+ selected/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /SSH/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /SSH/i }));
     await screen.findByRole('checkbox', { name: 'Select Prod Web 01' });
     expect(screen.getByRole('checkbox', { name: 'Select Prod Web 01' })).not.toBeChecked();
   });
@@ -1210,7 +1273,7 @@ describe('ConnectionManagerModal multi-select', () => {
 
   it('does not offer grouping as a system for S3 profiles', async () => {
     await openList();
-    fireEvent.click(screen.getByRole('button', { name: /S3/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /S3/i }));
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Backup Bucket' }));
     expect(screen.getByRole('button', { name: 'Move to folder…' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Group as system…' })).not.toBeInTheDocument();
@@ -1218,7 +1281,7 @@ describe('ConnectionManagerModal multi-select', () => {
 
   it('selects S3 profiles too, and saves them through the S3 store', async () => {
     await openList();
-    fireEvent.click(screen.getByRole('button', { name: /S3/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /S3/i }));
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Backup Bucket' }));
     fireEvent.click(screen.getByRole('button', { name: 'Move to folder…' }));
     fireEvent.change(screen.getByLabelText('Folder'), { target: { value: 'Arkiv' } });
