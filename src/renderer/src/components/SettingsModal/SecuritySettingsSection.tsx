@@ -65,16 +65,21 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
       {/* Smartcard PIN caching */}
       <div className="space-y-2">
         <div>
-          <label className="text-xs font-medium text-txt-primary">
+          <div id="pin-caching-label" className="text-xs font-medium text-txt-primary">
             {IS_WINDOWS ? 'Smartcard PIN Caching' : 'Smartcard & Security Key PIN Caching'}
-          </label>
-          <p className="text-xs text-txt-muted">
+          </div>
+          <p id="pin-caching-hint" className="text-xs text-txt-muted">
             {IS_WINDOWS
               ? 'Applies to every Smartcard (PKCS#11) profile. FIDO2 security keys are not cached on Windows — they use a key file and ask for PIN and touch on every connection. Cached and per-terminal modes need the Windows OpenSSH Authentication Agent service to be running.'
               : 'Applies to every Smartcard (PKCS#11) and FIDO2 resident key profile.'}
           </p>
         </div>
-        <div className={`grid grid-cols-1 sm:grid-cols-3 gap-2 ${authModeManaged ? 'opacity-70' : ''}`}>
+        <div
+          role="radiogroup"
+          aria-labelledby="pin-caching-label"
+          aria-describedby="pin-caching-hint"
+          className={`grid grid-cols-1 sm:grid-cols-3 gap-2 ${authModeManaged ? 'opacity-70' : ''}`}
+        >
           <label
             className={`flex flex-col gap-1.5 rounded-lg border p-2.5 text-xs cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500 has-[:focus-visible]:ring-offset-1 has-[:focus-visible]:ring-offset-app-surface ${
               smartcardAuthMode === 'always-prompt'
@@ -229,9 +234,9 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
       {/* Smartcard & PKCS#11 Detection */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-txt-primary">
+          <div id="pkcs11-libs-label" className="text-xs font-medium text-txt-primary">
             Detected PKCS#11 Hardware Token Libraries
-          </label>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -257,7 +262,7 @@ export const SecuritySettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             a PKCS#11 library path in your SSH profiles.
           </div>
         ) : (
-          <div className="space-y-2">
+          <div role="radiogroup" aria-labelledby="pkcs11-libs-label" className="space-y-2">
             <p className="text-xs text-txt-muted">
               Pick the driver used for the startup unlock, for linking Remote Profile Sync to your
               card, and as the default for any SSH profile (personal or shared via Team Vault) that
