@@ -40,6 +40,7 @@
 | **Linux (Fedora 44–45, x86_64)** | COPR repository | `sudo dnf copr enable alun-hub/sshs3 && sudo dnf install sshs3` ([COPR project](https://copr.fedorainfracloud.org/coprs/alun-hub/sshs3/)) |
 | **Windows** | Setup Installer (with bundled VcXsrv) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-Setup-*.exe`) |
 | **Windows** | Portable standalone | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-*-portable.exe`) |
+| **Windows** | MSI (machine-wide install, for IT deployment) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-*.msi`) |
 | **Windows** | Portable ZIP (unpack & run) | [GitHub Releases](https://github.com/alun-hub/sshs3/releases/latest) (`sshs3-*.zip`) |
 
 The app checks GitHub Releases for new versions (switch off under *Settings → App Behavior*, or set `SSHS3_DISABLE_UPDATES=1` for air-gapped machines) and never installs anything without your click. Windows builds are not code-signed yet, so on Windows download new versions manually. The COPR package repackages the same release: every release is built there shortly after it is published, and `dnf upgrade` installs it. If you use it, switch the in-app update check off. Release assets carry `SHA256SUMS` and a build-provenance attestation. Installation steps, requirements (OpenSSH client, keyring, smartcard drivers) and update details: [Installation & Updates](https://sshs3.com/docs/get-started/installation/).

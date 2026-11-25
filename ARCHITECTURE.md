@@ -49,6 +49,11 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │   ├── index.ts                # Application lifecycle, window creation, quit hooks
 │   │   ├── IpcBridge.ts            # IPC bridge: constructor/wiring, prompt layer (pending prompts, presence), auto-sync, dispose
 │   │   ├── ipc/                    # One registerXHandlers(bridge) per domain (terminal, smartcard, storage, transfer, profile, dotfile, sync, k8s, key install, git, …) + ipcHelpers.ts
+│   │   ├── archive/                # Compress / extract (tar.gz, zip) on local disk and SFTP (ArchiveService, archiveCommands)
+│   │   ├── certs/                  # X.509 certificate info and extension parsing (smartcard / SSH CA previews)
+│   │   ├── dragout/                # Native drag-out of local files (DragOutService)
+│   │   ├── log/                    # Main-process logger: createLogger, FileSink (rotating file), redact
+│   │   ├── windows/                # Multi-window management (WindowManager, createAppWindow, windowBounds)
 │   │   ├── aws/                    # AWS SSO OIDC device auth (AwsSsoAuthService), SSM tool detection, instance discovery, app-owned SSO config (ssoConfigFile)
 │   │   ├── ca/                     # SSH Certificate Authority: SshCaService (session, cert install, timers), oidcFlow (OIDC discovery/browser login/refresh), operationQueue, providers/ (Step-CA, Vault), cert validation, agent protocol, sshWire (wire encoding)
 │   │   ├── oauth/                  # Shared OAuth/OIDC loopback callback server, PKCE, requestJson
@@ -96,6 +101,9 @@ The application is built on Electron, Vite, and React with a strictly separated 
 │   │           └── spatialNavigation.ts # 2D keyboard navigation (Ctrl+Shift+Arrows) for panes, overlays and menus
 │   └── shared/                     # Types shared between main and renderer
 │       └── types/
+│           ├── aws.ts, awsScan.ts, awsScanIpc.ts, ssm.ts  # AWS SSO, SSM scan and SSM profile contracts
+│           ├── certificate.ts, sshCa.ts, policy.ts        # Certificate info, SSH CA config, machine policy
+│           ├── clipboard.ts, snippets.ts, dirsync.ts, search.ts, perf.ts, log.ts, update.ts
 │           ├── dotfiles.ts         # Dotfiles sync pool contracts
 │           ├── git.ts              # Git status, commit signing, clone & key fetching types
 │           ├── ipc.ts              # IPC_CHANNELS and MultiSSHApi interface
@@ -110,7 +118,11 @@ The application is built on Electron, Vite, and React with a strictly separated 
 └── tests/                          # Unit and integration tests (Vitest)
     ├── e2e/                        # End-to-end workflow tests
     ├── main/                       # Main process tests (providers, stores, transfers)
-    └── renderer/                   # React component testing (Testing Library, JSDOM)
+    ├── preload/                    # Preload API tests
+    ├── renderer/                   # React component testing (Testing Library, JSDOM)
+    ├── shared/                     # Tests for shared types and helpers
+    ├── scripts/                    # Tests for the scripts in scripts/
+    └── helpers/                    # Shared test helpers
 ```
 
 ---
@@ -186,6 +198,10 @@ Transfers between different storage providers (e.g. SFTP -> S3, S3 -> Local, Loc
    | AWS SSM (SSH over Session Manager) | `ipc/awsSsmHandlers.ts` (registers `awsScanHandlers.ts`: scan, CLI profiles, profile sign-in; `awsSsoCachedHandlers.ts`: sign-in status and account/role lists from the main-process token cache); ProxyCommand/env in `ssh/ssmProxy.ts`, validators in `shared/ssm.ts`, scan logic in `aws/awsScanService.ts`, credential sources in `aws/awsCredentials.ts`; channel names and renderer API in `shared/types/awsScanIpc.ts` and `preload/awsScanApi.ts` |
    | File editor / tail | `ipc/fileEditorHandlers.ts` |
    | Search | `ipc/searchHandlers.ts` |
+   | Compress / extract archives | `ipc/archiveHandlers.ts` |
+   | AWS S3 bucket picker | `ipc/awsS3BucketHandlers.ts` |
+   | Team Vault | `ipc/teamVaultHandlers.ts` |
+   | Renderer log forwarding | `ipc/logHandlers.ts` |
    | Kubernetes, perf, tunnels | `ipc/k8sHandlers.ts` |
    | Directory sync | `ipc/dirSyncHandlers.ts` |
    | App, updates, X11, dialogs | `ipc/generalHandlers.ts` |
@@ -223,6 +239,6 @@ Always run these checks before finishing any task:
 npm run typecheck   # Static typecheck with TypeScript
 npm run lint        # ESLint verification (must be 0 errors, 0 warnings)
 npm run test        # Unit & integration tests via Vitest
-npm run build       # Verify Vite & electron-builder bundle compilation
+npm run build       # tsc --noEmit + vite build (renderer, main and preload bundles)
 npm run deploy      # Bump patch version, commit, tag, and push to GitHub Actions (scripts/deploy.sh)
 ```

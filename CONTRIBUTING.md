@@ -24,7 +24,7 @@ When filing an issue, please use our [Bug Report Template](.github/ISSUE_TEMPLAT
 - A clear, descriptive title.
 - Steps to reproduce the problem.
 - Expected vs. actual behavior.
-- Operating system, version, and architecture (Linux, Windows, macOS).
+- Operating system, version, and architecture (Linux or Windows).
 - Relevant terminal logs or error stack traces.
 
 ### Suggesting Enhancements
@@ -40,7 +40,7 @@ Feature requests are very welcome! Please use our [Feature Request Template](.gi
 
 ### Prerequisites
 
-- **Node.js**: 20.x or higher (LTS recommended)
+- **Node.js**: 22.x (what CI and the release build use)
 - **npm**: 10.x or higher
 - **C/C++ toolchain**: Required to compile native modules such as `node-pty` (via `node-gyp`).
   - *Ubuntu/Debian*: `sudo apt-get install build-essential python3`
@@ -114,7 +114,7 @@ npm run test
 
 ### Conventions & Standards
 
-- **Release Versioning**: When releasing new versions, use only a single segment after the dot (e.g. `0.2`, `0.3`, `0.96.1` instead of `0.2.19`) to ensure correct sorting in GitHub Releases.
+- **Release Versioning**: Releases bump the patch segment by default (`0.98.3` → `0.98.4`); the minor segment only for real milestones. Tags are `vX.Y.Z`, and every release adds a `CHANGELOG.md` entry. `npm run deploy` does all of it.
 - **Date Formatting**: Always format timestamps across UI and logs as `yyyy-mm-dd HH:mm` (24h).
 - **Security & Ephemeral Secrets**: Never log or store PINs, passphrases, or private keys on disk or in persistent memory.
 

@@ -6,11 +6,16 @@ sshs3 wouldn't exist without these projects:
 | :--- | :--- |
 | [Electron](https://www.electronjs.org/) | Cross-platform desktop app shell (Chromium + Node.js) |
 | [React](https://react.dev/) | Renderer UI |
-| [xterm.js](https://xtermjs.org/) (`xterm`, `@xterm/addon-fit`) | In-browser terminal emulator that renders the PTY output |
+| [xterm.js](https://xtermjs.org/) (`@xterm/xterm`, `@xterm/addon-fit`) | In-browser terminal emulator that renders the PTY output |
 | [@xterm/addon-search](https://www.npmjs.com/package/@xterm/addon-search) | Real-time text search for terminal logs and output panes |
 | [node-pty](https://github.com/microsoft/node-pty) | Spawns and drives the real `ssh`/shell process as a pseudo-terminal |
 | [AWS SDK for JavaScript v3](https://github.com/aws/aws-sdk-js-v3) (`@aws-sdk/client-s3`, `@aws-sdk/lib-storage`, `@aws-sdk/s3-request-presigner`) | S3-compatible object storage operations (AWS, MinIO, NetApp StorageGRID, etc.) |
 | [AWS SDK for JavaScript v3](https://github.com/aws/aws-sdk-js-v3) (`@aws-sdk/client-sso`, `@aws-sdk/client-sso-oidc`, `@aws-sdk/credential-provider-sso`) | AWS SSO (IAM Identity Center) device-authorization login, account/role listing, and temporary credentials |
+| [AWS SDK for JavaScript v3](https://github.com/aws/aws-sdk-js-v3) (`@aws-sdk/client-ec2`, `@aws-sdk/client-ssm`, `@aws-sdk/credential-provider-node`) | EC2 instance discovery, Systems Manager (SSM) checks and the default AWS credential chain |
+| [CodeMirror 6](https://codemirror.net/) (`codemirror`, `@codemirror/*`, `@lezer/highlight`) | Syntax-highlighting editor in the in-app file editor |
+| [Fontsource](https://fontsource.org/) (`@fontsource/fira-code`, `@fontsource/jetbrains-mono`) | Bundled terminal fonts |
+| [zxcvbn-ts](https://zxcvbn-ts.github.io/zxcvbn/) (`@zxcvbn-ts/*`) | Password strength estimate for the sync and Team Vault passphrases |
+| [safe-regex2](https://github.com/fastify/safe-regex2) | Rejects regular expressions prone to catastrophic backtracking |
 | [@kubernetes/client-node](https://github.com/kubernetes-client/javascript) | Kubernetes client for cluster discovery, WebSocket exec sessions, and log streams |
 | [pkcs11js](https://github.com/PeculiarVentures/pkcs11js) | Native PKCS#11 bindings for reading smartcard certificates directly from hardware modules |
 | [win-ca](https://github.com/ukoloff/win-ca) | Reads the Windows certificate store so corporate/self-signed CAs are trusted |
