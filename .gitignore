@@ -25,7 +25,7 @@ AI-*.md
 docs/*plan*.md
 todo.md
 
-# Audit reports and working notes (local only; docs/audit/FIXES.md was committed earlier and stays tracked)
+# Audit reports and working notes (local only)
 docs/audit/
 
 
