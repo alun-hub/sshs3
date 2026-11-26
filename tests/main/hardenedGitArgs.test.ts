@@ -18,6 +18,10 @@ afterAll(() => fs.rmSync(emptyConfigDir, { recursive: true, force: true }));
 
 const env = () => ({ ...safeGitEnv(), GIT_CONFIG_GLOBAL: emptyGitConfig });
 
+// A path written as text into a git config file: a Windows `C:\Users\...` would read as invalid escape sequences
+// ("bad config line"), and git for Windows accepts forward slashes.
+const inConfig = (p: string): string => p.replace(/\\/g, '/');
+
 describe('inspectGitConfigNames', () => {
   it('trusts the config git itself writes, for a clone, a sparse checkout and a reftable repository', () => {
     const names = [
@@ -215,7 +219,7 @@ describe('a repository whose .git/config runs programs', () => {
     git('config', '--unset', 'core.sshCommand');
     git('config', 'core.repositoryformatversion', '1');
     git('config', 'extensions.worktreeConfig', 'true');
-    fs.writeFileSync(path.join(dir, '.git', 'config.worktree'), `[filter "x"]\n\tclean = touch '${marker}'; cat\n`);
+    fs.writeFileSync(path.join(dir, '.git', 'config.worktree'), `[filter "x"]\n\tclean = touch '${inConfig(marker)}'; cat\n`);
 
     // Plain git runs it...
     git('status', '--porcelain');
@@ -233,7 +237,7 @@ describe('a repository whose .git/config runs programs', () => {
     git('config', '--unset', 'filter.x.clean');
     git('config', '--unset', 'core.sshCommand');
     fs.writeFileSync(path.join(dir, '.gitattributes'), 'f.txt filter=a=b\n');
-    fs.appendFileSync(path.join(dir, '.git', 'config'), `[filter "a=b"]\n\tclean = touch '${marker}'; cat\n`);
+    fs.appendFileSync(path.join(dir, '.git', 'config'), `[filter "a=b"]\n\tclean = touch '${inConfig(marker)}'; cat\n`);
     touchOld();
 
     git('status', '--porcelain');
@@ -376,7 +380,7 @@ describe('a repository with a submodule whose own config runs programs', () => {
     marker = `${dir}.pwned`;
     execFileSync('git', ['-c', 'protocol.file.allow=always', 'clone', '-q', '--recurse-submodules', up, dir], { env: allowFile });
     // The attack: the submodule's own config (inside .git/modules) holds a clean filter, and a file in it looks changed.
-    fs.appendFileSync(path.join(dir, '.git', 'modules', 'sub', 'config'), `[filter "x"]\n\tclean = touch '${marker}'; cat\n`);
+    fs.appendFileSync(path.join(dir, '.git', 'modules', 'sub', 'config'), `[filter "x"]\n\tclean = touch '${inConfig(marker)}'; cat\n`);
     fs.writeFileSync(path.join(dir, 'sub', 'a.txt'), 'ho\n');
     fs.utimesSync(path.join(dir, 'sub', 'a.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
   });
