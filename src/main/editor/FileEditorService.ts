@@ -30,7 +30,7 @@ const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 const ALWAYS_BLOCKED_EXTENSIONS = new Set([
   '.exe', '.com', '.msi', '.msp', '.scr', '.lnk', '.hta', '.jar', '.desktop', '.app',
   '.command', '.terminal', '.workflow', '.scpt', '.pkg', '.dmg', '.appimage',
-  '.docm', '.xlsm', '.pptm', '.dotm', '.xlam', '.xltm', '.xll',
+  '.docm', '.xlsm', '.pptm', '.dotm', '.xlam', '.xltm', '.xll', '.potm', '.ppam', '.ppsm', '.sldm', '.xlsb',
   '.jnlp', '.fileloc', '.webloc', '.inetloc', // Java Web Start and macOS shortcuts that open a URL or run a launcher
 ]);
 const WINDOWS_BLOCKED_EXTENSIONS = new Set([
@@ -39,7 +39,15 @@ const WINDOWS_BLOCKED_EXTENSIONS = new Set([
   '.py', '.pyw', '.wsc', '.chm', '.hlp', '.scf', '.website', '.diagcab', '.iqy', '.slk',
   '.library-ms', '.searchconnector-ms', '.settingcontent-ms',
   '.search-ms', '.theme', '.themepack', '.rdp', '.ps1xml', '.psc1', '.xbap', '.gadget', // reach out to a network share, or start a session or script
+  '.appinstaller', '.msixbundle', '.appxbundle', '.msh', '.msh1', '.msh2', '.mshxml', '.msh1xml', '.msh2xml', '.job', '.vsto',
 ]);
+
+/** Windows ignores trailing dots and spaces in a name (`setup.exe.` is `setup.exe`). A loop, not a regex, so a long run cannot backtrack. */
+function stripTrailingDotsAndSpaces(name: string): string {
+  let end = name.length;
+  while (end > 0 && (name[end - 1] === '.' || name[end - 1] === ' ')) end--;
+  return name.slice(0, end);
+}
 
 /**
  * Reduces a remote-controlled path to a single, safe local file name. Remote file names are
@@ -50,18 +58,19 @@ const WINDOWS_BLOCKED_EXTENSIONS = new Set([
 export function toSafeLocalFileName(remotePath: string): string {
   const last = remotePath.split(/[\\/]/).pop() ?? '';
   // eslint-disable-next-line no-control-regex
-  let name = last.replace(/[\u0000-\u001f<>:"|?*]/g, '_').replace(/[. ]+$/, '');
+  let name = stripTrailingDotsAndSpaces(last.replace(/[\u0000-\u001f<>:"|?*]/g, '_'));
   if (!name || name === '.' || name === '..') name = 'file.txt';
   if (WINDOWS_RESERVED_NAMES.test(name)) name = `_${name}`;
   return name;
 }
 
 export function isBlockedExecutableType(fileName: string, platform: NodeJS.Platform = process.platform): boolean {
-  // Windows ignores trailing dots and spaces (`setup.exe.` is `setup.exe`) and a `:` in a file name starts an
-  // alternate data stream (`setup.exe:x`), so neither may hide the extension. Judged the same everywhere: a
-  // name that merely looks like a program is only ever refused, never run.
+  // Trailing dots and spaces, and a `:` (an alternate data stream: `setup.exe:x`), may not hide the extension.
+  // Judged the same on every platform: a name that merely looks like a program is only ever refused, never run.
   if (platform === 'win32' && fileName.includes(':')) return true;
-  const ext = path.extname(fileName.replace(/[. ]+$/, '')).toLowerCase();
+  const name = stripTrailingDotsAndSpaces(fileName);
+  // `path.extname('.bat')` is '': a name that is only a dot and an extension is that extension.
+  const ext = (name.startsWith('.') && name.indexOf('.', 1) === -1 ? name : path.extname(name)).toLowerCase();
   return ALWAYS_BLOCKED_EXTENSIONS.has(ext) || (platform === 'win32' && WINDOWS_BLOCKED_EXTENSIONS.has(ext));
 }
 
@@ -113,7 +122,7 @@ export interface FileEditorServiceOptions {
   baseTempDir?: string;
   /** Quiet time after the last save before the file is uploaded. */
   uploadDebounceMs?: number;
-  /** The platform the downloaded temp file is prepared for (tests only); defaults to the running one. */
+  /** The platform whose rules decide which types are refused and how a download is marked (tests only); defaults to the running one. */
   platform?: NodeJS.Platform;
 }
 
@@ -359,7 +368,7 @@ export class FileEditorService {
       // otherwise pass on its name alone.
       const realName = await fsp.realpath(fullPath).then((p) => path.basename(p), () => undefined);
       for (const name of [path.basename(fullPath), realName]) {
-        if (name && isBlockedExecutableType(name)) throw blockedTypeError(name);
+        if (name && isBlockedExecutableType(name, this.platform)) throw blockedTypeError(name);
       }
       const err = await this.shell.openPath(fullPath);
       if (err) {
@@ -384,7 +393,7 @@ export class FileEditorService {
     if (path.dirname(tempFilePath) !== tempDir) {
       throw new Error(`Refusing to write outside the temp directory: ${remotePath}`);
     }
-    if (isBlockedExecutableType(baseName)) throw blockedTypeError(baseName);
+    if (isBlockedExecutableType(baseName, this.platform)) throw blockedTypeError(baseName);
 
     // A directory or a FIFO/device cannot be downloaded as a file (a FIFO would block the download forever).
     // A provider that cannot stat is not an obstacle: the download then reports its own error.

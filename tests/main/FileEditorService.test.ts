@@ -597,6 +597,61 @@ describe('FileEditorService', () => {
       }
     });
 
+    it('judges a name that is only a dot and an extension as that extension', () => {
+      // path.extname('.bat') is '', so such a name used to pass.
+      for (const name of ['.desktop', '.exe', '.lnk', '.DESKTOP', '.desktop.', '.command']) {
+        expect(isBlockedExecutableType(name, 'linux')).toBe(true);
+      }
+      for (const name of ['.bat', '.url', '.rdp', '.BAT.']) {
+        expect(isBlockedExecutableType(name, 'win32')).toBe(true);
+        expect(isBlockedExecutableType(name, 'linux')).toBe(false);
+      }
+      for (const name of ['.bashrc', '.gitignore', '.env', '.config', '..']) {
+        expect(isBlockedExecutableType(name, 'win32')).toBe(false);
+        expect(isBlockedExecutableType(name, 'linux')).toBe(false);
+      }
+    });
+
+    it('blocks macro-enabled documents and installers that were missing', () => {
+      for (const name of ['a.potm', 'a.ppam', 'a.ppsm', 'a.sldm', 'a.xlsb']) {
+        expect(isBlockedExecutableType(name, 'linux')).toBe(true);
+      }
+      for (const name of ['a.appinstaller', 'a.msixbundle', 'a.appxbundle', 'a.msh', 'a.msh1xml', 'a.job', 'a.vsto']) {
+        expect(isBlockedExecutableType(name, 'win32')).toBe(true);
+        expect(isBlockedExecutableType(name, 'linux')).toBe(false);
+      }
+    });
+
+    it('answers at once for a very long run of dots or spaces', () => {
+      expect(isBlockedExecutableType(`setup.exe${'.'.repeat(200_000)}`, 'win32')).toBe(true);
+      expect(isBlockedExecutableType(`a${' '.repeat(200_000)}b`, 'win32')).toBe(false);
+    });
+
+    describe('with the platform given to the service (not the one the tests run on)', () => {
+      const win = () => new FileEditorService({ shell: mockShell, baseTempDir: tempBaseDir, platform: 'win32' });
+
+      it.skipIf(process.platform === 'win32')('refuses a Windows-only type for a local file', async () => {
+        localProvider('local-rdp');
+        await fsp.writeFile(path.join(tempBaseDir, 'host.rdp'), 'full address:s:h');
+
+        await expect(win().openInExternalEditor(storageRegistry, 'local-rdp', 'host.rdp')).rejects.toThrow(/would be executed/);
+        expect(mockShell.openPath).not.toHaveBeenCalled();
+        // The same file is an ordinary one where that type means nothing.
+        await service.openInExternalEditor(storageRegistry, 'local-rdp', 'host.rdp');
+        expect(mockShell.openPath).toHaveBeenCalledTimes(1);
+      });
+
+      it('refuses a Windows-only type and a name that hides its extension for a remote file, before downloading', async () => {
+        const createReadStream = remote({ name: 'f', path: '/f', size: 1, isDirectory: false });
+        for (const remotePath of ['/srv/host.rdp', '/srv/setup.exe.', '/srv/setup.exe ', '/srv/.bat']) {
+          await expect(win().openInExternalEditor(storageRegistry, 'sftp-stat', remotePath)).rejects.toThrow(
+            /would be executed/
+          );
+        }
+        expect(createReadStream).not.toHaveBeenCalled();
+      });
+    });
+
     it('also catches a trailing-dot name handed to the local branch', async () => {
       storageRegistry.register(new LocalStorageProvider({ id: 'local-dot', basePath: tempBaseDir }));
       await fsp.writeFile(path.join(tempBaseDir, 'run.desktop.'), '[Desktop Entry]');
