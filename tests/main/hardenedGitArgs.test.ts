@@ -2,14 +2,25 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isKnownHarmlessConfigKey } from '../../src/main/git/gitConfigKeys';
 import { describeConfigKey, inspectGitConfigNames, safeGitEnv, safeGitPullEnv } from '../../src/main/git/gitSafety';
 import { hardenedGitConfigArgs } from '../../src/main/git/hardenedGitArgs';
 import { GitStatusService } from '../../src/main/git/GitStatusService';
 import { RemoteGitService } from '../../src/main/git/RemoteGitService';
 
-const env = () => ({ ...safeGitEnv(), GIT_CONFIG_GLOBAL: os.devNull });
+// "No global git config". An empty file, not os.devNull: that is `\\.\nul` on Windows, which git for Windows cannot
+// open as a config file ("fatal: unable to access '\\.\nul'").
+const emptyConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-empty-gitconfig-'));
+const emptyGitConfig = path.join(emptyConfigDir, 'gitconfig');
+fs.writeFileSync(emptyGitConfig, '');
+afterAll(() => fs.rmSync(emptyConfigDir, { recursive: true, force: true }));
+
+const env = () => ({ ...safeGitEnv(), GIT_CONFIG_GLOBAL: emptyGitConfig });
+
+// A path written as text into a git config file: a Windows `C:\Users\...` would read as invalid escape sequences
+// ("bad config line"), and git for Windows accepts forward slashes.
+const inConfig = (p: string): string => p.replace(/\\/g, '/');
 
 describe('inspectGitConfigNames', () => {
   it('trusts the config git itself writes, for a clone, a sparse checkout and a reftable repository', () => {
@@ -208,7 +219,7 @@ describe('a repository whose .git/config runs programs', () => {
     git('config', '--unset', 'core.sshCommand');
     git('config', 'core.repositoryformatversion', '1');
     git('config', 'extensions.worktreeConfig', 'true');
-    fs.writeFileSync(path.join(dir, '.git', 'config.worktree'), `[filter "x"]\n\tclean = touch '${marker}'; cat\n`);
+    fs.writeFileSync(path.join(dir, '.git', 'config.worktree'), `[filter "x"]\n\tclean = touch '${inConfig(marker)}'; cat\n`);
 
     // Plain git runs it...
     git('status', '--porcelain');
@@ -226,7 +237,7 @@ describe('a repository whose .git/config runs programs', () => {
     git('config', '--unset', 'filter.x.clean');
     git('config', '--unset', 'core.sshCommand');
     fs.writeFileSync(path.join(dir, '.gitattributes'), 'f.txt filter=a=b\n');
-    fs.appendFileSync(path.join(dir, '.git', 'config'), `[filter "a=b"]\n\tclean = touch '${marker}'; cat\n`);
+    fs.appendFileSync(path.join(dir, '.git', 'config'), `[filter "a=b"]\n\tclean = touch '${inConfig(marker)}'; cat\n`);
     touchOld();
 
     git('status', '--porcelain');
@@ -369,7 +380,7 @@ describe('a repository with a submodule whose own config runs programs', () => {
     marker = `${dir}.pwned`;
     execFileSync('git', ['-c', 'protocol.file.allow=always', 'clone', '-q', '--recurse-submodules', up, dir], { env: allowFile });
     // The attack: the submodule's own config (inside .git/modules) holds a clean filter, and a file in it looks changed.
-    fs.appendFileSync(path.join(dir, '.git', 'modules', 'sub', 'config'), `[filter "x"]\n\tclean = touch '${marker}'; cat\n`);
+    fs.appendFileSync(path.join(dir, '.git', 'modules', 'sub', 'config'), `[filter "x"]\n\tclean = touch '${inConfig(marker)}'; cat\n`);
     fs.writeFileSync(path.join(dir, 'sub', 'a.txt'), 'ho\n');
     fs.utimesSync(path.join(dir, 'sub', 'a.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
   });
@@ -416,7 +427,7 @@ describe('a repository with a submodule whose own config runs programs', () => {
     // upstream here is a local path, which needs "file".
     execFileSync('git', [...config.args, '-c', 'protocol.file.allow=always', 'pull'], {
       cwd: dir,
-      env: { ...safeGitPullEnv(), GIT_CONFIG_GLOBAL: os.devNull, GIT_ALLOW_PROTOCOL: 'file' },
+      env: { ...safeGitPullEnv(), GIT_CONFIG_GLOBAL: emptyGitConfig, GIT_ALLOW_PROTOCOL: 'file' },
       stdio: 'pipe',
     });
     expect(fs.existsSync(path.join(dir, 'top.txt'))).toBe(true);

@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // A real `git pull` cannot run here (GIT_ALLOW_PROTOCOL has no `file`), so the git calls are captured instead.
@@ -40,7 +41,7 @@ describe('RemoteGitService.pull', () => {
     expect(result).toEqual({ success: true, output: 'Already up to date.' });
     const pull = state.calls.find((c) => c.args.includes('pull'));
     expect(pull).toBeDefined();
-    expect(pull!.args).toEqual(expect.arrayContaining(['submodule.recurse=false', 'fetch.recurseSubmodules=false', 'core.hooksPath=/dev/null']));
+    expect(pull!.args).toEqual(expect.arrayContaining(['submodule.recurse=false', 'fetch.recurseSubmodules=false', `core.hooksPath=${os.devNull}`]));
     expect(pull!.env.GIT_SEQUENCE_EDITOR).toBe('true');
     expect(pull!.env.GIT_ALLOW_PROTOCOL).toBe('https:http:ssh:git');
   });
