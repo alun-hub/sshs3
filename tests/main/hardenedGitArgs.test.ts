@@ -2,14 +2,21 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isKnownHarmlessConfigKey } from '../../src/main/git/gitConfigKeys';
 import { describeConfigKey, inspectGitConfigNames, safeGitEnv, safeGitPullEnv } from '../../src/main/git/gitSafety';
 import { hardenedGitConfigArgs } from '../../src/main/git/hardenedGitArgs';
 import { GitStatusService } from '../../src/main/git/GitStatusService';
 import { RemoteGitService } from '../../src/main/git/RemoteGitService';
 
-const env = () => ({ ...safeGitEnv(), GIT_CONFIG_GLOBAL: os.devNull });
+// "No global git config". An empty file, not os.devNull: that is `\\.\nul` on Windows, which git for Windows cannot
+// open as a config file ("fatal: unable to access '\\.\nul'").
+const emptyConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-empty-gitconfig-'));
+const emptyGitConfig = path.join(emptyConfigDir, 'gitconfig');
+fs.writeFileSync(emptyGitConfig, '');
+afterAll(() => fs.rmSync(emptyConfigDir, { recursive: true, force: true }));
+
+const env = () => ({ ...safeGitEnv(), GIT_CONFIG_GLOBAL: emptyGitConfig });
 
 describe('inspectGitConfigNames', () => {
   it('trusts the config git itself writes, for a clone, a sparse checkout and a reftable repository', () => {
@@ -416,7 +423,7 @@ describe('a repository with a submodule whose own config runs programs', () => {
     // upstream here is a local path, which needs "file".
     execFileSync('git', [...config.args, '-c', 'protocol.file.allow=always', 'pull'], {
       cwd: dir,
-      env: { ...safeGitPullEnv(), GIT_CONFIG_GLOBAL: os.devNull, GIT_ALLOW_PROTOCOL: 'file' },
+      env: { ...safeGitPullEnv(), GIT_CONFIG_GLOBAL: emptyGitConfig, GIT_ALLOW_PROTOCOL: 'file' },
       stdio: 'pipe',
     });
     expect(fs.existsSync(path.join(dir, 'top.txt'))).toBe(true);
