@@ -163,9 +163,13 @@ When browsing any local or remote directory containing a `.git` repository, sshs
 - **One-Click Pull:** Click the pull icon to synchronize the remote repository directly over the active SFTP session.
 - **Repository Link:** Click the provider badge (**Open in GitHub/GitLab**) to open the repository homepage in your default browser. It appears when `remote.origin.url` is configured.
 - **Remote Clone:** Right-click an empty area and select **Git Clone to here...** with optional shallow clone (`--depth 1`).
+- **Repositories with custom configuration:** For a **local** folder, sshs3 reads the repository's own `.git/config` before it runs `git`. If the file defines anything other than ordinary repository settings (a custom filter, `core.sshCommand`, an `include`, an alias, and similar), the branch is still shown but uncommitted-change counts and ahead/behind are not, and **Pull** is refused. Repositories made by `git clone` and Git LFS repositories work normally.
 
 ### Good to Know & Limitations: Remote Git Integration
 - **Remote Git CLI Required:** Displaying Git status indicators and pulling remote repositories over SFTP requires `git` to be installed and accessible on the remote server's system `$PATH`.
+
+> [!IMPORTANT]
+> **Why some local repositories are not queried:** A `.git/config` can make `git` run programs, for example a clean filter that runs every time `git status` hashes a file. A folder you downloaded from a server you do not control could contain such a file, and the indicator would run it as soon as you open the folder. sshs3 therefore only runs `git` in a local repository whose config contains known, harmless settings, and blanks the commands of Git LFS filters instead of running them. Remote repositories over SFTP are queried by the `git` on the server and are not affected.
 
 ---
 
@@ -178,3 +182,5 @@ When browsing any local or remote directory containing a `.git` repository, sshs
 | External editor edits do not upload | The editor removed the file without putting a new one in its place (the notice *The file was removed by the external editor; automatic upload stopped.* appears), or the file type is blocked from external launching | Save again in the editor, or reopen with **Open in External Editor**. Blocked types open in the built-in editor. |
 | "Forbidden" cursor while dragging (Linux) | Upstream Chromium / Wayland cursor quirk | Cosmetic issue: the drop operation completes normally when you release the mouse button. |
 | **Password Required for SFTP** appears after a restart although a password is saved | The tab was saved for another host, port or user than the profile has now | Reconnect from **Saved Connections**; the tab then uses the current profile. |
+| Git bar shows the branch but no change counts, or **Pull** says *Refusing to pull: the repository configuration could not be verified as safe* | The local repository's `.git/config` holds settings sshs3 does not treat as harmless, or includes another file | Run `git` in a terminal if you trust the repository. To use it here, remove the unusual settings: `git config --local --list` shows them. |
+| Same, and `git config --local --list` shows only normal settings | `extensions.worktreeConfig` is enabled and `.git/config.worktree` holds other settings, or a setting name contains `=` | Check `git config --worktree --list`. |

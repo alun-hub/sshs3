@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - **Synced SSH config lines with a leading `=` are removed like any other blocked line.** OpenSSH reads `=ProxyCommand ...` as a `ProxyCommand`, but the filter that cleans the managed `~/.ssh/config` block from a sync pull took the empty text before the `=` for no directive and kept the line. Anyone who could write a valid encrypted sync payload could therefore make `ssh` run a command on every paired device. Lines with no directive left after the `=`, quotes and blanks are now dropped too.
+- **A downloaded folder can no longer make the Git indicator run its programs.** A `.git/config` (also `.git/config.worktree`) can make `git` run commands, for example a clean filter that runs whenever `git status` hashes a file, or `core.sshCommand` on a pull. The Git indicator runs `git status` as soon as you open a local folder, so a folder fetched from a server you do not control could run code as you. sshs3 now reads the repository's own config first and only runs `git` when it holds known, harmless settings; the commands of Git LFS filters are blanked instead of run, and a pull no longer recurses into submodules. See *Repositories with custom configuration* in the file manager guide.
+
+### Changed
+- **Local repositories with custom Git configuration show the branch only.** A local repository whose `.git/config` defines a custom filter, `core.sshCommand`, an `include`, an alias or similar no longer shows change counts or ahead/behind, and **Pull** refuses with *Refusing to pull: the repository configuration could not be verified as safe*. Repositories made by `git clone` and Git LFS repositories are unaffected. Remote repositories over SFTP are queried by the server's `git` and are unchanged.
+
+### Fixed
+- **The Git indicator no longer says "clean" for a repository it did not check.** When `git status` did not run (git missing, a timeout, or a repository that is not trusted as above) the tooltip showed *(clean)* with no changes; it now shows no state and no counts.
 
 ## [0.98.3] - 2026-11-24
 

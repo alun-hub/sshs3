@@ -4,7 +4,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { GitRepoStatus } from '../../shared/types/git';
 import type { StorageRegistry } from '../storage/StorageRegistry';
-import { safeGitConfigArgs, safeGitEnv } from './gitSafety';
+import { safeGitEnv } from './gitSafety';
+import { hardenedGitConfigArgs } from './hardenedGitArgs';
 
 const execFileAsync = promisify(execFile);
 
@@ -132,35 +133,48 @@ export class GitStatusService {
       }
 
       // Try running git status for detailed counts and ahead/behind info
-      let isClean = true;
-      let ahead = 0;
-      let behind = 0;
-      let untrackedCount = 0;
-      let modifiedCount = 0;
+      // Stay undefined when git did not run (not installed, timeout, repository config not trusted): the UI then shows
+      // nothing instead of claiming "clean" for a repository nobody looked at.
+      let isClean: boolean | undefined;
+      let ahead: number | undefined;
+      let behind: number | undefined;
+      let untrackedCount: number | undefined;
+      let modifiedCount: number | undefined;
 
       try {
         const gitBin = resolveGitBinary();
-        const { stdout } = await execFileAsync(
-          gitBin,
-          [...safeGitConfigArgs(), '--no-optional-locks', 'status', '--porcelain=v1', '-b'],
-          { cwd: rootPath, timeout: 2500, env: safeGitEnv() }
-        );
+        // The repo may have come from a server we do not trust: blank what its config could make git run, or skip.
+        const configArgs = await hardenedGitConfigArgs(rootPath);
+        if (!configArgs) throw new Error('repository config is not trusted');
+        const { stdout } = await execFileAsync(gitBin, [...configArgs, '--no-optional-locks', 'status', '--porcelain=v1', '-b'], {
+          cwd: rootPath,
+          timeout: 2500,
+          env: safeGitEnv(),
+        });
 
+        let parsedAhead = 0;
+        let parsedBehind = 0;
+        let parsedUntracked = 0;
+        let parsedModified = 0;
         const lines = stdout.split(/\r?\n/).filter(Boolean);
         for (const line of lines) {
           if (line.startsWith('## ')) {
             // e.g. "## main...origin/main [ahead 1, behind 2]"
             const aheadMatch = /ahead\s+(\d+)/.exec(line);
-            if (aheadMatch) ahead = parseInt(aheadMatch[1], 10);
+            if (aheadMatch) parsedAhead = parseInt(aheadMatch[1], 10);
             const behindMatch = /behind\s+(\d+)/.exec(line);
-            if (behindMatch) behind = parseInt(behindMatch[1], 10);
+            if (behindMatch) parsedBehind = parseInt(behindMatch[1], 10);
           } else if (line.startsWith('??')) {
-            untrackedCount++;
+            parsedUntracked++;
           } else {
-            modifiedCount++;
+            parsedModified++;
           }
         }
-        isClean = untrackedCount === 0 && modifiedCount === 0;
+        ahead = parsedAhead;
+        behind = parsedBehind;
+        untrackedCount = parsedUntracked;
+        modifiedCount = parsedModified;
+        isClean = parsedUntracked === 0 && parsedModified === 0;
       } catch {
         // git command failed or not installed, fallback to static info
       }

@@ -9,6 +9,7 @@ import type {
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import { runSshCommand } from '../ssh/KeyInstallService';
 import { hasControlChars, safeGitConfigArgs, safeGitEnv, shellQuote } from './gitSafety';
+import { hardenedGitConfigArgs } from './hardenedGitArgs';
 
 const execFileAsync = promisify(execFile);
 
@@ -133,7 +134,11 @@ export class RemoteGitService {
     if (!providerId || providerId === 'local') {
       try {
         const gitBin = resolveGitBinary();
-        const { stdout, stderr } = await execFileAsync(gitBin, [...safeGitConfigArgs(), 'pull'], {
+        const configArgs = await hardenedGitConfigArgs(dir);
+        if (!configArgs) {
+          return { success: false, error: 'Refusing to pull: the repository configuration could not be verified as safe' };
+        }
+        const { stdout, stderr } = await execFileAsync(gitBin, [...configArgs, 'pull'], {
           cwd: dir,
           timeout: 60000,
           env: safeGitEnv(),
