@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import type { FileEntry } from '@shared/types/storage';
+import { APP_NOTICE_EVENT } from './appNoticeEvents';
 import type { PathClickAction } from './pathOpenDecision';
 import { useTerminalPathHover, type UseTerminalPathHoverOptions } from './useTerminalPathHover';
 
@@ -17,6 +18,11 @@ interface SetupOptions {
 function setup(api: Api, options: SetupOptions = {}) {
   (window as unknown as { multissh: Api }).multissh = api;
   const notify = vi.fn();
+  // What the app-wide notice would show: seen from any tab, unlike the terminal's own `notify`.
+  const notices: string[] = [];
+  const onNotice = (e: Event) => notices.push((e as CustomEvent<string>).detail);
+  window.addEventListener(APP_NOTICE_EVENT, onNotice);
+  removeNoticeListeners.push(() => window.removeEventListener(APP_NOTICE_EVENT, onNotice));
   const hook = renderHook(() =>
     useTerminalPathHover({
       target: options.target ?? { local: true },
@@ -38,13 +44,16 @@ function setup(api: Api, options: SetupOptions = {}) {
   /** Ctrl+click: starts the handler and returns its promise, so a test can click again before it settles. */
   // The link handler type says `void`, but the handler is async.
   const click = (path: string) => handlers.openPath!(path) as unknown as Promise<void>;
-  return { hook, notify, hover, click };
+  return { hook, notify, notices, hover, click };
 }
+
+const removeNoticeListeners: Array<() => void> = [];
 
 beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
+  removeNoticeListeners.splice(0).forEach((remove) => remove());
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -132,11 +141,11 @@ describe('useTerminalPathHover: Ctrl+click on a path', () => {
   it('opens a file of this machine with the system app, and says nothing', async () => {
     const a = api();
     const onOpenPath = vi.fn();
-    const { click, notify } = setup(a, { onOpenPath });
+    const { click, notices } = setup(a, { onOpenPath });
     await run(click('/etc/hosts'));
     expect(a.fileOpenExternal).toHaveBeenCalledWith('local', '/etc/hosts');
     expect(onOpenPath).not.toHaveBeenCalled();
-    expect(notify).not.toHaveBeenCalled();
+    expect(notices).toEqual([]);
   });
 
   it('opens a remote file, says that saving uploads it, and reports the uploads', async () => {
@@ -147,26 +156,26 @@ describe('useTerminalPathHover: Ctrl+click on a path', () => {
         return () => {};
       }),
     });
-    const { click, notify } = setup(a, { target: remoteTarget, onOpenPath: vi.fn() });
+    const { click, notices } = setup(a, { target: remoteTarget, onOpenPath: vi.fn() });
     await run(click('/etc/hosts'));
     expect(a.fileOpenExternal).toHaveBeenCalledWith('sftp-h', '/etc/hosts');
-    expect(notify).toHaveBeenCalledWith('Opened hosts. Saving it there uploads the change.', 3000);
+    expect(notices).toEqual(['Opened hosts. Saving it there uploads the change.']);
 
     act(() => emit({ sessionToken: 'tok', status: 'uploaded' }));
-    expect(notify).toHaveBeenLastCalledWith('Uploaded hosts', 2000);
+    expect(notices.at(-1)).toBe('Uploaded hosts');
     act(() => emit({ sessionToken: 'tok', status: 'error', error: 'Permission denied' }));
-    expect(notify).toHaveBeenLastCalledWith('Upload of hosts failed: Permission denied', 6000);
+    expect(notices.at(-1)).toBe('Upload of hosts failed: Permission denied');
   });
 
   it('shows the file in the file manager, as before, when that is the setting', async () => {
     const a = api();
     const onOpenPath = vi.fn();
-    const { click, notify } = setup(a, { onOpenPath, pathClickAction: 'filemanager' });
+    const { click, notices } = setup(a, { onOpenPath, pathClickAction: 'filemanager' });
     await run(click('/etc/hosts'));
     expect(onOpenPath).toHaveBeenCalledWith('/etc/hosts');
     expect(a.fileOpenExternal).not.toHaveBeenCalled();
     expect(a.storageLookup).not.toHaveBeenCalled();
-    expect(notify).not.toHaveBeenCalled();
+    expect(notices).toEqual([]);
   });
 
   it('shows a folder in the file manager', async () => {
@@ -183,31 +192,31 @@ describe('useTerminalPathHover: Ctrl+click on a path', () => {
       fileOpenExternal: vi.fn().mockRejectedValue(new Error('Refusing to open "setup.exe" with the OS default handler')),
     });
     const onOpenPath = vi.fn();
-    const { click, notify } = setup(a, { onOpenPath });
+    const { click, notices } = setup(a, { onOpenPath });
     await run(click('/srv/setup.exe'));
     expect(onOpenPath).toHaveBeenCalledWith('/srv/setup.exe');
-    expect(notify).toHaveBeenCalledWith('Could not open setup.exe: Refusing to open "setup.exe" with the OS default handler', 4000);
+    expect(notices).toEqual(['Could not open setup.exe: Refusing to open "setup.exe" with the OS default handler']);
   });
 
   it('does not start a program from a relative path while the working directory is a guess', async () => {
     const a = api();
     const onOpenPath = vi.fn();
-    const { click, notify } = setup(a, { onOpenPath });
+    const { click, notices } = setup(a, { onOpenPath });
     await run(click('./run.txt'));
     expect(a.fileOpenExternal).not.toHaveBeenCalled();
     expect(onOpenPath).toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith(expect.stringContaining('current directory'), 4000);
+    expect(notices).toEqual([expect.stringContaining('current directory')]);
   });
 
   it('never looks up or opens a network share', async () => {
     const a = api();
     const onOpenPath = vi.fn();
-    const { click, notify } = setup(a, { onOpenPath });
+    const { click, notices } = setup(a, { onOpenPath });
     await run(click('\\\\attacker\\share\\payload.txt'));
     expect(a.storageLookup).not.toHaveBeenCalled();
     expect(a.fileOpenExternal).not.toHaveBeenCalled();
     expect(onOpenPath).toHaveBeenCalledTimes(1);
-    expect(notify).not.toHaveBeenCalled();
+    expect(notices).toEqual([]);
   });
 
   it('does not open a path that a local shell running ssh printed', async () => {

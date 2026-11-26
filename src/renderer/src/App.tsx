@@ -34,6 +34,7 @@ import { DEFAULT_PERF_ITEMS } from '@shared/types/perf';
 import { installSpatialNavPointerReset } from './lib/spatialNavigation';
 import { FILEMANAGER_FOCUS_SIDE_EVENT } from './components/FileManager/types';
 import { FileEditorModal } from './components/FileManager/FileEditorModal';
+import { APP_NOTICE_EVENT } from './lib/appNoticeEvents';
 import { OPEN_EDITOR_TAB_EVENT, type OpenEditorTabDetail } from './lib/editorTabEvents';
 import { createRendererLogger } from './lib/log';
 import { mergeSavedSettings, settingsPatchFromForm } from './lib/settingsSave';
@@ -209,6 +210,12 @@ const AppContent: React.FC = () => {
     window.addEventListener(OPEN_EDITOR_TAB_EVENT, handleOpenEditor);
     return () => window.removeEventListener(OPEN_EDITOR_TAB_EVENT, handleOpenEditor);
   }, [handleOpenEditorTab]);
+
+  useEffect(() => {
+    const handleNotice = (e: Event) => setNotice((e as CustomEvent<string>).detail || null);
+    window.addEventListener(APP_NOTICE_EVENT, handleNotice);
+    return () => window.removeEventListener(APP_NOTICE_EVENT, handleNotice);
+  }, []);
 
   // UX audit finding #14: the landing page shown whenever no tabs are open
   // was a static onboarding screen — four cards explaining what the app can

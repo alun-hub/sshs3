@@ -5,6 +5,7 @@ import type { TerminalLinkHandlers } from './terminalLinks';
 import { isDistinctiveFilename } from './terminalLinks';
 import { lookupPathWithin, statIfExists } from './storageLookup';
 import { createRendererLogger } from './log';
+import { showAppNotice } from './appNoticeEvents';
 import { openClickedPath, type ClickedPathApi } from './openClickedPath';
 import type { PathClickAction } from './pathOpenDecision';
 import { useExternalOpenNotices } from './useExternalOpenNotices';
@@ -110,7 +111,8 @@ export function useTerminalPathHover({
   const pendingHoverRef = useRef<{ clientX: number; clientY: number; path: string } | null>(null);
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
-  const trackExternalSession = useExternalOpenNotices(notify);
+  // Uploads finish while the other program is in front and this terminal may be on a hidden tab.
+  const trackExternalSession = useExternalOpenNotices(showAppNotice);
 
   const [hoverCardData, setHoverCardData] = useState<HoverCardData | null>(null);
   const hoverCardDataRef = useRef<HoverCardData | null>(null);
@@ -547,10 +549,11 @@ export function useTerminalPathHover({
               );
               if (outcome.kind === 'opened') {
                 trackExternalSession(outcome.sessionToken, outcome.name);
-                if (outcome.remote) notifyRef.current(`Opened ${outcome.name}. Saving it there uploads the change.`, 3000);
+                if (outcome.remote) showAppNotice(`Opened ${outcome.name}. Saving it there uploads the change.`);
                 return;
               }
-              if (outcome.reason) notifyRef.current(outcome.reason, 4000);
+              // The app-wide notice: the file manager tab opened next hides this terminal's own notice.
+              if (outcome.reason) showAppNotice(outcome.reason);
               onOpenPathRef.current?.(storagePath);
             } finally {
               openingRef.current.delete(storagePath);
