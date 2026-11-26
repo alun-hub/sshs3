@@ -569,6 +569,43 @@ describe('FileEditorService', () => {
       }
     });
 
+    it('blocks the Windows types that reach a network share or start a session', () => {
+      for (const name of ['a.search-ms', 'a.theme', 'a.themepack', 'a.rdp', 'a.ps1xml', 'a.psc1', 'a.xbap', 'a.gadget']) {
+        expect(isBlockedExecutableType(name, 'win32')).toBe(true);
+        expect(isBlockedExecutableType(name, 'linux')).toBe(false);
+      }
+    });
+
+    it('is not fooled by a trailing dot or space, which Windows ignores', () => {
+      for (const name of ['setup.exe.', 'setup.exe..', 'setup.exe ', 'setup.exe. .', 'run.desktop.']) {
+        expect(isBlockedExecutableType(name, 'win32')).toBe(true);
+        expect(isBlockedExecutableType(name, 'linux')).toBe(true);
+      }
+      expect(isBlockedExecutableType('run.bat. ', 'win32')).toBe(true);
+    });
+
+    it('refuses a Windows name with a colon, which names an alternate data stream', () => {
+      expect(isBlockedExecutableType('setup.exe:payload', 'win32')).toBe(true);
+      expect(isBlockedExecutableType('notes.txt:evil.bat', 'win32')).toBe(true);
+      expect(isBlockedExecutableType('notes.txt:evil', 'linux')).toBe(false); // a colon is an ordinary character there
+    });
+
+    it('still lets ordinary names through', () => {
+      for (const name of ['notes.txt', 'report.', 'archive.tar.gz', '.bashrc', 'README', 'photo.jpeg ']) {
+        expect(isBlockedExecutableType(name, 'win32')).toBe(false);
+        expect(isBlockedExecutableType(name, 'linux')).toBe(false);
+      }
+    });
+
+    it('also catches a trailing-dot name handed to the local branch', async () => {
+      storageRegistry.register(new LocalStorageProvider({ id: 'local-dot', basePath: tempBaseDir }));
+      await fsp.writeFile(path.join(tempBaseDir, 'run.desktop.'), '[Desktop Entry]');
+      await expect(service.openInExternalEditor(storageRegistry, 'local-dot', 'run.desktop.')).rejects.toThrow(
+        /would be executed/
+      );
+      expect(mockShell.openPath).not.toHaveBeenCalled();
+    });
+
     it('refuses a local executable type without handing it to the OS', async () => {
       localProvider('local-exe');
       await fsp.writeFile(path.join(tempBaseDir, 'run.desktop'), '[Desktop Entry]');

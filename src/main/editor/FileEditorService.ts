@@ -38,6 +38,7 @@ const WINDOWS_BLOCKED_EXTENSIONS = new Set([
   '.url', '.appref-ms', '.application', '.msix', '.appx', '.inf', '.ws', '.sct',
   '.py', '.pyw', '.wsc', '.chm', '.hlp', '.scf', '.website', '.diagcab', '.iqy', '.slk',
   '.library-ms', '.searchconnector-ms', '.settingcontent-ms',
+  '.search-ms', '.theme', '.themepack', '.rdp', '.ps1xml', '.psc1', '.xbap', '.gadget', // reach out to a network share, or start a session or script
 ]);
 
 /**
@@ -56,7 +57,11 @@ export function toSafeLocalFileName(remotePath: string): string {
 }
 
 export function isBlockedExecutableType(fileName: string, platform: NodeJS.Platform = process.platform): boolean {
-  const ext = path.extname(fileName).toLowerCase();
+  // Windows ignores trailing dots and spaces (`setup.exe.` is `setup.exe`) and a `:` in a file name starts an
+  // alternate data stream (`setup.exe:x`), so neither may hide the extension. Judged the same everywhere: a
+  // name that merely looks like a program is only ever refused, never run.
+  if (platform === 'win32' && fileName.includes(':')) return true;
+  const ext = path.extname(fileName.replace(/[. ]+$/, '')).toLowerCase();
   return ALWAYS_BLOCKED_EXTENSIONS.has(ext) || (platform === 'win32' && WINDOWS_BLOCKED_EXTENSIONS.has(ext));
 }
 
