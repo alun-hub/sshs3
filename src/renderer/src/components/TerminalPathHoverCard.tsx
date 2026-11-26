@@ -9,7 +9,6 @@ import {
   Folder,
   ShieldCheck,
   Copy,
-  Check,
   ExternalLink,
   Edit3,
   Eye,
@@ -177,9 +176,6 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   const Icon = certificates ? ShieldCheck : CATEGORY_ICONS[effectiveCategory] || File;
   const catStyle = CATEGORY_STYLES[effectiveCategory] || CATEGORY_STYLES.unknown;
 
-  const [copied, setCopied] = useState(false);
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => clearTimeout(copiedTimerRef.current), []);
   const [snippet, setSnippet] = useState<{
     lines?: string[];
     isImage?: boolean;
@@ -261,13 +257,6 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   };
   const dragSource = canDragOut ? { draggable: true, onDragStart: handleDragStart } : {};
   const dragCursor = canDragOut ? 'cursor-grab active:cursor-grabbing' : '';
-
-  const handleCopy = () => {
-    onCopyPath(details.fullPath);
-    setCopied(true);
-    clearTimeout(copiedTimerRef.current);
-    copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
-  };
 
   // Viewport boundary collision avoidance. The real height is measured (the preview and rows vary); the
   // estimate only covers the first paint and environments without layout.
@@ -464,20 +453,11 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
 
         <button
           type="button"
-          onClick={handleCopy}
+          onClick={() => onCopyPath(details.fullPath)}
           className="flex flex-1 h-8 items-center justify-center gap-1.5 rounded-lg border border-divider bg-app-card px-2.5 text-txt-secondary hover:text-txt-primary hover:bg-app-surface-hover hover:border-border-subtle transition-all font-medium active:scale-[0.98] whitespace-nowrap"
         >
-          {copied ? (
-            <>
-              <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-              <span className="text-emerald-400 font-semibold">Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="h-3.5 w-3.5 text-txt-muted shrink-0" />
-              <span>Copy Path</span>
-            </>
-          )}
+          <Copy className="h-3.5 w-3.5 text-txt-muted shrink-0" />
+          <span>Copy Path</span>
         </button>
       </div>
 

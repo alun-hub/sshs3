@@ -121,7 +121,7 @@ describe('TerminalPathHoverCard', () => {
     expect(screen.getByText('/etc/nginx/nginx.conf')).toBeInTheDocument();
   });
 
-  it('shows Copied feedback when copy button is clicked', () => {
+  it('hands the full path to onCopyPath when the copy button is clicked', () => {
     const onCopyPath = vi.fn();
     render(
       <TerminalPathHoverCard
@@ -135,7 +135,8 @@ describe('TerminalPathHoverCard', () => {
 
     const copyBtn = screen.getByRole('button', { name: /copy path/i });
     fireEvent.click(copyBtn);
-    expect(screen.getByText('Copied')).toBeInTheDocument();
+    // The owner closes the card and reports the result in a toast, so the card shows no state of its own.
+    expect(onCopyPath).toHaveBeenCalledWith('/var/log/app.log');
   });
 
   it('shows View button for image files and Edit for editable files', () => {

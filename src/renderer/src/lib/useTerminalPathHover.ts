@@ -228,6 +228,8 @@ export function useTerminalPathHover({
     const promise = window.multissh
       .connectStorage(connectConfig)
       .then(async () => {
+        // The connection works now: an earlier failure must not make every later miss count as inconclusive.
+        if (connectFailureRef.current?.id === connectConfig.id) connectFailureRef.current = null;
         if (!t.local && !t.k8sTarget && window.multissh?.storageGetHomeDir) {
           const home = await window.multissh.storageGetHomeDir(connectConfig.id).catch(() => '');
           if (home) applyHome(home);
@@ -609,8 +611,16 @@ export function useTerminalPathHover({
     },
     onClose: dismissCard,
     onCopyPath: (p: string) => {
-      navigator.clipboard?.writeText(p);
-      notifyRef.current(`Copied path: ${p}`, 2000);
+      // The card closes at once, so the toast is the only feedback: it must tell whether the copy worked.
+      const clipboard = navigator.clipboard;
+      if (clipboard) {
+        clipboard.writeText(p).then(
+          () => notifyRef.current(`Copied path: ${p}`, 2000),
+          () => notifyRef.current('Failed to copy path', 3000)
+        );
+      } else {
+        notifyRef.current('Failed to copy path', 3000);
+      }
       dismissCard();
     },
     onOpenPath: onOpenPath
