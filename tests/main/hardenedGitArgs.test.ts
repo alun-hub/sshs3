@@ -1,15 +1,18 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { inspectGitConfigNames, safeGitEnv } from '../../src/main/git/gitSafety';
+import { isKnownHarmlessConfigKey } from '../../src/main/git/gitConfigKeys';
+import { describeConfigKey, inspectGitConfigNames, safeGitEnv, safeGitPullEnv } from '../../src/main/git/gitSafety';
 import { hardenedGitConfigArgs } from '../../src/main/git/hardenedGitArgs';
 import { GitStatusService } from '../../src/main/git/GitStatusService';
 import { RemoteGitService } from '../../src/main/git/RemoteGitService';
 
+const env = () => ({ ...safeGitEnv(), GIT_CONFIG_GLOBAL: os.devNull });
+
 describe('inspectGitConfigNames', () => {
-  it('trusts the config git itself writes for a clone', () => {
+  it('trusts the config git itself writes, for a clone, a sparse checkout and a reftable repository', () => {
     const names = [
       'core.repositoryformatversion',
       'core.filemode',
@@ -19,17 +22,26 @@ describe('inspectGitConfigNames', () => {
       'core.precomposeunicode',
       'core.symlinks',
       'core.autocrlf',
+      'core.sparsecheckout',
+      'core.sparsecheckoutcone',
+      'extensions.worktreeconfig',
+      'extensions.refstorage',
       'remote.origin.url',
       'remote.origin.fetch',
+      // `git clone --filter=blob:none`
+      'remote.origin.promisor',
+      'remote.origin.partialclonefilter',
       'branch.main.remote',
       'branch.main.merge',
       'user.name',
       'user.email',
-      'extensions.worktreeconfig',
-      'submodule.libs/x.url',
-      'submodule.libs/x.active',
+      // what `git clone --recurse-submodules` / `git submodule init` write
+      'submodule.active',
+      'submodule.sub.url',
+      'submodule.sub.active',
+      'submodule.recurse',
     ];
-    expect(inspectGitConfigNames(names)).toEqual({ trusted: true, overrides: [] });
+    expect(inspectGitConfigNames(names)).toEqual({ trusted: true });
   });
 
   it('refuses every key that makes git run a program, whether or not we know it', () => {
@@ -37,7 +49,14 @@ describe('inspectGitConfigNames', () => {
       'filter.x.clean',
       'filter.x.smudge',
       'filter.x.process',
-      'filter.lfs.driver',
+      'filter.x.required',
+      'filter.lfs.clean',
+      'filter.lfs.smudge',
+      'filter.lfs.process',
+      'filter.lfs.required',
+      'filter.a=b.clean',
+      'lfs.repositoryformatversion',
+      'lfs.customtransfer.x.path',
       'core.sshcommand',
       'core.gitproxy',
       'core.askpass',
@@ -52,7 +71,6 @@ describe('inspectGitConfigNames', () => {
       'credential.https://h.example.helper',
       'remote.origin.uploadpack',
       'remote.origin.vcs',
-      'remote.origin.promisor',
       'gpg.ssh.program',
       'gpg.ssh.defaultkeycommand',
       'pager.status',
@@ -61,48 +79,67 @@ describe('inspectGitConfigNames', () => {
       'core.worktree',
       'alias.st',
       'http.sslcommand',
+      'include.path',
+      'includeif.gitdir:/x/.path',
     ]) {
-      expect(inspectGitConfigNames(['core.bare', key]), key).toEqual({ trusted: false, overrides: [] });
+      expect(inspectGitConfigNames(['core.bare', key]).trusted, key).toBe(false);
     }
   });
 
-  it('does not let a section take a subsection it does not have', () => {
+  it('does not let a section take a subsection it does not have, or the reverse', () => {
     expect(inspectGitConfigNames(['core.x.filemode']).trusted).toBe(false);
     expect(inspectGitConfigNames(['remote.url']).trusted).toBe(false);
     expect(inspectGitConfigNames(['nodots']).trusted).toBe(false);
     expect(inspectGitConfigNames(['remote.origin.']).trusted).toBe(false);
-  });
-
-  it('lets Git LFS through but blanks its commands instead of running them', () => {
-    const lfs = ['filter.lfs.clean', 'filter.lfs.smudge', 'filter.lfs.process', 'filter.lfs.required', 'lfs.repositoryformatversion', 'lfs.url'];
-    const { trusted, overrides } = inspectGitConfigNames(['core.bare', ...lfs]);
-    expect(trusted).toBe(true);
-    expect(overrides).toEqual(
-      ['filter.lfs.clean', 'filter.lfs.smudge', 'filter.lfs.process'].flatMap((k) => ['-c', `${k}=`])
-    );
-    // a custom LFS transfer agent runs a program
-    expect(inspectGitConfigNames(['lfs.customtransfer.x.path']).trusted).toBe(false);
-  });
-
-  it('does not trust a config that includes other files', () => {
-    expect(inspectGitConfigNames(['include.path']).trusted).toBe(false);
-    expect(inspectGitConfigNames(['includeif.gitdir:/x/.path']).trusted).toBe(false);
-  });
-
-  it('does not trust a program-running key that -c cannot address (name contains "=")', () => {
-    expect(inspectGitConfigNames(['filter.a=b.clean']).trusted).toBe(false);
-    expect(inspectGitConfigNames(['credential.https://h/?x=y.helper']).trusted).toBe(false);
+    expect(inspectGitConfigNames(['submodule.url']).trusted).toBe(false);
+    expect(inspectGitConfigNames(['submodule.sub.recurse']).trusted).toBe(false);
+    expect(inspectGitConfigNames(['user.someone.name']).trusted).toBe(false);
     // "=" in a harmless key is fine
     expect(inspectGitConfigNames(['branch.a=b.remote']).trusted).toBe(true);
   });
+
+  it('refuses, and does not throw for, section names that are members of Object.prototype', () => {
+    for (const key of ['constructor.foo', '__proto__.x', 'tostring.y', 'hasownproperty.z', 'valueof.a']) {
+      expect(() => isKnownHarmlessConfigKey(key), key).not.toThrow();
+      expect(inspectGitConfigNames([key]).trusted, key).toBe(false);
+    }
+  });
+
+  it('names the first rejected key as section.variable, without the subsection', () => {
+    expect(inspectGitConfigNames(['core.bare', 'core.sshCommand'])).toEqual({ trusted: false, rejectedKey: 'core.sshcommand' });
+    // the subsection can be a URL that holds credentials: it must not be repeated
+    // fake credentials in a made-up URL, only here to prove they are not echoed
+    expect(inspectGitConfigNames(['credential.https://user:secret@h.example.helper'])).toEqual({ // pragma: allowlist secret
+      trusted: false,
+      rejectedKey: 'credential.helper',
+    });
+    // a malformed name has no section.variable to show
+    expect(describeConfigKey('nodots')).toBeUndefined();
+    expect(inspectGitConfigNames(['nodots'])).toEqual({ trusted: false });
+  });
 });
+
+describe('safeGitPullEnv', () => {
+  it('keeps an interactive rebase from opening an editor', () => {
+    expect(safeGitPullEnv()).toMatchObject({ GIT_SEQUENCE_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1' });
+  });
+});
+
+const supportsReftable = (() => {
+  const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-reftable-probe-'));
+  try {
+    return spawnSync('git', ['init', '-q', '--ref-format=reftable', probe]).status === 0;
+  } finally {
+    fs.rmSync(probe, { recursive: true, force: true });
+  }
+})();
 
 describe('a repository whose .git/config runs programs', () => {
   let dir: string;
   let marker: string;
 
-  const env = () => ({ ...safeGitEnv(), GIT_CONFIG_GLOBAL: os.devNull });
   const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, env: env() });
+  const touchOld = (file = 'f.txt') => fs.utimesSync(path.join(dir, file), new Date('2020-01-01'), new Date('2020-01-01'));
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-hardened-git-'));
@@ -117,7 +154,7 @@ describe('a repository whose .git/config runs programs', () => {
     git('remote', 'add', 'origin', 'ssh://x@127.0.0.1/r.git');
     // Same size, old mtime: git has to hash the file, which runs the clean filter.
     fs.writeFileSync(path.join(dir, 'f.txt'), 'ho\n');
-    fs.utimesSync(path.join(dir, 'f.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
+    touchOld();
   });
 
   afterEach(() => {
@@ -131,10 +168,16 @@ describe('a repository whose .git/config runs programs', () => {
   });
 
   it('refuses a repository with a custom filter or core.sshCommand, and runs nothing', async () => {
-    expect(await hardenedGitConfigArgs(dir)).toBeUndefined();
+    const config = await hardenedGitConfigArgs(dir);
+    expect(config.ok).toBe(false);
     const status = await GitStatusService.getStatus(dir);
-    expect((await RemoteGitService.pull(dir)).success).toBe(false);
+    const pull = await RemoteGitService.pull(dir);
     expect(fs.existsSync(marker)).toBe(false);
+    expect(pull.success).toBe(false);
+    // the error says which setting stopped it, so the user can act on it
+    expect(pull.error).toMatch(
+      /Refusing to pull: the repository configuration could not be verified as safe \(the setting (filter\.clean|core\.sshcommand) is not on the list/
+    );
     // A repository nobody looked at must not be reported as clean: the counts stay unset, the branch is still shown.
     expect(status).toMatchObject({ isRepo: true, branch: expect.any(String) });
     expect(status.isClean).toBeUndefined();
@@ -144,39 +187,22 @@ describe('a repository whose .git/config runs programs', () => {
     expect(status.untrackedCount).toBeUndefined();
   });
 
-  it('blanks the commands of a Git LFS filter and still runs git', async () => {
+  it('refuses a Git LFS repository instead of blanking its filter (a blanked smudge writes pointer files)', async () => {
     git('config', '--remove-section', 'filter.x');
     git('config', '--unset', 'core.sshCommand');
-    git('config', 'filter.lfs.clean', `touch '${marker}'; cat`);
-    fs.writeFileSync(path.join(dir, '.gitattributes'), 'f.txt filter=lfs\n');
-    fs.utimesSync(path.join(dir, 'f.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
-
-    // Plain git runs it...
-    git('status', '--porcelain');
-    expect(fs.existsSync(marker)).toBe(true);
-    fs.rmSync(marker, { force: true });
-    fs.utimesSync(path.join(dir, 'f.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
-
-    // ...the hardened arguments do not.
-    const args = await hardenedGitConfigArgs(dir);
-    expect(args).toContain('filter.lfs.clean=');
-    execFileSync('git', [...args!, 'status', '--porcelain'], { cwd: dir, env: env() });
-    expect(fs.existsSync(marker)).toBe(false);
-  });
-
-  it('GitStatusService does not run the filter', async () => {
-    const status = await GitStatusService.getStatus(dir);
-    expect(status.isRepo).toBe(true);
-    expect(fs.existsSync(marker)).toBe(false);
-  });
-
-  it('RemoteGitService.pull does not run core.sshCommand', async () => {
-    await RemoteGitService.pull(dir);
-    expect(fs.existsSync(marker)).toBe(false);
+    for (const [k, v] of [
+      ['clean', 'git-lfs clean -- %f'],
+      ['smudge', 'git-lfs smudge -- %f'],
+      ['process', 'git-lfs filter-process'],
+      ['required', 'true'],
+    ]) {
+      git('config', `filter.lfs.${k}`, v);
+    }
+    const config = await hardenedGitConfigArgs(dir);
+    expect(config).toEqual({ ok: false, reason: expect.stringContaining('filter.') });
   });
 
   it('also covers .git/config.worktree (extensions.worktreeConfig)', async () => {
-    fs.rmSync(marker, { force: true });
     // A clean-looking .git/config plus a malicious .git/config.worktree: --local alone would not see the filter.
     git('config', '--unset', 'filter.x.clean');
     git('config', '--unset', 'core.sshCommand');
@@ -188,58 +214,212 @@ describe('a repository whose .git/config runs programs', () => {
     git('status', '--porcelain');
     expect(fs.existsSync(marker)).toBe(true);
     fs.rmSync(marker, { force: true });
-    fs.utimesSync(path.join(dir, 'f.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
+    touchOld();
 
-    // ...the hardened arguments and the services do not.
-    // The filter itself sits in config.worktree, which is read too: filter.x.* is not allowlisted, so git is not run.
-    expect(await hardenedGitConfigArgs(dir)).toBeUndefined();
+    // ...we refuse, and run nothing.
+    expect((await hardenedGitConfigArgs(dir)).ok).toBe(false);
     await GitStatusService.getStatus(dir);
     expect(fs.existsSync(marker)).toBe(false);
   });
 
-  it('refuses, and runs nothing, for a filter whose name contains "="', async () => {
-    fs.rmSync(marker, { force: true });
+  it('refuses a filter whose name contains "=" (which "-c key=" could not have blanked)', async () => {
     git('config', '--unset', 'filter.x.clean');
     git('config', '--unset', 'core.sshCommand');
     fs.writeFileSync(path.join(dir, '.gitattributes'), 'f.txt filter=a=b\n');
     fs.appendFileSync(path.join(dir, '.git', 'config'), `[filter "a=b"]\n\tclean = touch '${marker}'; cat\n`);
-    fs.utimesSync(path.join(dir, 'f.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
+    touchOld();
 
-    // Plain git runs it...
     git('status', '--porcelain');
     expect(fs.existsSync(marker)).toBe(true);
     fs.rmSync(marker, { force: true });
-    fs.utimesSync(path.join(dir, 'f.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
+    touchOld();
 
-    // ...and we neither run git nor run the filter.
-    expect(await hardenedGitConfigArgs(dir)).toBeUndefined();
+    expect((await hardenedGitConfigArgs(dir)).ok).toBe(false);
     await GitStatusService.getStatus(dir);
     expect((await RemoteGitService.pull(dir)).success).toBe(false);
     expect(fs.existsSync(marker)).toBe(false);
   });
 
-  it('still trusts an ordinary clone made by git itself', async () => {
-    const clone = `${dir}-clone`;
+  it('refuses a repository whose config includes another file', async () => {
+    git('config', '--unset', 'filter.x.clean');
+    git('config', '--unset', 'core.sshCommand');
+    git('config', 'include.path', '/etc/hostname');
+    expect((await hardenedGitConfigArgs(dir)).ok).toBe(false);
+    expect((await RemoteGitService.pull(dir)).success).toBe(false);
+  });
+
+  it('refuses a directory that is not a repository (git config --list succeeds there with nothing in it)', async () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-not-a-repo-'));
     try {
-      execFileSync('git', ['clone', '-q', dir, clone], { env: { ...env(), GIT_ALLOW_PROTOCOL: 'file' } });
-      expect(await hardenedGitConfigArgs(clone)).toBeDefined();
-      const status = await GitStatusService.getStatus(clone);
-      expect(status).toMatchObject({ isRepo: true, isClean: true, ahead: 0, behind: 0, modifiedCount: 0, untrackedCount: 0 });
+      expect(await hardenedGitConfigArgs(plain)).toEqual({ ok: false, reason: 'the repository configuration could not be read' });
     } finally {
-      fs.rmSync(clone, { recursive: true, force: true });
+      fs.rmSync(plain, { recursive: true, force: true });
     }
   });
 
-  it('turns off submodule recursion', async () => {
-    git('config', '--remove-section', 'filter.x');
-    git('config', '--unset', 'core.sshCommand');
-    const args = await hardenedGitConfigArgs(dir);
-    expect(args).toEqual(expect.arrayContaining(['submodule.recurse=false', 'fetch.recurseSubmodules=false']));
+  describe('repositories made by git itself', () => {
+    beforeEach(() => {
+      git('config', '--unset', 'filter.x.clean');
+      git('config', '--unset', 'core.sshCommand');
+      fs.writeFileSync(path.join(dir, '.gitattributes'), '');
+    });
+
+    it('still trusts an ordinary clone', async () => {
+      const clone = `${dir}-clone`;
+      try {
+        execFileSync('git', ['clone', '-q', dir, clone], { env: { ...env(), GIT_ALLOW_PROTOCOL: 'file' } });
+        expect((await hardenedGitConfigArgs(clone)).ok).toBe(true);
+        const status = await GitStatusService.getStatus(clone);
+        expect(status).toMatchObject({ isRepo: true, isClean: true, ahead: 0, behind: 0, modifiedCount: 0, untrackedCount: 0 });
+      } finally {
+        fs.rmSync(clone, { recursive: true, force: true });
+      }
+    });
+
+    it('trusts a partial (blobless) clone', async () => {
+      const clone = `${dir}-blobless`;
+      try {
+        // the upstream has to allow filters; a file:// URL is needed, a plain path ignores --filter
+        git('config', 'uploadpack.allowFilter', 'true');
+        git('config', 'uploadpack.allowAnySHA1InWant', 'true');
+        execFileSync('git', ['-c', 'protocol.file.allow=always', 'clone', '-q', '--filter=blob:none', `file://${dir}`, clone], {
+          env: { ...env(), GIT_ALLOW_PROTOCOL: 'file' },
+        });
+        const names = execFileSync('git', ['config', '--local', '--list', '--name-only'], { cwd: clone, env: env() }).toString();
+        expect(names).toContain('remote.origin.promisor');
+        const config = await hardenedGitConfigArgs(clone);
+        expect(config.ok).toBe(true);
+        expect((await GitStatusService.getStatus(clone)).isClean).toBe(true);
+      } finally {
+        fs.rmSync(clone, { recursive: true, force: true });
+      }
+    });
+
+    it('trusts extensions.worktreeConfig when there is no config.worktree file', async () => {
+      git('config', 'core.repositoryformatversion', '1');
+      git('config', 'extensions.worktreeConfig', 'true');
+      expect(fs.existsSync(path.join(dir, '.git', 'config.worktree'))).toBe(false);
+      expect((await hardenedGitConfigArgs(dir)).ok).toBe(true);
+    });
+
+    it('trusts a sparse checkout (its settings live in config.worktree)', async () => {
+      git('sparse-checkout', 'init', '--cone');
+      expect(fs.existsSync(path.join(dir, '.git', 'config.worktree'))).toBe(true);
+      expect((await hardenedGitConfigArgs(dir)).ok).toBe(true);
+      expect((await GitStatusService.getStatus(dir)).isRepo).toBe(true);
+    });
+
+    it.skipIf(!supportsReftable)('trusts a reftable repository', async () => {
+      const rt = `${dir}-reftable`;
+      try {
+        execFileSync('git', ['init', '-q', '--ref-format=reftable', rt], { env: env() });
+        expect((await hardenedGitConfigArgs(rt)).ok).toBe(true);
+      } finally {
+        fs.rmSync(rt, { recursive: true, force: true });
+      }
+    });
+
+    it('trusts a linked worktree', async () => {
+      const wt = `${dir}-wt`;
+      try {
+        git('-c', 'user.email=a@b', '-c', 'user.name=n', 'commit', '-q', '--allow-empty', '-m', 'x');
+        git('worktree', 'add', '-q', wt);
+        expect((await hardenedGitConfigArgs(wt)).ok).toBe(true);
+        expect((await GitStatusService.getStatus(wt)).isRepo).toBe(true);
+      } finally {
+        fs.rmSync(wt, { recursive: true, force: true });
+      }
+    });
+
+    it('turns off submodule recursion', async () => {
+      const config = await hardenedGitConfigArgs(dir);
+      expect(config).toMatchObject({ ok: true });
+      expect(config.ok && config.args).toEqual(expect.arrayContaining(['submodule.recurse=false', 'fetch.recurseSubmodules=false']));
+    });
+  });
+});
+
+describe('a repository with a submodule whose own config runs programs', () => {
+  const allowFile = { ...env(), GIT_ALLOW_PROTOCOL: 'file' };
+  const run = (cwd: string, envs: NodeJS.ProcessEnv, ...args: string[]) => execFileSync('git', args, { cwd, env: envs, stdio: 'pipe' }).toString();
+  let sub: string;
+  let up: string;
+  let dir: string;
+  let marker: string;
+
+  beforeEach(() => {
+    sub = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-sub-'));
+    run(sub, allowFile, 'init', '-q', '-b', 'master', '.');
+    run(sub, allowFile, 'config', 'user.email', 'a@b');
+    run(sub, allowFile, 'config', 'user.name', 'n');
+    fs.writeFileSync(path.join(sub, 'a.txt'), 'hi\n');
+    fs.writeFileSync(path.join(sub, '.gitattributes'), 'a.txt filter=x\n');
+    run(sub, allowFile, 'add', '-A');
+    run(sub, allowFile, 'commit', '-qm', 's');
+
+    up = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-up-'));
+    run(up, allowFile, 'init', '-q', '-b', 'master', '.');
+    run(up, allowFile, 'config', 'user.email', 'a@b');
+    run(up, allowFile, 'config', 'user.name', 'n');
+    run(up, allowFile, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', sub, 'sub');
+    run(up, allowFile, 'commit', '-qm', 'add sub');
+
+    // The victim's copy: made by `git clone --recurse-submodules`, so its top-level config is what git writes.
+    dir = `${up}-clone`;
+    marker = `${dir}.pwned`;
+    execFileSync('git', ['-c', 'protocol.file.allow=always', 'clone', '-q', '--recurse-submodules', up, dir], { env: allowFile });
+    // The attack: the submodule's own config (inside .git/modules) holds a clean filter, and a file in it looks changed.
+    fs.appendFileSync(path.join(dir, '.git', 'modules', 'sub', 'config'), `[filter "x"]\n\tclean = touch '${marker}'; cat\n`);
+    fs.writeFileSync(path.join(dir, 'sub', 'a.txt'), 'ho\n');
+    fs.utimesSync(path.join(dir, 'sub', 'a.txt'), new Date('2020-01-01'), new Date('2020-01-01'));
   });
 
-  it('refuses a repository whose config includes another file', async () => {
-    git('config', 'include.path', '/etc/hostname');
-    expect(await hardenedGitConfigArgs(dir)).toBeUndefined();
-    expect((await RemoteGitService.pull(dir)).success).toBe(false);
+  afterEach(() => {
+    for (const d of [sub, up, dir]) fs.rmSync(d, { recursive: true, force: true });
+    fs.rmSync(marker, { force: true });
+  });
+
+  it('is the case we defend against: git status in the superproject runs the submodule filter', () => {
+    run(dir, allowFile, 'status', '--porcelain');
+    expect(fs.existsSync(marker)).toBe(true);
+  });
+
+  it('trusts the top-level config of a recursive clone, and GitStatusService does not run the submodule filter', async () => {
+    const config = await hardenedGitConfigArgs(dir);
+    expect(config).toMatchObject({ ok: true, hasSubmodules: true });
+    const status = await GitStatusService.getStatus(dir);
+    expect(status.isRepo).toBe(true);
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  it('does not call a repository with submodules clean when only its submodule changed (status did not look inside it)', async () => {
+    const status = await GitStatusService.getStatus(dir);
+    // the submodule has a modified file, but --ignore-submodules=all hides it: unknown, not "clean"
+    expect(status.isClean).toBeUndefined();
+    expect(status.modifiedCount).toBe(0);
+  });
+
+  it('still reports changes outside the submodules', async () => {
+    fs.writeFileSync(path.join(dir, 'new.txt'), 'x\n');
+    const status = await GitStatusService.getStatus(dir);
+    expect(status).toMatchObject({ isClean: false, untrackedCount: 1 });
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  it('git pull with the hardened arguments does not run it either', async () => {
+    fs.writeFileSync(path.join(up, 'top.txt'), 'new\n');
+    run(up, allowFile, 'add', '-A');
+    run(up, allowFile, 'commit', '-qm', 'top');
+    const config = await hardenedGitConfigArgs(dir);
+    if (!config.ok) throw new Error(config.reason);
+    // RemoteGitService.pull passes exactly these arguments and this environment, except for the protocol list: the
+    // upstream here is a local path, which needs "file".
+    execFileSync('git', [...config.args, '-c', 'protocol.file.allow=always', 'pull'], {
+      cwd: dir,
+      env: { ...safeGitPullEnv(), GIT_CONFIG_GLOBAL: os.devNull, GIT_ALLOW_PROTOCOL: 'file' },
+      stdio: 'pipe',
+    });
+    expect(fs.existsSync(path.join(dir, 'top.txt'))).toBe(true);
+    expect(fs.existsSync(marker)).toBe(false);
   });
 });

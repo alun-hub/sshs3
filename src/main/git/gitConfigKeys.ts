@@ -4,10 +4,10 @@
  * `inspectGitConfigNames`), so a key we have not thought about, or one a future git adds, fails safe instead of running.
  *
  * Keyed by section; the value is the variables that are fine in that section. The subsection (remote name, branch name,
- * submodule name) is free text and is not checked, except for `filter` (see below). Section and variable names are
- * case-insensitive in git, so they are compared lower-cased.
+ * submodule name) is free text and is not checked. Section and variable names are case-insensitive in git, so they are
+ * compared lower-cased.
  */
-const HARMLESS_VARIABLES: Record<string, ReadonlySet<string>> = {
+const PLAIN_VARIABLES: Record<string, ReadonlySet<string>> = {
   core: new Set([
     'repositoryformatversion',
     'filemode',
@@ -20,23 +20,37 @@ const HARMLESS_VARIABLES: Record<string, ReadonlySet<string>> = {
     'eol',
     'safecrlf',
     'longpaths',
+    // `git sparse-checkout init` writes these into .git/config.worktree.
+    'sparsecheckout',
+    'sparsecheckoutcone',
   ]),
-  // Only the object format and the per-worktree config switch (the latter makes us read `config.worktree` as well).
-  extensions: new Set(['worktreeconfig', 'objectformat']),
-  remote: new Set(['url', 'fetch', 'pushurl', 'tagopt']),
-  branch: new Set(['remote', 'merge', 'rebase', 'description']),
+  // Only the object format, the ref storage and the per-worktree config switch (the latter makes us read
+  // `config.worktree` as well).
+  extensions: new Set(['worktreeconfig', 'objectformat', 'refstorage']),
   user: new Set(['name', 'email']),
   pull: new Set(['rebase', 'ff']),
   fetch: new Set(['prune']),
   push: new Set(['default']),
-  // An initialised submodule has these; `submodule.<n>.update` (can be `!command`) deliberately is not here.
-  submodule: new Set(['url', 'active', 'recurse']),
-  // Git LFS records its repository format and server URL here.
-  lfs: new Set(['repositoryformatversion', 'url']),
+  // `git submodule init` / `clone --recurse-submodules` write `submodule.active`; `submodule.recurse` is a user setting.
+  submodule: new Set(['active', 'recurse']),
 };
 
-/** Git LFS installs its filter as `filter.lfs.*`. Its commands are blanked by `inspectGitConfigNames`, not run. */
-const LFS_FILTER_VARIABLES: ReadonlySet<string> = new Set(['clean', 'smudge', 'process', 'required']);
+/** Keys with a subsection (`section.<name>.variable`): remote, branch and submodule names are free text. */
+const SUBSECTION_VARIABLES: Record<string, ReadonlySet<string>> = {
+  // promisor / partialclonefilter: `git clone --filter=blob:none`. status does not fetch missing objects, and a pull
+  // contacts the remote anyway.
+  remote: new Set(['url', 'fetch', 'pushurl', 'tagopt', 'promisor', 'partialclonefilter']),
+  branch: new Set(['remote', 'merge', 'rebase', 'description']),
+  // `submodule.<n>.update` (can be `!command`) deliberately is not here.
+  submodule: new Set(['url', 'active']),
+};
+
+// Deliberately absent: every `filter.*` key, Git LFS's included. Its filter commands cannot be run (the name is
+// repository-controlled) and cannot be blanked either (a blanked smudge filter makes a checkout write LFS pointer files
+// over the real content), so a repository that uses them is not run through git.
+//
+// This only vets the repository's own config. A submodule has a config of its own, which git reads when it runs
+// `git status` inside it: callers must not let git do that (`--ignore-submodules=all`, see GitStatusService).
 
 /** True when `key` (`section[.subsection].variable`, as `git config --name-only` prints it) is on the allowlist. */
 export function isKnownHarmlessConfigKey(key: string): boolean {
@@ -45,15 +59,9 @@ export function isKnownHarmlessConfigKey(key: string): boolean {
   if (first < 1 || last === key.length - 1) return false;
   const section = key.slice(0, first).toLowerCase();
   const variable = key.slice(last + 1).toLowerCase();
-  const subsection = last > first ? key.slice(first + 1, last) : undefined;
+  const table = last > first ? SUBSECTION_VARIABLES : PLAIN_VARIABLES;
 
-  if (section === 'filter') return subsection === 'lfs' && LFS_FILTER_VARIABLES.has(variable);
-  // lfs.* has no subsection; lfs.customtransfer.<n>.path would run a program.
-  if (section === 'lfs' && subsection !== undefined) return false;
-  const allowed = HARMLESS_VARIABLES[section];
-  if (!allowed) return false;
-  // Sections without subsections must not be given one (core.x.filemode is not core.filemode).
-  const takesSubsection = section === 'remote' || section === 'branch' || section === 'submodule';
-  if (takesSubsection !== (subsection !== undefined)) return false;
-  return allowed.has(variable);
+  // Own properties only: a key such as `constructor.x` must not find Object.prototype's members.
+  const allowed = Object.hasOwn(table, section) ? table[section] : undefined;
+  return allowed?.has(variable) === true;
 }

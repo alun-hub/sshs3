@@ -8,14 +8,10 @@ import type {
 } from '../../shared/types/git';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import { runSshCommand } from '../ssh/KeyInstallService';
-import { hasControlChars, safeGitConfigArgs, safeGitEnv, shellQuote } from './gitSafety';
+import { hasControlChars, resolveGitBinary, safeGitConfigArgs, safeGitEnv, safeGitPullEnv, shellQuote } from './gitSafety';
 import { hardenedGitConfigArgs } from './hardenedGitArgs';
 
 const execFileAsync = promisify(execFile);
-
-function resolveGitBinary(): string {
-  return process.platform === 'win32' ? 'git.exe' : 'git';
-}
 
 /** Sanitize clone URL: only allows valid http(s), ssh, or git protocols without shell metacharacters. */
 export function isValidGitCloneUrl(rawUrl: string): boolean {
@@ -134,14 +130,17 @@ export class RemoteGitService {
     if (!providerId || providerId === 'local') {
       try {
         const gitBin = resolveGitBinary();
-        const configArgs = await hardenedGitConfigArgs(dir);
-        if (!configArgs) {
-          return { success: false, error: 'Refusing to pull: the repository configuration could not be verified as safe' };
+        const config = await hardenedGitConfigArgs(dir);
+        if (!config.ok) {
+          return {
+            success: false,
+            error: `Refusing to pull: the repository configuration could not be verified as safe (${config.reason})`,
+          };
         }
-        const { stdout, stderr } = await execFileAsync(gitBin, [...configArgs, 'pull'], {
+        const { stdout, stderr } = await execFileAsync(gitBin, [...config.args, 'pull'], {
           cwd: dir,
           timeout: 60000,
-          env: safeGitEnv(),
+          env: safeGitPullEnv(),
         });
         return { success: true, output: (stdout + '\n' + stderr).trim() };
       } catch (err: unknown) {

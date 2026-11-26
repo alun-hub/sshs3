@@ -4,14 +4,10 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { GitRepoStatus } from '../../shared/types/git';
 import type { StorageRegistry } from '../storage/StorageRegistry';
-import { safeGitEnv } from './gitSafety';
+import { resolveGitBinary, safeGitEnv } from './gitSafety';
 import { hardenedGitConfigArgs } from './hardenedGitArgs';
 
 const execFileAsync = promisify(execFile);
-
-function resolveGitBinary(): string {
-  return process.platform === 'win32' ? 'git.exe' : 'git';
-}
 
 /** Parses branch and commit from .git/HEAD file content. */
 export function parseHeadBranch(headContent: string): string | undefined {
@@ -143,10 +139,12 @@ export class GitStatusService {
 
       try {
         const gitBin = resolveGitBinary();
-        // The repo may have come from a server we do not trust: blank what its config could make git run, or skip.
-        const configArgs = await hardenedGitConfigArgs(rootPath);
-        if (!configArgs) throw new Error('repository config is not trusted');
-        const { stdout } = await execFileAsync(gitBin, [...configArgs, '--no-optional-locks', 'status', '--porcelain=v1', '-b'], {
+        // The repo may have come from a server we do not trust: only run git when its config holds nothing that could run a program.
+        // --ignore-submodules=all: otherwise status runs `git status` inside every submodule, which reads that submodule's own
+        // config (not vetted above) and would run its filters. A dirty submodule is therefore not counted as a change.
+        const config = await hardenedGitConfigArgs(rootPath);
+        if (!config.ok) throw new Error(`repository config is not trusted: ${config.reason}`);
+        const { stdout } = await execFileAsync(gitBin, [...config.args, '--no-optional-locks', 'status', '--porcelain=v1', '-b', '--ignore-submodules=all'], {
           cwd: rootPath,
           timeout: 2500,
           env: safeGitEnv(),
@@ -174,7 +172,8 @@ export class GitStatusService {
         behind = parsedBehind;
         untrackedCount = parsedUntracked;
         modifiedCount = parsedModified;
-        isClean = parsedUntracked === 0 && parsedModified === 0;
+        // With submodules and nothing else changed we cannot tell: a submodule may be dirty and was not looked at.
+        isClean = parsedUntracked + parsedModified > 0 ? false : config.hasSubmodules ? undefined : true;
       } catch {
         // git command failed or not installed, fallback to static info
       }
