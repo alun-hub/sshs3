@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
+  assertOptionalNumber,
   assertStrings,
+  assertText,
   describeFido2StartupError,
   isMissingPathError,
   paneTreeHasAuthType,
@@ -174,5 +176,30 @@ describe('assertStrings', () => {
     expect(() => assertStrings({ providerId: 'local', remotePath: 5 })).toThrow('Invalid argument: remotePath');
     expect(() => assertStrings({ providerId: '' })).toThrow('Invalid argument: providerId');
     expect(() => assertStrings({ providerId: undefined })).toThrow('Invalid argument: providerId');
+  });
+});
+
+describe('assertText', () => {
+  it('accepts any string, including an empty one', () => {
+    expect(() => assertText('content', '')).not.toThrow();
+    expect(() => assertText('content', 'x')).not.toThrow();
+  });
+
+  it('rejects everything else', () => {
+    for (const bad of [undefined, null, 5, {}, ['a']]) {
+      expect(() => assertText('content', bad)).toThrow('Invalid argument: content');
+    }
+  });
+});
+
+describe('assertOptionalNumber', () => {
+  it('accepts a missing value and finite numbers', () => {
+    for (const ok of [undefined, null, 0, 2048]) expect(() => assertOptionalNumber('maxBytes', ok)).not.toThrow();
+  });
+
+  it('rejects anything else, including NaN and Infinity', () => {
+    for (const bad of ['5', NaN, Infinity, {}, true]) {
+      expect(() => assertOptionalNumber('maxBytes', bad)).toThrow('Invalid argument: maxBytes');
+    }
   });
 });

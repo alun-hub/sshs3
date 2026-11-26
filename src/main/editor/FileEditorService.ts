@@ -25,10 +25,19 @@ export interface ExternalEditorSession {
 
 // eslint-disable-next-line security/detect-unsafe-regex -- anchored non-backtracking pattern matching windows reserved device names
 const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
-// Types the OS would *run* rather than open for editing when handed to shell.openPath.
-const ALWAYS_BLOCKED_EXTENSIONS = new Set(['.exe', '.com', '.msi', '.msp', '.scr', '.lnk', '.hta', '.jar', '.desktop', '.app']);
+// Types the OS would *run* (or that carry macros) rather than open for editing when handed to shell.openPath.
+// A denylist can never be complete; it covers what the platforms are known to execute on open.
+const ALWAYS_BLOCKED_EXTENSIONS = new Set([
+  '.exe', '.com', '.msi', '.msp', '.scr', '.lnk', '.hta', '.jar', '.desktop', '.app',
+  '.command', '.terminal', '.workflow', '.scpt', '.pkg', '.dmg', '.appimage',
+  '.docm', '.xlsm', '.pptm', '.dotm', '.xlam', '.xltm', '.xll',
+  '.jnlp', '.fileloc', '.webloc', '.inetloc', // Java Web Start and macOS shortcuts that open a URL or run a launcher
+]);
 const WINDOWS_BLOCKED_EXTENSIONS = new Set([
   '.bat', '.cmd', '.ps1', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.reg', '.cpl', '.pif', '.msc',
+  '.url', '.appref-ms', '.application', '.msix', '.appx', '.inf', '.ws', '.sct',
+  '.py', '.pyw', '.wsc', '.chm', '.hlp', '.scf', '.website', '.diagcab', '.iqy', '.slk',
+  '.library-ms', '.searchconnector-ms', '.settingcontent-ms',
 ]);
 
 /**
@@ -51,7 +60,32 @@ export function isBlockedExecutableType(fileName: string, platform: NodeJS.Platf
   return ALWAYS_BLOCKED_EXTENSIONS.has(ext) || (platform === 'win32' && WINDOWS_BLOCKED_EXTENSIONS.has(ext));
 }
 
+function blockedTypeError(fileName: string): Error {
+  return new Error(
+    `Refusing to open "${fileName}" with the OS default handler: this file type would be executed. Use the built-in editor instead.`
+  );
+}
+
+/**
+ * Throws unless `dir` is a real directory (not a symlink) that only the current user can use. A shared OS temp
+ * directory lets another local user create the path first, and then swap what is inside it. POSIX only: a
+ * Windows temp directory is per user.
+ */
+export async function assertPrivateDirectory(
+  dir: string,
+  platform: NodeJS.Platform = process.platform,
+  uid: number | undefined = process.getuid?.()
+): Promise<void> {
+  if (platform === 'win32') return;
+  const st = await fsp.lstat(dir);
+  if (!st.isDirectory() || (uid !== undefined && st.uid !== uid) || (st.mode & 0o077) !== 0) {
+    throw new Error(`Refusing to use "${dir}" for downloaded files: it is not a private directory owned by you.`);
+  }
+}
+
 const READ_IDLE_TIMEOUT_MS = 30_000;
+// Marks a downloaded file as coming from the Internet zone, so Office opens it in Protected View and SmartScreen checks it.
+const ZONE_IDENTIFIER = '[ZoneTransfer]\r\nZoneId=3\r\n';
 
 function directoryResult(size: number): FileReadResult {
   return { content: '', size, isBinary: false, truncated: false, isDirectory: true };
@@ -74,6 +108,8 @@ export interface FileEditorServiceOptions {
   baseTempDir?: string;
   /** Quiet time after the last save before the file is uploaded. */
   uploadDebounceMs?: number;
+  /** The platform the downloaded temp file is prepared for (tests only); defaults to the running one. */
+  platform?: NodeJS.Platform;
 }
 
 /** How long closing a session waits for a last pending upload before giving up on it. */
@@ -87,9 +123,11 @@ export class FileEditorService {
   private baseTempDir: string;
   private sessions = new Map<string, ExternalEditorSession>();
   private uploadDebounceMs: number;
+  private platform: NodeJS.Platform;
 
   constructor(options: FileEditorServiceOptions = {}) {
     this.uploadDebounceMs = options.uploadDebounceMs ?? 500;
+    this.platform = options.platform ?? process.platform;
     this.shell = options.shell ?? electronShell;
     this.baseTempDir = options.baseTempDir ?? path.join(os.tmpdir(), 'sshs3-editor');
   }
@@ -312,6 +350,12 @@ export class FileEditorService {
     // Local filesystem: open directly in OS default application
     if (provider.type === 'local' && provider instanceof LocalStorageProvider) {
       const fullPath = provider.resolvePath(remotePath);
+      // The path may come from terminal output. Judge the link's target too: `notes.txt -> run.desktop` would
+      // otherwise pass on its name alone.
+      const realName = await fsp.realpath(fullPath).then((p) => path.basename(p), () => undefined);
+      for (const name of [path.basename(fullPath), realName]) {
+        if (name && isBlockedExecutableType(name)) throw blockedTypeError(name);
+      }
       const err = await this.shell.openPath(fullPath);
       if (err) {
         throw new Error(err);
@@ -335,11 +379,18 @@ export class FileEditorService {
     if (path.dirname(tempFilePath) !== tempDir) {
       throw new Error(`Refusing to write outside the temp directory: ${remotePath}`);
     }
-    if (isBlockedExecutableType(baseName)) {
-      throw new Error(
-        `Refusing to open "${baseName}" with the OS default handler: this file type would be executed. Use the built-in editor instead.`
-      );
+    if (isBlockedExecutableType(baseName)) throw blockedTypeError(baseName);
+
+    // A directory or a FIFO/device cannot be downloaded as a file (a FIFO would block the download forever).
+    // A provider that cannot stat is not an obstacle: the download then reports its own error.
+    let remoteStat: Awaited<ReturnType<typeof provider.stat>> | undefined;
+    try {
+      remoteStat = await provider.stat(remotePath);
+    } catch {
+      remoteStat = undefined;
     }
+    if (remoteStat?.isDirectory) throw new Error(`Not a file: ${remotePath}`);
+    if (remoteStat?.isSpecial) throw new Error('Not a regular file');
 
     // mode: 0o700 restricts this to the owning user. On a shared/multi-user
     // machine, the default (umask-derived, typically 0o755) would let any
@@ -353,6 +404,9 @@ export class FileEditorService {
       // shared OS temp dir), so enforce it explicitly on both directories.
       await fsp.chmod(this.baseTempDir, 0o700).catch(() => {});
       await fsp.chmod(tempDir, 0o700).catch(() => {});
+      // The chmod above fails silently on a directory someone else owns: check what is actually there.
+      await assertPrivateDirectory(this.baseTempDir);
+      await assertPrivateDirectory(tempDir);
     }
 
     const readStream = await provider.createReadStream(remotePath);
@@ -368,6 +422,11 @@ export class FileEditorService {
       writeStream.once('error', reject);
       readStream.once('error', reject);
     });
+
+    if (this.platform === 'win32') {
+      // Best effort (NTFS only): the file stays usable without the mark.
+      await fsp.writeFile(`${tempFilePath}:Zone.Identifier`, ZONE_IDENTIFIER).catch(() => {});
+    }
 
     const openError = await this.shell.openPath(tempFilePath);
     if (openError) {
@@ -534,21 +593,12 @@ export class FileEditorService {
   }
 
   /**
-   * Disposes all active watchers and temporary directories.
+   * Closes every session: uploads a save that is still waiting (all sessions at once, each bounded by
+   * CLOSE_FLUSH_TIMEOUT_MS), then removes the watchers and temporary directories. The caller must still have the
+   * storage connections open.
    */
   public async dispose(): Promise<void> {
-    for (const session of this.sessions.values()) {
-      session.closed = true;
-      session.uploader?.dispose();
-      session.watcher?.close();
-      if (session.tempDir) {
-        try {
-          await fsp.rm(session.tempDir, { recursive: true, force: true });
-        } catch {
-          // Ignore
-        }
-      }
-    }
+    await Promise.all(Array.from(this.sessions.keys(), (token) => this.closeExternalEditor(token)));
     this.sessions.clear();
   }
 }

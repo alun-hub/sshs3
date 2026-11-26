@@ -3,7 +3,7 @@ import type { IpcBridge } from '../IpcBridge';
 import type { CertificatePreviewResult } from '../../shared/types/certificate';
 import { isCertificateFileName } from '../../shared/certificateFileName';
 import { describeCertificateFile, MAX_CERTIFICATE_FILE_BYTES } from '../certs/certificateInfo';
-import { assertStrings } from './ipcHelpers';
+import { assertOptionalNumber, assertStrings, assertText } from './ipcHelpers';
 
 /** The part of IpcBridge this handler group may use. */
 export type FileEditorHost = Pick<
@@ -21,6 +21,8 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.FILE_READ,
     async (_event, providerId: string, remotePath: string, maxBytes?: number) => {
+      assertStrings({ providerId, remotePath });
+      assertOptionalNumber('maxBytes', maxBytes);
       await ensureLocalProvider(bridge, providerId);
       return await bridge.fileEditorService.readFile(
         bridge.storageRegistry,
@@ -58,6 +60,8 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.FILE_SAVE,
     async (_event, providerId: string, remotePath: string, content: string) => {
+      assertStrings({ providerId, remotePath });
+      assertText('content', content);
       await ensureLocalProvider(bridge, providerId);
       await bridge.fileEditorService.saveFile(
         bridge.storageRegistry,
@@ -71,6 +75,7 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.FILE_OPEN_EXTERNAL,
     async (event, providerId: string, remotePath: string) => {
+      assertStrings({ providerId, remotePath });
       const sender = event?.sender;
       await ensureLocalProvider(bridge, providerId);
       return await bridge.fileEditorService.openInExternalEditor(
@@ -87,6 +92,7 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.FILE_CLOSE_EXTERNAL,
     async (_event, sessionToken: string) => {
+      assertStrings({ sessionToken });
       await bridge.fileEditorService.closeExternalEditor(sessionToken);
     }
   );
@@ -94,6 +100,7 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.FILE_TAIL_START,
     async (event, providerId: string, remotePath: string) => {
+      assertStrings({ providerId, remotePath });
       const sender = event?.sender;
       await ensureLocalProvider(bridge, providerId);
       return await bridge.fileTailService.startTail(
@@ -113,6 +120,7 @@ export function registerFileEditorHandlers(bridge: FileEditorHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.FILE_TAIL_STOP,
     async (_event, tailId: string) => {
+      assertStrings({ tailId });
       bridge.fileTailService.stopTail(tailId);
     }
   );

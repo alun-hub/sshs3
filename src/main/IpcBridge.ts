@@ -1765,9 +1765,9 @@ export class IpcBridge {
 
     // Each step below that can fail or hang runs in disposeStep: 'before-quit' ignores a rejection and waits for
     // dispose(), so a failing step must not skip the cleanup after it and a hanging one must not block quit.
+    await this.disposeStep('fileEditorService.dispose', () => this.fileEditorService.dispose()); // first: uploads a pending save, needs live connections
     await this.disposeStep('sshPtyManager.killAll', () => this.sshPtyManager.killAll());
     await this.disposeStep('storageRegistry.disconnectAll', () => this.storageRegistry.disconnectAll?.());
-    await this.disposeStep('fileEditorService.dispose', () => this.fileEditorService.dispose());
     await this.disposeStep('dragOutService.dispose', () => this.dragOutService.dispose());
     await this.disposeStep('fileTailService.dispose', () => this.fileTailService.dispose());
     await this.disposeStep('searchOrchestrator.dispose', () => this.searchOrchestrator.dispose());

@@ -225,3 +225,15 @@ export function assertStrings(args: Record<string, unknown>): void {
     if (typeof value !== 'string' || value === '') throw new Error(`Invalid argument: ${name}`);
   }
 }
+
+/** Throws unless the IPC argument is a string; unlike assertStrings an empty one is fine (the content of an empty file). */
+export function assertText(name: string, value: unknown): void {
+  if (typeof value !== 'string') throw new Error(`Invalid argument: ${name}`);
+}
+
+/** Throws unless the optional IPC argument is absent or a finite number. */
+export function assertOptionalNumber(name: string, value: unknown): void {
+  if (value !== undefined && value !== null && (typeof value !== 'number' || !Number.isFinite(value))) {
+    throw new Error(`Invalid argument: ${name}`);
+  }
+}

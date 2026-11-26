@@ -127,6 +127,50 @@ describe('FileEditor IPC handlers', () => {
     await tailStopHandler({}, 'tail-99');
     expect(fileTailService.stopTail).toHaveBeenCalledWith('tail-99');
   });
+
+  describe('argument validation', () => {
+    const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!({}, ...args);
+    const untouched = () => {
+      for (const fn of [
+        fileEditorService.readFile,
+        fileEditorService.saveFile,
+        fileEditorService.openInExternalEditor,
+        fileEditorService.closeExternalEditor,
+        fileTailService.startTail,
+        fileTailService.stopTail,
+        storageRegistry.getOrCreate,
+      ]) {
+        expect(fn).not.toHaveBeenCalled();
+      }
+    };
+
+    it.each([
+      ['FILE_READ', ['local', {}]],
+      ['FILE_READ', ['', '/x']],
+      ['FILE_READ', [undefined, '/x']],
+      ['FILE_READ', ['local', '/x', 'big']],
+      ['FILE_READ', ['local', '/x', Infinity]],
+      ['FILE_SAVE', ['local', '/x', { not: 'text' }]],
+      ['FILE_SAVE', ['local', '/x', undefined]],
+      ['FILE_SAVE', [{}, '/x', 'text']],
+      ['FILE_OPEN_EXTERNAL', ['local', '']],
+      ['FILE_OPEN_EXTERNAL', [5, '/x']],
+      ['FILE_CLOSE_EXTERNAL', [undefined]],
+      ['FILE_TAIL_START', ['local', 7]],
+      ['FILE_TAIL_STOP', [{}]],
+    ] as const)('%s rejects %j without touching a service', async (name, args) => {
+      storageRegistry.has.mockReturnValue(false);
+      await expect(call(IPC_CHANNELS[name], ...args)).rejects.toThrow(/^Invalid argument: /);
+      untouched();
+    });
+
+    it('still saves an empty file', async () => {
+      storageRegistry.has.mockReturnValue(true);
+      await call(IPC_CHANNELS.FILE_SAVE, 'local', '/tmp/empty.txt', '');
+      expect(fileEditorService.saveFile).toHaveBeenCalledWith(storageRegistry, 'local', '/tmp/empty.txt', '');
+    });
+  });
+
   describe('certificate preview', () => {
     const certPem = readFileSync(path.join(__dirname, 'fixtures', 'certs', 'leaf.pem'));
 

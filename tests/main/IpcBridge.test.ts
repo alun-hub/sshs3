@@ -1960,6 +1960,23 @@ describe('IpcBridge', () => {
       expect(mockStorageRegistry.disconnectAll).toHaveBeenCalled();
     });
 
+    it('uploads pending editor saves before the ssh sessions and storage connections are closed', async () => {
+      const order: string[] = [];
+      vi.spyOn(bridge.fileEditorService, 'dispose').mockImplementation(async () => {
+        order.push('fileEditorService.dispose');
+      });
+      mockPtyManager.killAll.mockImplementation(async () => {
+        order.push('sshPtyManager.killAll');
+      });
+      mockStorageRegistry.disconnectAll.mockImplementation(async () => {
+        order.push('storageRegistry.disconnectAll');
+      });
+
+      await bridge.dispose();
+
+      expect(order).toEqual(['fileEditorService.dispose', 'sshPtyManager.killAll', 'storageRegistry.disconnectAll']);
+    });
+
     it('kills every leftover per-session agent and shuts down the app agent on dispose', async () => {
       const { AgentLifecycleManager } = await import('../../src/main/ssh/AgentLifecycleManager');
       const killSpy = vi.spyOn(AgentLifecycleManager, 'killPrivateAgent').mockImplementation(() => {});

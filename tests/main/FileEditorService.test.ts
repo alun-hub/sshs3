@@ -4,7 +4,12 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { FileEditorService, toSafeLocalFileName, isBlockedExecutableType } from '../../src/main/editor/FileEditorService';
+import {
+  FileEditorService,
+  toSafeLocalFileName,
+  isBlockedExecutableType,
+  assertPrivateDirectory,
+} from '../../src/main/editor/FileEditorService';
 import { StorageRegistry } from '../../src/main/storage/StorageRegistry';
 import { LocalStorageProvider } from '../../src/main/storage/LocalStorageProvider';
 
@@ -507,18 +512,19 @@ describe('FileEditorService', () => {
       await slowDebounce.dispose();
     });
 
-    it('does not report an error for a pending upload after the session was disposed', async () => {
+    it('uploads a pending change when disposed and reports no error afterwards', async () => {
       const slowDebounce = new FileEditorService({ shell: mockShell, baseTempDir: tempBaseDir, uploadDebounceMs: 100 });
-      remoteProvider();
+      const { state } = remoteProvider();
       const events: Array<{ status: string }> = [];
       const { localPath } = await slowDebounce.openInExternalEditor(storageRegistry, 'sftp-up', '/etc/d.ini', (e) => events.push(e));
       await sleep(40);
       await fsp.writeFile(localPath, 'changed');
       await sleep(30);
       await slowDebounce.dispose();
+      expect(state.uploads).toEqual(['changed']); // not lost when the app quits within the debounce time
       await sleep(250);
 
-      expect(events).toEqual([]);
+      expect(events.filter((e) => e.status === 'error')).toEqual([]);
     });
   });
 
@@ -540,6 +546,140 @@ describe('FileEditorService', () => {
 
       await service.dispose();
       expect(service.getActiveSessions().length).toBe(0);
+    });
+  });
+
+  describe('opening a path that came from terminal output', () => {
+    const localProvider = (id: string) => {
+      storageRegistry.register(new LocalStorageProvider({ id, basePath: tempBaseDir }));
+    };
+
+    it('also blocks the types macOS, Linux and Windows run or that carry macros', () => {
+      for (const name of ['a.command', 'a.docm', 'a.AppImage', 'a.pkg']) {
+        expect(isBlockedExecutableType(name, 'linux')).toBe(true);
+      }
+      expect(isBlockedExecutableType('a.url', 'win32')).toBe(true);
+      expect(isBlockedExecutableType('a.url', 'linux')).toBe(false);
+      for (const name of ['a.jnlp', 'a.webloc', 'a.inetloc', 'a.fileloc', 'a.xll']) {
+        expect(isBlockedExecutableType(name, 'darwin')).toBe(true);
+      }
+      for (const name of ['a.py', 'a.pyw', 'a.chm', 'a.scf', 'a.website', 'a.library-ms', 'a.settingcontent-ms', 'a.diagcab']) {
+        expect(isBlockedExecutableType(name, 'win32')).toBe(true);
+        expect(isBlockedExecutableType(name, 'linux')).toBe(false); // a Python file is only run by Windows' own handler
+      }
+    });
+
+    it('refuses a local executable type without handing it to the OS', async () => {
+      localProvider('local-exe');
+      await fsp.writeFile(path.join(tempBaseDir, 'run.desktop'), '[Desktop Entry]');
+
+      await expect(service.openInExternalEditor(storageRegistry, 'local-exe', 'run.desktop')).rejects.toThrow(
+        /would be executed/
+      );
+      expect(mockShell.openPath).not.toHaveBeenCalled();
+    });
+
+    it.skipIf(process.platform === 'win32')('judges a symlink by its target as well as its name', async () => {
+      localProvider('local-link');
+      await fsp.writeFile(path.join(tempBaseDir, 'run.desktop'), '[Desktop Entry]');
+      await fsp.symlink(path.join(tempBaseDir, 'run.desktop'), path.join(tempBaseDir, 'notes.txt'));
+
+      await expect(service.openInExternalEditor(storageRegistry, 'local-link', 'notes.txt')).rejects.toThrow(
+        /run\.desktop/
+      );
+      expect(mockShell.openPath).not.toHaveBeenCalled();
+    });
+
+    it('still opens an ordinary local file', async () => {
+      localProvider('local-ok');
+      await fsp.writeFile(path.join(tempBaseDir, 'plain.txt'), 'x');
+      await service.openInExternalEditor(storageRegistry, 'local-ok', 'plain.txt');
+      expect(mockShell.openPath).toHaveBeenCalledTimes(1);
+    });
+
+    const remote = (stat: unknown) => {
+      const createReadStream = vi.fn().mockImplementation(() => Readable.from([Buffer.from('x')]));
+      storageRegistry.register({
+        id: 'sftp-stat',
+        name: 'SFTP',
+        type: 'sftp' as const,
+        stat: stat === 'throws' ? vi.fn().mockRejectedValue(new Error('no stat')) : vi.fn().mockResolvedValue(stat),
+        createReadStream,
+        createWriteStream: vi.fn().mockImplementation(() => new PassThrough()),
+      } as any);
+      return createReadStream;
+    };
+
+    it('does not download a remote directory', async () => {
+      const createReadStream = remote({ name: 'd', path: '/d', size: 0, isDirectory: true });
+      await expect(service.openInExternalEditor(storageRegistry, 'sftp-stat', '/srv/d')).rejects.toThrow('Not a file');
+      expect(createReadStream).not.toHaveBeenCalled();
+    });
+
+    it('does not download a FIFO or device', async () => {
+      const createReadStream = remote({ name: 'p', path: '/p', size: 0, isDirectory: false, isSpecial: true });
+      await expect(service.openInExternalEditor(storageRegistry, 'sftp-stat', '/srv/p')).rejects.toThrow(
+        'Not a regular file'
+      );
+      expect(createReadStream).not.toHaveBeenCalled();
+    });
+
+    it('downloads anyway when the provider cannot stat', async () => {
+      const createReadStream = remote('throws');
+      await service.openInExternalEditor(storageRegistry, 'sftp-stat', '/srv/file.txt');
+      expect(createReadStream).toHaveBeenCalled();
+    });
+
+    it.skipIf(process.platform === 'win32')('marks a download as coming from the Internet when preparing for Windows', async () => {
+      remote({ name: 'f', path: '/f', size: 1, isDirectory: false });
+      const win = new FileEditorService({ shell: mockShell, baseTempDir: tempBaseDir, platform: 'win32' });
+      const { localPath } = await win.openInExternalEditor(storageRegistry, 'sftp-stat', '/srv/report.docx');
+      expect(await fsp.readFile(`${localPath}:Zone.Identifier`, 'utf-8')).toBe('[ZoneTransfer]\r\nZoneId=3\r\n');
+      await win.dispose();
+    });
+
+    it.skipIf(process.platform === 'win32')('adds no Zone.Identifier elsewhere', async () => {
+      remote({ name: 'f', path: '/f', size: 1, isDirectory: false });
+      const { localPath } = await service.openInExternalEditor(storageRegistry, 'sftp-stat', '/srv/report.docx');
+      await expect(fsp.access(`${localPath}:Zone.Identifier`)).rejects.toThrow();
+    });
+  });
+
+  describe('assertPrivateDirectory', () => {
+    it.skipIf(process.platform === 'win32')('accepts a directory only its owner can use', async () => {
+      const dir = path.join(tempBaseDir, 'private');
+      await fsp.mkdir(dir, { mode: 0o700 });
+      await fsp.chmod(dir, 0o700);
+      await expect(assertPrivateDirectory(dir)).resolves.toBeUndefined();
+    });
+
+    it.skipIf(process.platform === 'win32')('rejects a directory other users can enter', async () => {
+      const dir = path.join(tempBaseDir, 'open');
+      await fsp.mkdir(dir);
+      await fsp.chmod(dir, 0o755);
+      await expect(assertPrivateDirectory(dir)).rejects.toThrow('not a private directory');
+    });
+
+    it.skipIf(process.platform === 'win32')('rejects a directory owned by someone else', async () => {
+      const dir = path.join(tempBaseDir, 'foreign');
+      await fsp.mkdir(dir);
+      await fsp.chmod(dir, 0o700);
+      await expect(assertPrivateDirectory(dir, 'linux', (process.getuid?.() ?? 0) + 1)).rejects.toThrow(
+        'not a private directory'
+      );
+    });
+
+    it.skipIf(process.platform === 'win32')('rejects a symlink, even to a private directory', async () => {
+      const real = path.join(tempBaseDir, 'real');
+      await fsp.mkdir(real);
+      await fsp.chmod(real, 0o700);
+      const link = path.join(tempBaseDir, 'link');
+      await fsp.symlink(real, link);
+      await expect(assertPrivateDirectory(link)).rejects.toThrow('not a private directory');
+    });
+
+    it('does not apply to Windows, where the temp directory is per user', async () => {
+      await expect(assertPrivateDirectory(path.join(tempBaseDir, 'nope'), 'win32')).resolves.toBeUndefined();
     });
   });
 
