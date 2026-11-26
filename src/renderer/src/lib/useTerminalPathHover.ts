@@ -5,6 +5,9 @@ import type { TerminalLinkHandlers } from './terminalLinks';
 import { isDistinctiveFilename } from './terminalLinks';
 import { lookupPathWithin, statIfExists } from './storageLookup';
 import { createRendererLogger } from './log';
+import { openClickedPath, type ClickedPathApi } from './openClickedPath';
+import type { PathClickAction } from './pathOpenDecision';
+import { useExternalOpenNotices } from './useExternalOpenNotices';
 import {
   allowPreview,
   hoverModifierSatisfied,
@@ -14,7 +17,7 @@ import {
   type ExistenceCheck,
   type PathHoverMode,
 } from './pathPreviewGate';
-import { isNetworkUncPath, resolvePathDetails } from './terminalPathPreview';
+import { isNetworkStoragePath, resolvePathDetails } from './terminalPathPreview';
 import { extractCwdFromPrompt } from './terminalOutput';
 import { wslToWindowsPath } from './wslPaths';
 import { pathBasename, terminalProviderId, terminalStorageConnectConfig, type TerminalStorageTarget } from './terminalStorage';
@@ -32,6 +35,14 @@ const LOOKUP_TIMEOUT_MS = 600;
 const LEAVE_GRACE_MS = 120;
 const CONNECT_RETRY_BACKOFF_MS = 30_000;
 
+const CLICKED_PATH_API: ClickedPathApi = {
+  lookup: lookupPathWithin,
+  openExternal: async (providerId, path) => {
+    if (!window.multissh?.fileOpenExternal) throw new Error('Opening files is not available');
+    return window.multissh.fileOpenExternal(providerId, path);
+  },
+};
+
 interface HoverCardData {
   path: string;
   x: number;
@@ -47,6 +58,8 @@ export interface UseTerminalPathHoverOptions {
   pathHoverPreview: boolean;
   /** Open the hover card on hover (default) or only while Ctrl/Cmd is held. */
   pathHoverMode?: PathHoverMode;
+  /** What Ctrl/Cmd+click on a file does: open it with the system app (default) or show it in the file manager. */
+  pathClickAction?: PathClickAction;
   onOpenPath?: (path: string) => void;
   termRef: RefObject<Terminal | null>;
   sessionIdRef: RefObject<string | null>;
@@ -70,6 +83,7 @@ export function useTerminalPathHover({
   wslDistro,
   pathHoverPreview,
   pathHoverMode = 'hover',
+  pathClickAction = 'os',
   onOpenPath,
   termRef,
   sessionIdRef,
@@ -88,10 +102,15 @@ export function useTerminalPathHover({
   pathHoverPreviewRef.current = pathHoverPreview;
   const pathHoverModeRef = useRef(pathHoverMode);
   pathHoverModeRef.current = pathHoverMode;
+  const pathClickActionRef = useRef(pathClickAction);
+  pathClickActionRef.current = pathClickAction;
+  /** Paths whose Ctrl+click is being handled: a second click meanwhile must not start another download. */
+  const openingRef = useRef(new Set<string>());
   /** A path under the pointer that waits for Ctrl/Cmd (only in `ctrl` mode). */
   const pendingHoverRef = useRef<{ clientX: number; clientY: number; path: string } | null>(null);
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
+  const trackExternalSession = useExternalOpenNotices(notify);
 
   const [hoverCardData, setHoverCardData] = useState<HoverCardData | null>(null);
   const hoverCardDataRef = useRef<HoverCardData | null>(null);
@@ -340,7 +359,7 @@ export function useTerminalPathHover({
   const checkExistence = useCallback(async (fullPath: string): Promise<ExistenceCheck> => {
     const id = terminalProviderId(targetRef.current);
     // Hovering must not make this machine authenticate to whatever server a path in the output names.
-    if (isNetworkUncPath(fullPath) || isNetworkUncPath(toStoragePathRef.current(fullPath))) return 'unknown';
+    if (isNetworkStoragePath(fullPath, toStoragePathRef.current)) return 'unknown';
     // Nothing to check against: behave as if the file exists.
     if (!id || !(window.multissh?.storageLookup || window.multissh?.storageStat)) return 'exists';
     const key = `${id}\0${fullPath}`;
@@ -413,7 +432,7 @@ export function useTerminalPathHover({
         const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
         // The card reads the file (preview, certificate check) as soon as it opens, so for a path that names
         // another machine it must not open at all: that would send this user's NetNTLMv2 credentials to it.
-        if (isNetworkUncPath(details.fullPath) || isNetworkUncPath(toStoragePathRef.current(details.fullPath))) {
+        if (isNetworkStoragePath(details.fullPath, toStoragePathRef.current)) {
           log.debug('card skipped, the path names a network share', { path });
           return;
         }
@@ -509,7 +528,33 @@ export function useTerminalPathHover({
             dismissCard();
             await prepareHover();
             const details = resolvePathDetails(path, userHomeDirRef.current, currentCwdRef.current);
-            onOpenPathRef.current?.(toStoragePathRef.current(details.fullPath));
+            const storagePath = toStoragePathRef.current(details.fullPath);
+            if (openingRef.current.has(storagePath)) return;
+            openingRef.current.add(storagePath);
+            try {
+              const action = pathClickActionRef.current;
+              const outcome = await openClickedPath(
+                {
+                  action,
+                  providerId: terminalProviderId(targetRef.current),
+                  storagePath,
+                  isNetworkUnc: isNetworkStoragePath(details.fullPath, toStoragePathRef.current),
+                  localShellRunsSsh: action === 'os' && (await localShellRunsSsh()),
+                  relative: isRelativePath(path),
+                  cwdReliable: cwdReliableRef.current,
+                },
+                CLICKED_PATH_API
+              );
+              if (outcome.kind === 'opened') {
+                trackExternalSession(outcome.sessionToken, outcome.name);
+                if (outcome.remote) notifyRef.current(`Opened ${outcome.name}. Saving it there uploads the change.`, 3000);
+                return;
+              }
+              if (outcome.reason) notifyRef.current(outcome.reason, 4000);
+              onOpenPathRef.current?.(storagePath);
+            } finally {
+              openingRef.current.delete(storagePath);
+            }
           }
         : undefined,
       hoverPath: (e, path) => {
@@ -547,7 +592,7 @@ export function useTerminalPathHover({
         leaveGraceTimerRef.current = setTimeout(finishLeave, LEAVE_GRACE_MS);
       },
     };
-  }, [dismissCard, prepareHover, startHover, finishLeave, trace]);
+  }, [dismissCard, prepareHover, startHover, finishLeave, trace, localShellRunsSsh, trackExternalSession]);
 
   const openInEditor = useCallback(
     async (p: string) => {
@@ -609,6 +654,7 @@ export function useTerminalPathHover({
       isMouseOverCardRef.current = false;
       scheduleClose(300, 'the pointer left the card');
     },
+    clickAction: pathClickAction,
     onClose: dismissCard,
     onCopyPath: (p: string) => {
       // The card closes at once, so the toast is the only feedback: it must tell whether the copy worked.

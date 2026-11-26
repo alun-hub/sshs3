@@ -39,6 +39,12 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
   const [terminalPathHoverMode, setTerminalPathHoverMode] = useState<'hover' | 'ctrl'>(
     currentSettings.terminalPathHoverMode ?? 'hover'
   );
+  const [terminalPathClickLocal, setTerminalPathClickLocal] = useState<'os' | 'filemanager'>(
+    currentSettings.terminalPathClickLocal ?? 'os'
+  );
+  const [terminalPathClickRemote, setTerminalPathClickRemote] = useState<'os' | 'filemanager'>(
+    currentSettings.terminalPathClickRemote ?? 'os'
+  );
   const [terminalSudoRetryPrompt, setTerminalSudoRetryPrompt] = useState<boolean>(
     currentSettings.terminalSudoRetryPrompt ?? true
   );
@@ -193,6 +199,8 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       setScrollback(currentSettings.terminalScrollback ?? 5000);
       setTerminalPathHoverPreview(currentSettings.terminalPathHoverPreview ?? true);
       setTerminalPathHoverMode(currentSettings.terminalPathHoverMode ?? 'hover');
+      setTerminalPathClickLocal(currentSettings.terminalPathClickLocal ?? 'os');
+      setTerminalPathClickRemote(currentSettings.terminalPathClickRemote ?? 'os');
       setTerminalSudoRetryPrompt(currentSettings.terminalSudoRetryPrompt ?? true);
       setTerminalPortForwardAutoDetect(currentSettings.terminalPortForwardAutoDetect ?? true);
       setTerminalPortForwardCustomRegex(currentSettings.terminalPortForwardCustomRegex ?? '');
@@ -331,6 +339,8 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
       terminalScrollback: scrollback,
       terminalPathHoverPreview,
       terminalPathHoverMode,
+      terminalPathClickLocal,
+      terminalPathClickRemote,
       terminalSudoRetryPrompt,
       terminalPortForwardAutoDetect,
       terminalPortForwardCustomRegex: validateCustomPortRegex(terminalPortForwardCustomRegex).valid
@@ -461,6 +471,10 @@ export function useSettingsForm({ open, initialCategory, currentSettings, onSave
     setTerminalPathHoverPreview,
     terminalPathHoverMode,
     setTerminalPathHoverMode,
+    terminalPathClickLocal,
+    setTerminalPathClickLocal,
+    terminalPathClickRemote,
+    setTerminalPathClickRemote,
     terminalSudoRetryPrompt,
     setTerminalSudoRetryPrompt,
     terminalPortForwardAutoDetect,

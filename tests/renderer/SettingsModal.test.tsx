@@ -674,6 +674,38 @@ describe('SettingsModal', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ terminalPathHoverMode: 'ctrl' }));
   });
 
+  it.each([
+    ['Ctrl+click on a local file', 'terminalPathClickLocal', 'terminalPathClickRemote'],
+    ['Ctrl+click on a remote file', 'terminalPathClickRemote', 'terminalPathClickLocal'],
+  ] as const)('saves "%s" on its own, defaulting to the system app', (label, changed, untouched) => {
+    const onSave = vi.fn();
+    render(
+      <SettingsModal
+        open={true}
+        currentSettings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+    const select = screen.getByLabelText(label) as HTMLSelectElement;
+    expect(select.value).toBe('os');
+
+    fireEvent.change(select, { target: { value: 'filemanager' } });
+    fireEvent.click(screen.getByText('Save Settings'));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ [changed]: 'filemanager', [untouched]: 'os' }));
+  });
+
+  it('shows the system app for local and remote files in settings saved before the options existed', () => {
+    const { terminalPathClickLocal: _local, terminalPathClickRemote: _remote, ...legacy } = DEFAULT_SETTINGS;
+    render(<SettingsModal open={true} currentSettings={legacy} onSave={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: /Terminal/ }));
+    expect((screen.getByLabelText('Ctrl+click on a local file') as HTMLSelectElement).value).toBe('os');
+    expect((screen.getByLabelText('Ctrl+click on a remote file') as HTMLSelectElement).value).toBe('os');
+  });
+
   it('toggles terminalSudoRetryPrompt setting and saves it', () => {
     const onSave = vi.fn();
     render(

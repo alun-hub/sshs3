@@ -15,11 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The file editor's IPC calls check their arguments** (read, save, open in external editor, close, tail), like the other file calls.
 
 ### Changed
+- **<kbd>Ctrl</kbd>+<kbd>Click</kbd> on a file path in a terminal opens the file with the system app** instead of showing it in the file manager. A remote file is downloaded to a temporary folder and uploaded again on every save, with a toast for each upload or failure. Folders still open in the file manager, and so does a file that is missing, over 50 MB, executable without an extension, a relative path with an uncertain working directory, or of a type the system would run. **Settings → Terminal → Ctrl+click on a local file** and **Ctrl+click on a remote file** are separate choices (SSH terminals follow the remote one), and either can be switched back to the file manager. The hover card's footer follows the setting.
 - **A save that is still waiting is uploaded when sshs3 quits** (the external-editor sessions are now closed before the connections are).
 - **Local repositories with custom Git configuration show the branch only.** A local repository whose `.git/config` defines a filter (Git LFS repositories included), `core.sshCommand`, an `include`, an alias or similar no longer shows change counts or ahead/behind, and **Pull** refuses with *Refusing to pull: the repository configuration could not be verified as safe*, followed by the name of the setting. Repositories made by `git clone` (also with `--recurse-submodules` or `--filter=blob:none`), sparse checkouts, linked worktrees and reftable repositories are unaffected, except that a change inside a submodule is no longer counted as an uncommitted change, and a repository with submodules shows no *clean* marker when nothing else has changed. Checking a repository's configuration needs git 2.26 or newer; with an older git the Git bar shows the branch only and **Pull** says so. Remote repositories over SFTP are not affected: sshs3 only reads their `HEAD` and `config`, and **Pull** runs the server's `git`.
 
 ### Fixed
 - **The Git indicator no longer says "clean" for a repository it did not check.** When `git status` did not run (git missing, a timeout, or a repository that is not trusted as above) the tooltip showed *(clean)* with no changes; it now shows no state and no counts.
+- **The path hover card no longer opens for files that do not exist after one failed connection.** A single failed connect made every later "not found" count as inconclusive for the rest of the session.
+- **Copying a path from the hover card tells you whether it worked.** The card closes at once, so the toast is the only feedback; it used to say *Copied* even when the clipboard refused the text.
 
 ## [0.98.3] - 2026-11-24
 

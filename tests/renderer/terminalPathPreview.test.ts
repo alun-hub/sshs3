@@ -4,6 +4,7 @@ import {
   getFileExtension,
   getLanguageLabel,
   isSensitiveFilePath,
+  isNetworkStoragePath,
   isNetworkUncPath,
   isUncPath,
   resolvePathDetails,
@@ -18,6 +19,15 @@ describe('terminalPathPreview', () => {
     expect(isNetworkUncPath('\\\\wsl.localhost\\Ubuntu\\home\\me\\a.md', true)).toBe(false);
     expect(isNetworkUncPath('\\\\wsl$\\Ubuntu\\home', true)).toBe(false);
     expect(isNetworkUncPath('C:\\Users\\me', true)).toBe(false);
+  });
+
+  it('checks both the path as printed and the one the storage provider will open', () => {
+    const same = (p: string) => p;
+    expect(isNetworkStoragePath('/home/me/a.txt', same)).toBe(false);
+    expect(isNetworkStoragePath('\\\\attacker\\share\\f', same)).toBe(true);
+    // A path that looks local but maps to a network share (WSL translation).
+    expect(isNetworkStoragePath('/mnt/x', () => '\\\\attacker\\share\\x')).toBe(true);
+    expect(isNetworkStoragePath('/mnt/x', () => '\\\\wsl.localhost\\Ubuntu\\x')).toBe(false);
   });
 
   it('recognises UNC paths, which must never be stat-ed on hover', () => {

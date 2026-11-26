@@ -105,6 +105,10 @@ export interface AppSettings {
   terminalPathHoverPreview?: boolean;
   /** When the path hover card opens: on hover, or only while Ctrl/Cmd is held. Default 'hover'. */
   terminalPathHoverMode?: 'hover' | 'ctrl';
+  /** What Ctrl/Cmd+click on a file path in a local terminal does: open it with the system app, or show it in the file manager. Default 'os'. */
+  terminalPathClickLocal?: 'os' | 'filemanager';
+  /** The same for an SSH terminal. A remote file is downloaded to a temporary folder first. Default 'os'. */
+  terminalPathClickRemote?: 'os' | 'filemanager';
   /** Offer to re-run a command with sudo when it fails with a permission error. Default true. */
   terminalSudoRetryPrompt?: boolean;
   /** Auto-detect web services/ports in terminal output and prompt to port forward. Default true. */
@@ -226,6 +230,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminalScrollback: 5000,
   terminalPathHoverPreview: true,
   terminalPathHoverMode: 'hover',
+  terminalPathClickLocal: 'os',
+  terminalPathClickRemote: 'os',
   terminalSudoRetryPrompt: true,
   terminalPortForwardAutoDetect: true,
   terminalPortForwardCustomRegex: '',

@@ -81,6 +81,7 @@ export interface TerminalViewProps {
   pathHoverPreview?: boolean;
   /** Open the hover card on hover (default) or only while Ctrl/Cmd is held. */
   pathHoverMode?: 'hover' | 'ctrl';
+  pathClickAction?: 'os' | 'filemanager';
   /** Whether a failed command with a permission error offers to re-run with sudo. Default true. */
   sudoRetryPrompt?: boolean;
   /** Whether web services/listening ports in output are auto-detected for quick port forwarding. Default true. */
@@ -219,6 +220,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   clipboardHistoryScope = 'global',
   pathHoverPreview = true,
   pathHoverMode = 'hover',
+  pathClickAction = 'os',
   sudoRetryPrompt = true,
   portForwardAutoDetect = true,
   portForwardCustomRegex,
@@ -312,6 +314,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
     wslDistro,
     pathHoverPreview,
     pathHoverMode,
+    pathClickAction,
     onOpenPath,
     termRef,
     sessionIdRef,

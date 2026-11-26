@@ -209,6 +209,11 @@ export function isNetworkUncPath(p: string, windows: boolean = IS_WINDOWS): bool
   return isUncPath(p, windows) && !/^[\\/]{2}wsl(?:\.localhost|\$)[\\/]/i.test(p.trim());
 }
 
+/** A path as printed in the terminal, or as the storage provider will open it (WSL maps one to the other), that leaves this machine. */
+export function isNetworkStoragePath(fullPath: string, toStoragePath: (p: string) => string): boolean {
+  return isNetworkUncPath(fullPath) || isNetworkUncPath(toStoragePath(fullPath));
+}
+
 export interface PathDetails {
   raw: string;
   basename: string;

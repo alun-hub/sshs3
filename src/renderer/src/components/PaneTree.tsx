@@ -300,6 +300,7 @@ const PaneLeafContent: React.FC<{
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         clipboardHistoryScope={settings.clipboardHistoryScope}
+        pathClickAction={settings.terminalPathClickRemote}
         onOpenPath={onOpenRemotePath ? (path) => onOpenRemotePath(leaf.config as SSHConnectionConfig, path) : undefined}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}
@@ -358,6 +359,7 @@ const PaneLeafContent: React.FC<{
         sessionExitAction={settings.sessionExitAction}
         copyOnSelect={settings.copyOnSelect}
         clipboardHistoryScope={settings.clipboardHistoryScope}
+        pathClickAction={settings.terminalPathClickLocal}
         onOpenPath={onOpenLocalPath ? (path) => onOpenLocalPath(path) : undefined}
         onCloseTab={isSole ? onCloseTab : () => onClosePane(leaf.id)}
         onTitleChange={onTitleChange ? (title) => onTitleChange(leaf.id, title) : undefined}

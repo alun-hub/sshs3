@@ -15,10 +15,11 @@ import {
   GripVertical,
   X,
 } from 'lucide-react';
-import { isNetworkUncPath, isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
+import { isNetworkStoragePath, isSensitiveFilePath, resolvePathDetails, type FileTypeCategory } from '../lib/terminalPathPreview';
 import { classNames, formatBytes } from '../lib/format';
 import { chooseHoverCardSide, hoverCardRoom, placeHoverCard } from '../lib/hoverCardPlacement';
 import { createRendererLogger } from '../lib/log';
+import type { PathClickAction } from '../lib/pathOpenDecision';
 import { useCertificatePreview } from '../lib/useCertificatePreview';
 import { CertificatePreview } from './CertificatePreview';
 
@@ -31,6 +32,8 @@ export interface TerminalPathHoverCardProps {
   providerId?: string;
   /** Maps the path as the shell shows it to the one the storage provider opens (WSL). */
   toStoragePath?: (p: string) => string;
+  /** What Ctrl/Cmd+click does for a file; only the hint in the footer depends on it. Default: open it with the system app. */
+  clickAction?: PathClickAction;
   onClose: () => void;
   onCopyPath: (path: string) => void;
   onOpenPath?: (path: string) => void;
@@ -135,6 +138,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   currentCwd,
   providerId,
   toStoragePath = identityPath,
+  clickAction = 'os',
   onClose,
   onCopyPath,
   onOpenPath,
@@ -166,7 +170,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
   const effectiveCategory: FileTypeCategory = isEffectiveDir ? 'directory' : details.category;
   // Parsed in the main process (no openssl needed on the host); undefined unless the file holds a certificate.
   // Defence in depth (the hover hook never opens the card for these): no file access for a network share.
-  const networkPath = isNetworkUncPath(details.fullPath) || isNetworkUncPath(toStoragePath(details.fullPath));
+  const networkPath = isNetworkStoragePath(details.fullPath, toStoragePath);
   const { result: certificates, pending: certificatePending } = useCertificatePreview(
     providerId,
     toStoragePath(details.fullPath),
@@ -467,7 +471,7 @@ export const TerminalPathHoverCard: React.FC<TerminalPathHoverCardProps> = ({
           <kbd className="inline-flex h-4 items-center rounded border border-border-subtle bg-app-card px-1 pt-px font-mono text-[9px] leading-none text-txt-secondary">
             Ctrl
           </kbd>
-          <span>+ click to {isEffectiveDir ? 'browse' : 'reveal'}</span>
+          <span>+ click to {isEffectiveDir ? 'browse' : clickAction === 'os' ? 'open' : 'reveal'}</span>
         </span>
         <span className="opacity-50 font-mono">Esc to dismiss</span>
       </div>

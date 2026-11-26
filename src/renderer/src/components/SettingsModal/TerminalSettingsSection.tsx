@@ -24,6 +24,10 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
     setTerminalPathHoverPreview,
     terminalPathHoverMode,
     setTerminalPathHoverMode,
+    terminalPathClickLocal,
+    setTerminalPathClickLocal,
+    terminalPathClickRemote,
+    setTerminalPathClickRemote,
     terminalSudoRetryPrompt,
     setTerminalSudoRetryPrompt,
     terminalPortForwardAutoDetect,
@@ -371,6 +375,38 @@ export const TerminalSettingsSection: React.FC<{ form: SettingsForm }> = ({ form
             <option value="ctrl">Only while Ctrl is held</option>
           </select>
         </div>
+        <div className="flex items-center gap-2 pl-6">
+          <label htmlFor="path-click-local" className="text-xs text-txt-muted">
+            Ctrl+click on a local file
+          </label>
+          <select
+            id="path-click-local"
+            value={terminalPathClickLocal}
+            onChange={(e) => setTerminalPathClickLocal(e.target.value === 'filemanager' ? 'filemanager' : 'os')}
+            className="rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500"
+          >
+            <option value="os">Opens it with the system app</option>
+            <option value="filemanager">Shows it in the file manager</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2 pl-6">
+          <label htmlFor="path-click-remote" className="text-xs text-txt-muted">
+            Ctrl+click on a remote file
+          </label>
+          <select
+            id="path-click-remote"
+            value={terminalPathClickRemote}
+            onChange={(e) => setTerminalPathClickRemote(e.target.value === 'filemanager' ? 'filemanager' : 'os')}
+            className="rounded-lg border border-border-subtle bg-app-input px-3 py-1.5 text-xs text-txt-primary outline-none focus:border-sky-500"
+          >
+            <option value="os">Downloads it and opens it with the system app</option>
+            <option value="filemanager">Shows it in the file manager</option>
+          </select>
+        </div>
+        <p className="pl-6 text-xs text-txt-muted">
+          Folders always open in the file manager. A remote file is downloaded to a temporary folder and uploaded again
+          when saved. Programs and macro documents are never opened this way.
+        </p>
       </div>
 
       <div className="space-y-2 pt-3 border-t border-divider">

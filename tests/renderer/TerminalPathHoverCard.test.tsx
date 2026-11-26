@@ -306,6 +306,15 @@ describe('TerminalPathHoverCard', () => {
     expect(screen.getByText(/click to browse/i)).toBeInTheDocument();
   });
 
+  it('says what Ctrl+click does for a file, following the setting', () => {
+    const props = { path: '/var/log/app.log', x: 50, y: 50, onClose: vi.fn(), onCopyPath: vi.fn() };
+    const { rerender } = render(<TerminalPathHoverCard {...props} />);
+    expect(screen.getByText(/click to open/i)).toBeInTheDocument();
+
+    rerender(<TerminalPathHoverCard {...props} clickAction="filemanager" />);
+    expect(screen.getByText(/click to reveal/i)).toBeInTheDocument();
+  });
+
   it('renders all action buttons with consistent height and whitespace-nowrap', () => {
     render(
       <TerminalPathHoverCard

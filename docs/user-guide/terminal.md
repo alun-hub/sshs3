@@ -155,8 +155,12 @@ When a local shell tab is spawned, `AgentLifecycleManager` (`src/main/ssh/AgentL
 ### 5.2 Clickable URLs and File Paths (<kbd>Ctrl</kbd>+<kbd>Click</kbd>)
 Hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on macOS) and click:
 - **Web URLs:** Any `http://` or `https://` link opens in your workstation's default browser (supported in terminals and Kubernetes log streams).
-- **Remote & Local File Paths:** Clicking a file or directory path in an SSH or local terminal (e.g. `/var/log/syslog`, `~/notes.md`, `src/index.ts`, `./build.sh:42:7`) **immediately opens that folder in a file manager tab**!
-- **Path Resolution:** Quotes and spaces are parsed cleanly. Tilde paths (`~/`) resolve to the user's home directory. Clicking a file without a trailing slash opens its containing parent folder.
+- **Files:** Clicking a file path in an SSH or local terminal (e.g. `/var/log/syslog`, `~/notes.md`, `src/index.ts`, `./build.sh:42:7`) opens the file with the app your system uses for that file type (the default for **Ctrl+click on a local file** and **Ctrl+click on a remote file**, see [Terminal Settings Reference](#6-terminal-settings-reference)). A file on a remote host is downloaded to a temporary folder first, and every save in that app is uploaded again; a toast tells you when it worked or failed.
+- **Folders:** Clicking a folder path opens it in a file manager tab. Set **Ctrl+click on a local file** or **Ctrl+click on a remote file** to **Shows it in the file manager** to get this for files too (the parent folder opens with the file highlighted). The two settings are independent: an SSH terminal follows the remote one, a local terminal the local one.
+- **Path Resolution:** Quotes and spaces are parsed cleanly. Tilde paths (`~/`) resolve to the user's home directory.
+
+> [!NOTE]
+> A file is shown in the file manager instead of being opened (with a short message where it helps) when it does not exist, is larger than 50 MB, is executable without a file extension, is not a regular file, or is a relative path whose working directory sshs3 only guesses. Programs, scripts and macro documents (for example `.exe`, `.desktop`, `.command`, `.docm`, and on Windows `.bat`, `.ps1`, `.url`) are never opened this way, because the system would run them. Paths on a network share (`\\server\share\...`) and paths printed by an `ssh` client running inside a local terminal are never looked up or opened.
 
 ### 5.3 Clean Output Copy (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd>)
 - Copies the clean output of the previous command directly to clipboard without manual mouse highlighting.
@@ -208,6 +212,8 @@ Pressing <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> offers to re-run the last
 | **Scrollback Buffer (lines)** | `5000` lines | Retained scrollback per pane (configurable from 500 up to 50,000 lines), searchable with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>. |
 | **Enable file path hover preview** | `On` | Shows an interactive preview card when hovering over paths that exist. |
 | **Show the card** | *When hovering over a path* | Or **Only while Ctrl is held**. Disabling the preview above leaves <kbd>Ctrl</kbd>+<kbd>Click</kbd> path activation fully working. |
+| **Ctrl+click on a local file** | *Opens it with the system app* | Or **Shows it in the file manager**. Applies to local terminals. Folders always open in the file manager. Details in section 5.2 above. |
+| **Ctrl+click on a remote file** | *Downloads it and opens it with the system app* | Or **Shows it in the file manager**. Applies to SSH terminals; the temporary copy is uploaded again on every save. |
 | **Offer to re-run failed commands with sudo** | `On` | After a permission error, press <kbd>Enter</kbd> to re-run with `sudo` or <kbd>Esc</kbd> to dismiss. |
 | **Enable web service & port forward auto-detection** | `On` | Detects web servers and listening ports in terminal output and shows a quick-forward banner. |
 | **Custom port detection regex (optional)** | *Empty* | Optional regex with capture group `(\d+)` to match custom port strings. |
@@ -227,6 +233,9 @@ Pressing <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> offers to re-run the last
 | Blank black terminal screen | System exhausted PTY descriptors | Check availability: `cat /proc/sys/kernel/pty/nr`. Close unneeded sessions. |
 | Swedish / non-ASCII characters garbled | Remote server locale is not UTF-8 | Check `echo $LANG` on remote host. Export UTF-8: `export LANG=en_US.UTF-8`. |
 | Path click (<kbd>Ctrl</kbd>+<kbd>Click</kbd>) does nothing | File does not exist or remote CWD unavailable | Absolute paths (`/...`) always resolve directly. Verify directory export via OSC 7. |
+| Path click shows the file manager and a message such as *Not opened: …* | The file is missing, over 50 MB, executable, or a relative path with an uncertain working directory | Use the full path, or open the file from the file manager. To skip the system app, set **Ctrl+click on a local file** or **Ctrl+click on a remote file** to **Shows it in the file manager**. |
+| Path click says *Could not open … would be executed* | The file type is one the system would run, such as `.exe`, `.desktop` or a macro document | Open it with **Edit** in the hover card (built-in editor) instead. |
+| A file opened from a remote terminal was not saved to the server | The upload failed (permissions, lost connection) | The toast *Upload of … failed* names the reason. Fix it and save again in the app; the next save is uploaded. |
 | Certificate shows no details | File is over 64 KiB, has no `BEGIN CERTIFICATE` block, or is a password-protected keystore | Open it with **Edit**, or inspect it with `openssl x509 -in <file> -text -noout` where openssl is available. |
 | Clipboard history is empty | "Copy text automatically on selection" is disabled | Open *Settings → Terminal* and check **Copy text automatically on selection**. |
 | *Cannot drop files with unsupported names*, or *Skipped a file whose name cannot be pasted safely into the shell* | The name contains a control character, or (Windows) a combination of characters that cannot be quoted safely | Rename the file, then drop it again. |
