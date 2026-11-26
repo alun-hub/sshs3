@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.5] - 2026-11-26
+
+### Fixed
+- **The release build no longer stops at the Windows test step.** `v0.98.4` was tagged but never published: 20 tests of the Git hardening failed on Windows because they gave git `os.devNull` (`\\.\nul`) as its config file and wrote `C:\Users\...` paths into a git config as text. Only test code changed. Everything listed under 0.98.4 below is in this release.
+
 ## [0.98.4] - 2026-11-26
 
 ### Security
