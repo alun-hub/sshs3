@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.4] - 2026-11-26
+
+### Security
+- **Synced SSH config lines with a leading `=` are removed like any other blocked line.** OpenSSH reads `=ProxyCommand ...` as a `ProxyCommand`, but the filter that cleans the managed `~/.ssh/config` block from a sync pull took the empty text before the `=` for no directive and kept the line. Anyone who could write a valid encrypted sync payload could therefore make `ssh` run a command on every paired device. Lines with no directive left after the `=`, quotes and blanks are now dropped too.
+
 ## [0.98.3] - 2026-11-24
 
 ### Added

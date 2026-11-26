@@ -87,6 +87,29 @@ describe('SshNativeFileMerger — ssh config managed block', () => {
     expect(removedLines.length).toBe(6);
   });
 
+  it('sanitizeSshConfigBody strips blocked directives hidden behind a leading "=", quote or blank keyword', () => {
+    // OpenSSH skips leading "=" and whitespace before the keyword, so `=ProxyCommand x` is a ProxyCommand.
+    const hidden = [
+      '=ProxyCommand touch /tmp/pwned',
+      '  = ProxyCommand touch /tmp/pwned',
+      '==LocalCommand touch /tmp/pwned',
+      '"=ProxyCommand" touch /tmp/pwned',
+      '=Include /tmp/evil.conf',
+      '=Match exec "touch /tmp/pwned"',
+      '=',
+      '""',
+    ];
+    const body = ['Host ok', '  HostName ok.example.com', ...hidden, '  =User admin'].join('\n');
+
+    const { body: sanitized, removedLines } = sanitizeSshConfigBody(body);
+
+    expect(removedLines).toEqual(hidden);
+    expect(sanitized).not.toMatch(/ProxyCommand|LocalCommand|Include|Match|pwned/i);
+    expect(sanitized).toContain('Host ok');
+    // An allowed directive is still kept even with a leading "=".
+    expect(sanitized).toContain('=User admin');
+  });
+
   // Regression test for the C3 finding (code review): the blocklist used to
   // miss directives that silently disable host-key verification or run an
   // arbitrary command via KnownHostsCommand, so a synced managed block could

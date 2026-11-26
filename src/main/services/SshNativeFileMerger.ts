@@ -83,14 +83,17 @@ export function sanitizeSshConfigBody(body: string): SanitizeSshConfigBodyResult
     // ssh_config directives are "Key value" or "Key=value", optionally
     // preceded by whitespace; keys are case-insensitive. OpenSSH also accepts a
     // double-quoted keyword ("ProxyCommand" cmd), so quotes are stripped before the lookup.
-    const directive = trimmed.split(/[\s=]+/, 1)[0]?.replace(/["']/g, '').toLowerCase();
-    if (directive && (BLOCKED_SSH_DIRECTIVES.has(directive) || !ALLOWED_MANAGED_BLOCK_DIRECTIVES.has(directive))) {
+    // ssh also skips leading "=" and whitespace before the keyword (`=ProxyCommand x` is a ProxyCommand), so those are
+    // stripped first. A line that has no keyword left is dropped rather than kept: an empty directive must never pass.
+    const keywordLine = trimmed.replace(/^[\s="']+/, '');
+    const directive = keywordLine.split(/[\s=]+/, 1)[0]?.replace(/["']/g, '').toLowerCase();
+    if (!directive || BLOCKED_SSH_DIRECTIVES.has(directive) || !ALLOWED_MANAGED_BLOCK_DIRECTIVES.has(directive)) {
       removedLines.push(line);
       continue;
     }
     // Values that ssh expands into shell-run commands (%h, %p, %r, ProxyJump) must not carry shell syntax, and a line must
     // not hide a value behind a CR / Unicode line separator (ssh ends a line at LF only).
-    if (hasUnsafeLineChars(trimmed) || (directive && !isSafeManagedDirectiveValue(directive, directiveValue(trimmed)))) {
+    if (hasUnsafeLineChars(trimmed) || !isSafeManagedDirectiveValue(directive, directiveValue(keywordLine))) {
       removedLines.push(line);
       continue;
     }
