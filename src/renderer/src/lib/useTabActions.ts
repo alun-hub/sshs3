@@ -14,7 +14,7 @@ import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane
 import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
 import type { OpenEditorTabDetail } from './editorTabEvents';
 import { statIfExists } from './storageLookup';
-import { profileTargetChanged } from './savedSecrets';
+import { terminalSftpProfile } from './savedSecrets';
 import type { ConfirmOptions } from '../components/ConfirmDialog';
 
 export interface TabActionsContext {
@@ -32,6 +32,11 @@ export interface TabActionsContext {
   /** Shows a short message that no dialog is open to show (for example tunnels that failed to start). */
   notify?: (message: string) => void;
 }
+
+const TERMINAL_SFTP_REFUSALS = {
+  changed: 'This profile has changed since the terminal connected. Open SFTP from Connection Manager.',
+  deleted: 'This profile has been deleted since the terminal connected, so SFTP was not opened.',
+} as const;
 
 /** Everything that creates, closes, splits or connects tabs and panes. */
 export function useTabActions(ctx: TabActionsContext) {
@@ -466,8 +471,27 @@ export function useTabActions(ctx: TabActionsContext) {
     [setActiveTabId, setTabs]
   );
 
+  /** The connection SFTP from a terminal uses (see `terminalSftpProfile`); undefined after saying why not. */
+  const sftpConfigForTerminal = useCallback(
+    async (terminalConfig: SSHConnectionConfig): Promise<SSHConnectionConfig | undefined> => {
+      let result: ReturnType<typeof terminalSftpProfile>;
+      try {
+        result = terminalSftpProfile(terminalConfig, (await window.multissh.profilesGet()).ssh);
+      } catch {
+        notify?.('Could not read the saved profiles, so SFTP was not opened.');
+        return undefined;
+      }
+      if ('config' in result) return result.config;
+      notify?.(TERMINAL_SFTP_REFUSALS[result.refused]);
+      return undefined;
+    },
+    [notify]
+  );
+
   // Ctrl+click on a file path in an SSH terminal: browse that folder over SFTP in a new file manager tab.
-  const handleOpenRemotePath = useCallback(async (config: SSHConnectionConfig, rawPath: string) => {
+  const handleOpenRemotePath = useCallback(async (terminalConfig: SSHConnectionConfig, rawPath: string) => {
+    const config = await sftpConfigForTerminal(terminalConfig);
+    if (!config) return;
     const home = config.username === 'root' ? '/root' : `/home/${config.username || 'user'}`;
     const absolute = rawPath === '~' ? home : rawPath.startsWith('~/') ? `${home}${rawPath.slice(1)}` : rawPath;
     let isDir = absolute.endsWith('/');
@@ -489,7 +513,7 @@ export function useTabActions(ctx: TabActionsContext) {
     };
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newId);
-  }, [setActiveTabId, setTabs]);
+  }, [setActiveTabId, setTabs, sftpConfigForTerminal]);
 
   // Click on a file path in a local terminal: browse that folder on Local Disk in a new file manager tab.
   const handleOpenLocalPath = useCallback(async (rawPath: string) => {
@@ -566,17 +590,13 @@ export function useTabActions(ctx: TabActionsContext) {
     setConnectTarget(null);
   }, [setActiveTabId, setConnectTarget, setProfilesModalOpen, setTabs]);
 
-  /** SFTP from a terminal pane, whose config may be older than the saved profile it came from. */
+  /** The SFTP button and shortcut of a terminal pane. */
   const handleOpenPaneSftp = useCallback(
-    async (config: SSHConnectionConfig) => {
-      const profiles = await window.multissh.profilesGet?.().catch(() => undefined);
-      if (profileTargetChanged(config, profiles?.ssh)) {
-        notify?.('This profile has changed since the terminal connected. Open SFTP from Saved Connections.');
-        return;
-      }
-      handleConnectSFTP(config);
+    async (terminalConfig: SSHConnectionConfig) => {
+      const config = await sftpConfigForTerminal(terminalConfig);
+      if (config) handleConnectSFTP(config);
     },
-    [handleConnectSFTP, notify]
+    [handleConnectSFTP, sftpConfigForTerminal]
   );
 
   const handleConnectS3 = useCallback((config: S3Config) => {

@@ -1,5 +1,6 @@
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { ProxyConfig, S3Config } from '@shared/types/storage';
+import { isSsmShellProfile } from '@shared/ssm';
 
 /**
  * A file manager tab is saved to the session without its secrets (see `sanitizeTabConfigs`), so a tab
@@ -28,21 +29,27 @@ function sameSshAccount(a: SSHConnectionConfig, b: SSHConnectionConfig): boolean
   return a.host === b.host && (a.port ?? 22) === (b.port ?? 22) && a.username === b.username;
 }
 
+/** What SFTP from a terminal connects with, or why it must not be opened. */
+export type TerminalSftpProfile = { config: SSHConnectionConfig } | { refused: 'changed' | 'deleted' };
+
 /**
- * True when the saved profile a connection came from now points somewhere else: another host, port, user or
- * jump host. The file manager keeps one connection per profile id, so opening SFTP with the outdated config
- * would leave the old server behind under that profile. A quick connection and a Team Vault profile have no
- * personal profile to compare with.
+ * A terminal keeps the config it connected with, which may be older than the saved profile it came from. The
+ * file manager keeps one connection per profile id and its password prompt saves the config it was given, so
+ * SFTP from a terminal uses the profile as it is saved now. That is refused when the profile no longer points
+ * at the terminal's server (host, port, user, jump host, or the kind of connection) or has been deleted. A
+ * quick connection (never saved, so without `updatedAt`) and a Team Vault profile, which main looks up
+ * itself, have no personal profile to use.
  */
-export function profileTargetChanged(config: SSHConnectionConfig, profiles: SSHConnectionConfig[] | undefined): boolean {
-  if (config.teamVaultProfileRef) return false;
-  const saved = profiles?.find((p) => p.id === config.id);
-  if (!saved || saved.deletedAt) return false;
-  return !(
+export function terminalSftpProfile(config: SSHConnectionConfig, profiles: SSHConnectionConfig[]): TerminalSftpProfile {
+  if (config.teamVaultProfileRef) return { config };
+  const saved = profiles.find((p) => p.id === config.id && !p.deletedAt);
+  if (!saved) return config.updatedAt ? { refused: 'deleted' } : { config };
+  const sameServer =
     sameSshAccount(saved, config) &&
     (saved.proxyJump ?? '') === (config.proxyJump ?? '') &&
-    (saved.proxyJumpProfileId ?? '') === (config.proxyJumpProfileId ?? '')
-  );
+    (saved.proxyJumpProfileId ?? '') === (config.proxyJumpProfileId ?? '') &&
+    isSsmShellProfile(saved) === isSsmShellProfile(config);
+  return sameServer ? { config: saved } : { refused: 'changed' };
 }
 
 export function withSavedSshSecrets(config: SSHConnectionConfig, profiles: SSHConnectionConfig[] | undefined): SSHConnectionConfig {

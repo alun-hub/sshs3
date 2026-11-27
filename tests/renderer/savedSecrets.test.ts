@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { profileTargetChanged, withSavedS3Secrets, withSavedSshSecrets } from '../../src/renderer/src/lib/savedSecrets';
+import { terminalSftpProfile, withSavedS3Secrets, withSavedSshSecrets } from '../../src/renderer/src/lib/savedSecrets';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { S3Config } from '../../src/shared/types/storage';
 
@@ -76,11 +76,26 @@ describe('withSavedS3Secrets', () => {
   });
 });
 
-describe('profileTargetChanged', () => {
-  const saved = { id: 'p1', name: 'web', host: 'h', username: 'u', authType: 'agent' } as SSHConnectionConfig;
+describe('terminalSftpProfile', () => {
+  const connected = {
+    id: 'p1',
+    name: 'web',
+    host: 'h',
+    username: 'u',
+    authType: 'agent',
+    updatedAt: '2026-11-27T00:00:00Z',
+  } as SSHConnectionConfig;
 
-  it('is false for the same target, also with the default port spelled out', () => {
-    expect(profileTargetChanged({ ...saved, port: 22, name: 'renamed' }, [saved])).toBe(false);
+  it('connects with the profile as it is saved now, also with the default port spelled out', () => {
+    const saved = {
+      ...connected,
+      port: 22,
+      name: 'renamed',
+      authType: 'privateKey',
+      privateKeyPath: '/k',
+      proxy: { type: 'socks5', host: 'p', port: 1080 },
+    } as SSHConnectionConfig;
+    expect(terminalSftpProfile(connected, [saved])).toEqual({ config: saved });
   });
 
   it.each([
@@ -89,15 +104,20 @@ describe('profileTargetChanged', () => {
     ['username', { username: 'other' }],
     ['jump host', { proxyJump: 'bastion' }],
     ['jump host profile', { proxyJumpProfileId: 'p2' }],
-  ])('is true when the %s differs', (_label, change) => {
-    expect(profileTargetChanged({ ...saved, ...change }, [saved])).toBe(true);
+    ['connection type', { ssm: { enabled: true, mode: 'shell' as const } }],
+  ])('refuses when the saved %s differs', (_label, change) => {
+    expect(terminalSftpProfile(connected, [{ ...connected, ...change } as SSHConnectionConfig])).toEqual({ refused: 'changed' });
   });
 
-  it('is false without a personal profile to compare with', () => {
-    const changed = { ...saved, host: 'other' };
-    expect(profileTargetChanged(changed, undefined)).toBe(false);
-    expect(profileTargetChanged(changed, [])).toBe(false);
-    expect(profileTargetChanged(changed, [{ ...saved, deletedAt: '2026-11-27T00:00:00Z' }])).toBe(false);
-    expect(profileTargetChanged({ ...changed, teamVaultProfileRef: { vaultId: 'v', profileId: 'p1' } }, [saved])).toBe(false);
+  it('refuses a profile that has been deleted, so that nothing can save it back', () => {
+    expect(terminalSftpProfile(connected, [])).toEqual({ refused: 'deleted' });
+    expect(terminalSftpProfile(connected, [{ ...connected, deletedAt: '2026-11-27T01:00:00Z' }])).toEqual({ refused: 'deleted' });
+  });
+
+  it('keeps the terminal config for a quick connection and a Team Vault profile', () => {
+    const quick = { ...connected, updatedAt: undefined };
+    expect(terminalSftpProfile(quick, [])).toEqual({ config: quick });
+    const shared = { ...connected, teamVaultProfileRef: { vaultId: 'v', profileId: 'p1' } };
+    expect(terminalSftpProfile(shared, [{ ...connected, host: 'personal-copy' }])).toEqual({ config: shared });
   });
 });

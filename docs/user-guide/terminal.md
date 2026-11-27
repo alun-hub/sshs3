@@ -57,8 +57,10 @@ sshs3 implements non-destructive recursive pane splitting modeled on KDE's **Kon
 
 > [!NOTE]
 > - Both are new logins, so a smartcard or security key may ask for its PIN or a touch again, and a password typed at the terminal prompt (not saved in the profile) is asked for again.
-> - Both use the pane's saved connection, also after you have continued to another host with `ssh` inside the terminal.
-> - A Session Manager shell pane has no SFTP button. If the profile's host, port, user or jump host changed after the terminal connected, SFTP is not opened from the pane: open it from **Saved Connections**.
+> - Both go to the pane's connection, also after you have continued to another host with `ssh` inside the terminal.
+> - SFTP uses the profile as it is saved now, so a proxy or key you changed after the terminal connected applies. This is also true for <kbd>Ctrl</kbd>+click on a remote path.
+> - SFTP is not opened from a terminal when the profile has been deleted, or its host, port, user, jump host or connection type changed after the terminal connected: open it from **Connection Manager**.
+> - A Session Manager shell pane has no SFTP button.
 
 ### Resizing Splits & Unsplit (Close Others)
 - **Resizable Dividers:** Drag the divider line between any two split panes to resize them horizontally or vertically. **Double-click the divider** to immediately reset to an equal 50/50 split.
