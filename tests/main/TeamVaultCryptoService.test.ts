@@ -20,6 +20,7 @@ vi.mock('electron', () => ({
 }));
 
 import { app as mockedElectronApp } from 'electron';
+import { ageResourceDir } from '../../src/main/services/AgeBinaryResolver';
 
 // enrollOwnPivRecipient/unwrapVaultKey go through AgePtyPinRelay (a real terminal is required
 // for age-plugin-yubikey to prompt for PIN/touch — see docs/team-vault-plan.md). Mocked here so
@@ -131,7 +132,7 @@ describe('TeamVaultCryptoService', () => {
     // no PIN or card, so a retry is harmless. The root cause is not found (CPU load alone does not reproduce it).
     // Prefer the CI-fetched copy (build-resources/age/<platform>) so this also runs on a machine
     // without a system-wide age: the real service resolves a bare `age` via PATH in this file.
-    const bundledDir = path.join(process.cwd(), 'build-resources', 'age', process.platform === 'win32' ? 'win' : 'linux');
+    const bundledDir = path.join(process.cwd(), 'build-resources', 'age', ageResourceDir());
     if (fs.existsSync(bundledDir)) process.env.PATH = bundledDir + path.delimiter + process.env.PATH;
     const hasAge = !spawnSync('age', ['--version'], { stdio: 'ignore' }).error;
     const hasAgeKeygen = !spawnSync('age-keygen', ['--version'], { stdio: 'ignore' }).error;
@@ -395,7 +396,7 @@ describe('TeamVaultCryptoService', () => {
       // dev-checkout lookup is a plain fs.existsSync against <appPath>/build-resources/age/<os>),
       // so this test doesn't depend on whatever happens to be on the real machine's disk.
       const fakeAppRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sshs3-fake-app-root-'));
-      const platformBinDir = path.join(fakeAppRoot, 'build-resources', 'age', process.platform === 'win32' ? 'win' : 'linux');
+      const platformBinDir = path.join(fakeAppRoot, 'build-resources', 'age', ageResourceDir());
       fs.mkdirSync(platformBinDir, { recursive: true });
       fs.writeFileSync(path.join(platformBinDir, process.platform === 'win32' ? 'age-plugin-yubikey.exe' : 'age-plugin-yubikey'), '');
       vi.mocked(mockedElectronApp.getAppPath).mockReturnValueOnce(fakeAppRoot);
@@ -581,9 +582,8 @@ describe('TeamVaultCryptoService', () => {
       expect(fs.existsSync(seen)).toBe(false);
     });
 
-    const platformDir = process.platform === 'win32' ? 'win' : 'linux';
     const exe = (n: string) => (process.platform === 'win32' ? `${n}.exe` : n);
-    const realAge = [path.join(process.cwd(), 'build-resources', 'age', platformDir), '']
+    const realAge = [path.join(process.cwd(), 'build-resources', 'age', ageResourceDir()), '']
       .map((dir) => ({
         age: dir ? path.join(dir, exe('age')) : 'age',
         keygen: dir ? path.join(dir, exe('age-keygen')) : 'age-keygen',

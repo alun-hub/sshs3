@@ -8,9 +8,9 @@ vi.mock('electron', () => ({
   },
 }));
 
-import { resolveAgeBinary } from '../../src/main/services/AgeBinaryResolver';
+import { ageResourceDir, resolveAgeBinary } from '../../src/main/services/AgeBinaryResolver';
 
-function setPlatform(platform: 'win32' | 'linux') {
+function setPlatform(platform: 'win32' | 'linux' | 'darwin') {
   Object.defineProperty(process, 'platform', { value: platform });
 }
 
@@ -48,6 +48,24 @@ describe('resolveAgeBinary', () => {
     vi.spyOn(fs, 'existsSync').mockImplementation((p) => p === devPath);
 
     expect(resolveAgeBinary('age-plugin-yubikey')).toBe(devPath);
+  });
+
+  it('looks in the mac folder of the dev checkout on macOS', () => {
+    setPlatform('darwin');
+    setResourcesPath('/packaged/resources');
+    const devPath = path.join('/app', 'build-resources', 'age', 'mac', 'age');
+    vi.spyOn(fs, 'existsSync').mockImplementation((p) => p === devPath);
+
+    expect(resolveAgeBinary('age')).toBe(devPath);
+  });
+
+  it('has one resource folder per platform', () => {
+    expect(['win32', 'darwin', 'linux', 'freebsd'].map((p) => ageResourceDir(p as NodeJS.Platform))).toEqual([
+      'win',
+      'mac',
+      'linux',
+      'linux',
+    ]);
   });
 
   it('falls back to the bare command name when nothing is found anywhere', () => {

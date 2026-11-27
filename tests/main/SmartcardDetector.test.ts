@@ -77,9 +77,20 @@ describe('SmartcardDetector', () => {
       expect(winPaths.every((l) => l.platform === 'win32')).toBe(true);
     });
 
+    it('should return known macOS paths with OpenSC first and without p11-kit', () => {
+      const macPaths = SmartcardDetector.getKnownLibraryPaths('darwin');
+      expect(macPaths[0]).toMatchObject({ name: 'OpenSC', path: '/Library/OpenSC/lib/opensc-pkcs11.so' });
+      expect(macPaths.map((l) => l.path)).toEqual(
+        expect.arrayContaining(['/opt/homebrew/lib/opensc-pkcs11.so', '/opt/homebrew/lib/libykcs11.dylib'])
+      );
+      expect(macPaths.some((l) => l.name === 'p11-kit')).toBe(false);
+      expect(macPaths.every((l) => l.platform === 'darwin' && l.path.startsWith('/'))).toBe(true);
+    });
+
     it('should default to current platform when platform is omitted', () => {
       const paths = SmartcardDetector.getKnownLibraryPaths();
-      const currentPlatform = process.platform === 'win32' ? 'win32' : 'linux';
+      const currentPlatform =
+        process.platform === 'win32' || process.platform === 'darwin' ? process.platform : 'linux';
       expect(paths.every((l) => l.platform === currentPlatform)).toBe(true);
     });
   });

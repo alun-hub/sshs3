@@ -8,8 +8,10 @@ function binaryFileName(name: AgeBinaryName): string {
   return process.platform === 'win32' ? `${name}.exe` : name;
 }
 
-function platformDir(): 'win' | 'linux' {
-  return process.platform === 'win32' ? 'win' : 'linux';
+/** The folder under `build-resources/age/` that holds this platform's binaries. */
+export function ageResourceDir(platform: NodeJS.Platform = process.platform): 'win' | 'mac' | 'linux' {
+  if (platform === 'win32') return 'win';
+  return platform === 'darwin' ? 'mac' : 'linux';
 }
 
 /**
@@ -35,7 +37,7 @@ export function resolveAgeBinary(name: AgeBinaryName): string {
   }
 
   try {
-    const devPath = path.join(electronApp.getAppPath(), 'build-resources', 'age', platformDir(), fileName);
+    const devPath = path.join(electronApp.getAppPath(), 'build-resources', 'age', ageResourceDir(), fileName);
     if (fs.existsSync(devPath)) return devPath;
   } catch {
     // No app path available (e.g. outside Electron) — fall through.

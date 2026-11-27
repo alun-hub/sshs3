@@ -11,8 +11,16 @@ import { assertValidSsm, SSM_SHELL_NO_SSH_MESSAGE, ssmEnvOverlay, ssmHostNameOpt
 import { createLogger } from '../log';
 const smartcardLog = createLogger('smartcard');
 
+type LibraryPlatform = DetectedSmartcardLib['platform'];
+type KnownLibrary = Omit<DetectedSmartcardLib, 'exists'>;
+
+/** The library list used on a Node platform: every Unix other than macOS takes the Linux one. */
+function libraryPlatform(platform: NodeJS.Platform): LibraryPlatform {
+  return platform === 'win32' || platform === 'darwin' ? platform : 'linux';
+}
+
 export interface DetectOptions {
-  customPaths?: Array<{ name: string; path: string; platform: 'linux' | 'win32' }>;
+  customPaths?: KnownLibrary[];
   onlyExisting?: boolean;
 }
 
@@ -130,16 +138,28 @@ export class SmartcardDetector {
     },
   ];
 
+  // OpenSC first, since auto-detect picks the first library found. p11-kit is left out on purpose: Homebrew installs it
+  // as a dependency of other packages without any token module registered, and its proxy would be preferred.
+  private static readonly MAC_LIBRARIES: Array<{ name: string; path: string; platform: 'darwin' }> = [
+    // OpenSC: the installer from the OpenSC project, then Homebrew (Apple Silicon, then Intel)
+    { name: 'OpenSC', path: '/Library/OpenSC/lib/opensc-pkcs11.so', platform: 'darwin' },
+    { name: 'OpenSC', path: '/Library/OpenSC/lib/onepin-opensc-pkcs11.so', platform: 'darwin' },
+    { name: 'OpenSC', path: '/opt/homebrew/lib/opensc-pkcs11.so', platform: 'darwin' },
+    { name: 'OpenSC', path: '/opt/homebrew/lib/pkcs11/opensc-pkcs11.so', platform: 'darwin' },
+    { name: 'OpenSC', path: '/usr/local/lib/opensc-pkcs11.so', platform: 'darwin' },
+    { name: 'OpenSC', path: '/usr/local/lib/pkcs11/opensc-pkcs11.so', platform: 'darwin' },
+    // Yubico PIV Tool (libykcs11): Homebrew, then Yubico's installer / Intel Homebrew
+    { name: 'YubiKey (libykcs11)', path: '/opt/homebrew/lib/libykcs11.dylib', platform: 'darwin' },
+    { name: 'YubiKey (libykcs11)', path: '/usr/local/lib/libykcs11.dylib', platform: 'darwin' },
+  ];
+
   /**
    * Returns a list of known default library paths for a given platform.
    */
-  public static getKnownLibraryPaths(
-    platform?: 'linux' | 'win32'
-  ): Array<{ name: string; path: string; platform: 'linux' | 'win32' }> {
-    const targetPlatform = platform ?? (process.platform === 'win32' ? 'win32' : 'linux');
-    if (targetPlatform === 'win32') {
-      return [...this.WINDOWS_LIBRARIES];
-    }
+  public static getKnownLibraryPaths(platform?: LibraryPlatform): KnownLibrary[] {
+    const targetPlatform = platform ?? libraryPlatform(process.platform);
+    if (targetPlatform === 'win32') return [...this.WINDOWS_LIBRARIES];
+    if (targetPlatform === 'darwin') return [...this.MAC_LIBRARIES];
     return [...this.LINUX_LIBRARIES];
   }
 
@@ -162,10 +182,10 @@ export class SmartcardDetector {
    * Detects available smartcard PKCS#11 libraries on the system.
    */
   public static async detectAvailableLibraries(
-    platform?: 'linux' | 'win32',
+    platform?: LibraryPlatform,
     options?: DetectOptions
   ): Promise<DetectedSmartcardLib[]> {
-    const targetPlatform = platform ?? (process.platform === 'win32' ? 'win32' : 'linux');
+    const targetPlatform = platform ?? libraryPlatform(process.platform);
     const candidates = options?.customPaths ?? this.getKnownLibraryPaths(targetPlatform);
 
     const results: DetectedSmartcardLib[] = await Promise.all(

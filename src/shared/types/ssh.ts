@@ -143,7 +143,7 @@ export interface SSHConnectionConfig {
 export interface DetectedSmartcardLib {
   name: string; // ('Net iD', 'OpenSC', etc.)
   path: string;
-  platform: 'linux' | 'win32';
+  platform: 'linux' | 'win32' | 'darwin';
   exists: boolean;
 }
 

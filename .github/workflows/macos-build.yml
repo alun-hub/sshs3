@@ -104,6 +104,53 @@ jobs:
           "$app/Contents/Resources/age/age-keygen" --version
           "$app/Contents/Resources/age/age-plugin-yubikey" --version
 
+      # Real installations of the two common modules, to check the paths the app looks in and that the packaged app
+      # (hardened runtime) can load them. No smartcard is present, so nothing is signed.
+      - name: Check PKCS#11 module detection and loading
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          brew install opensc yubico-piv-tool
+          SSHS3_PKCS11_REPORT="$RUNNER_TEMP/pkcs11.txt" npx vitest run tests/main/pkcs11Detection.mac.test.ts
+          cat "$RUNNER_TEMP/pkcs11.txt"
+          app="$PWD/release/mac-arm64/sshs3.app"
+          cat > "$RUNNER_TEMP/check-pkcs11.cjs" <<'EOF'
+          const path = require('node:path');
+          const fs = require('node:fs');
+          const [appDir, report] = process.argv.slice(2);
+          const { PKCS11 } = require(path.join(appDir, 'Contents/Resources/app.asar/node_modules/pkcs11js'));
+          for (const lib of fs.readFileSync(report, 'utf8').split('\n').filter(Boolean)) {
+            const pkcs11 = new PKCS11();
+            pkcs11.load(lib);
+            pkcs11.C_Initialize();
+            console.log(lib, '->', pkcs11.C_GetInfo().libraryDescription.trim(), '=', fs.realpathSync(lib));
+            pkcs11.C_Finalize();
+            pkcs11.close();
+          }
+          EOF
+          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/sshs3" "$RUNNER_TEMP/check-pkcs11.cjs" "$app" "$RUNNER_TEMP/pkcs11.txt"
+
+      # Information only: records whether ssh-agent accepts these modules with its default provider allow-list.
+      - name: Show how ssh-agent treats the PKCS#11 modules
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          which -a ssh ssh-agent
+          ssh -V
+          sock="$RUNNER_TEMP/agent.sock"
+          ssh-agent -d -a "$sock" > "$RUNNER_TEMP/agent.log" 2>&1 &
+          agent=$!
+          printf '#!/bin/sh\necho 000000\n' > "$RUNNER_TEMP/askpass.sh"
+          chmod 700 "$RUNNER_TEMP/askpass.sh"
+          sleep 2
+          while read -r lib; do
+            echo "== $lib"
+            SSH_AUTH_SOCK="$sock" SSH_ASKPASS="$RUNNER_TEMP/askpass.sh" SSH_ASKPASS_REQUIRE=force ssh-add -s "$lib" < /dev/null || true
+          done < "$RUNNER_TEMP/pkcs11.txt"
+          sleep 2
+          kill "$agent" || true
+          cat "$RUNNER_TEMP/agent.log"
+
       - name: Smoke test the packaged app
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         env:

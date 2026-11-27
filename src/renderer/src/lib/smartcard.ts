@@ -1,4 +1,4 @@
-import { IS_WINDOWS } from './platform';
+import { IS_MAC, IS_WINDOWS } from './platform';
 
 /**
  * Display helpers for PKCS#11 modules. Raw library paths ("C:\Program Files\OpenSC Project\...\opensc-pkcs11.dll",
@@ -42,5 +42,6 @@ export function pickDefaultPkcs11Lib(libs: Array<{ name?: string; path: string }
 /** Example path for an empty PKCS#11 field: the detected default, else a typical one for the platform. */
 export function pkcs11PlaceholderPath(detectedDefault?: string): string {
   if (detectedDefault) return detectedDefault;
-  return IS_WINDOWS ? 'C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll' : '/usr/lib64/p11-kit-proxy.so';
+  if (IS_WINDOWS) return 'C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll';
+  return IS_MAC ? '/Library/OpenSC/lib/opensc-pkcs11.so' : '/usr/lib64/p11-kit-proxy.so';
 }
