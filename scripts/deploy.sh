@@ -20,6 +20,10 @@
 # to publish the RPM (about 10-15 minutes), verifies it and uploads a source RPM. By default this happens
 # when copr-cli and a token (~/.config/copr) are present. Ctrl+C skips the wait; run `npm run copr` later.
 #
+# It also starts the Microsoft Store build for the tag via scripts/store-build.sh (before the COPR wait, so the two
+# run side by side). That only BUILDS the package; submitting it to Partner Center is a separate, deliberate step
+# (see store-build.sh). By default this happens when gh is installed and logged in; --no-store skips it.
+#
 
 set -euo pipefail
 
@@ -42,6 +46,7 @@ COMMIT_MSG=""
 VERSION_TYPE="patch"
 SITE_MODE="auto"   # auto | on | off
 COPR_MODE="auto"   # auto | on | off
+STORE_MODE="auto"  # auto | on | off
 SITE_DIR="${SSHS3_SITE_DIR:-$REPO_ROOT/../sshs3-site}"
 KEEP_RELEASES="${SSHS3_KEEP_RELEASES:-10}"   # published releases to keep, including the new one
 PRUNE_RELEASES=true
@@ -71,6 +76,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-copr)
       COPR_MODE="off"
+      shift
+      ;;
+    --store)
+      STORE_MODE="on"
+      shift
+      ;;
+    --no-store)
+      STORE_MODE="off"
       shift
       ;;
     --keep-releases)
@@ -116,6 +129,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --no-site             Never deploy sshs3-site"
       echo "  --copr                Always build the release in COPR (default: when copr-cli and its token config exist)"
       echo "  --no-copr             Never build in COPR"
+      echo "  --store               Always build the Microsoft Store package (default: when gh is installed and logged in)"
+      echo "  --no-store            Never build the Microsoft Store package (it is built, never submitted, either way)"
       echo "  --keep-releases <n>   Keep the newest n published GitHub releases (default 10) and delete older ones"
       echo "  --no-prune            Do not delete any old releases or drafts"
       echo "  --minor               Bump minor version instead of patch"
@@ -386,6 +401,20 @@ else
   COPR_SKIP_REASON="copr-cli or its token config missing"
 fi
 
+# 4f. Decide whether to build the Microsoft Store package: forced, or gh is installed and logged in. Like the RPM,
+# every release has a package, so there is no "did anything change" condition. It is only built, never submitted.
+DO_STORE=false
+STORE_SKIP_REASON=""
+if [[ "$STORE_MODE" == "off" ]]; then
+  STORE_SKIP_REASON="--no-store"
+elif [[ "$STORE_MODE" == "on" ]]; then
+  DO_STORE=true
+elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  DO_STORE=true
+else
+  STORE_SKIP_REASON="gh is missing or not logged in"
+fi
+
 # 5. Format commit message
 if [[ -z "$COMMIT_MSG" ]]; then
   FINAL_COMMIT_MSG="chore: release ${TAG}"
@@ -412,13 +441,21 @@ if [[ "$DRY_RUN" == "true" ]]; then
   else
     echo "  7. (release pruning disabled: --no-prune)"
   fi
+  if [[ "$DO_STORE" == "true" ]]; then
+    echo "  8. Microsoft Store: start the store-build.yml workflow for ${TAG} (build only; nothing is submitted to Partner Center)"
+    if ! "$REPO_ROOT/scripts/store-build.sh" --tag "$TAG" --dry-run; then
+      echo -e "${YELLOW}  ⚠ Store build prerequisites are not met (see above); the real run would report FAILED at this step.${RESET}"
+    fi
+  else
+    echo "  8. (Microsoft Store build skipped: ${STORE_SKIP_REASON})"
+  fi
   if [[ "$DO_COPR" == "true" ]]; then
-    echo "  8. COPR: wait for the release workflow to publish the RPM, verify it, build a source RPM and run copr-cli build"
+    echo "  9. COPR: wait for the release workflow to publish the RPM, verify it, build a source RPM and run copr-cli build"
     if ! "$REPO_ROOT/scripts/copr-build.sh" --tag "$TAG" --dry-run; then
       echo -e "${YELLOW}  ⚠ COPR prerequisites are not met (see above); the real run would report FAILED at this step.${RESET}"
     fi
   else
-    echo "  8. (COPR build skipped: ${COPR_SKIP_REASON})"
+    echo "  9. (COPR build skipped: ${COPR_SKIP_REASON})"
   fi
 
   # Revert version bump for dry run
@@ -477,6 +514,20 @@ fi
 # 11. Prune old GitHub releases (never fatal).
 prune_releases apply
 
+# 11b. Start the Microsoft Store build (never fatal: the release is already pushed). It only builds the package,
+# on GitHub's runners, so it runs while the COPR step below waits. Submitting it is left to a deliberate step.
+STORE_RESULT="skipped (${STORE_SKIP_REASON})"
+if [[ "$DO_STORE" == "true" ]]; then
+  echo -e "\n${CYAN}Starting the Microsoft Store build for ${TAG} (build only, nothing is submitted)...${RESET}"
+  if "$REPO_ROOT/scripts/store-build.sh" --tag "$TAG"; then
+    STORE_RESULT="build started (not submitted)"
+  else
+    STORE_RESULT="FAILED (retry: npm run store -- --tag ${TAG})"
+    echo -e "${YELLOW}⚠ Could not start the Store build. The release itself is unaffected. Retry:${RESET}"
+    echo "    npm run store -- --tag ${TAG}"
+  fi
+fi
+
 # 12. Build the release in COPR (never fatal: the release is already pushed). The script waits for the
 # release workflow to publish the RPM, which takes about 10-15 minutes. Ctrl+C is trapped so it only stops
 # the wait; the summary below is still printed and `npm run copr` retries later.
@@ -509,6 +560,7 @@ echo -e "• Branch:         ${BOLD}${CURRENT_BRANCH}${RESET}"
 echo -e "• Commit:         ${FINAL_COMMIT_MSG}"
 echo -e "• sshs3-site:     ${SITE_RESULT}"
 echo -e "• Old releases:   ${PRUNE_RESULT}"
+echo -e "• MS Store:       ${STORE_RESULT}"
 echo -e "• COPR:           ${COPR_RESULT}"
 echo ""
 if [[ "$COPR_RESULT" == "built" ]]; then

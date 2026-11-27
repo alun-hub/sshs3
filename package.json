@@ -32,7 +32,8 @@
     "docs:sync": "node scripts/sync-docs.mjs",
     "docs:lint": "node scripts/docs-lint.mjs",
     "deploy": "./scripts/deploy.sh",
-    "copr": "./scripts/copr-build.sh"
+    "copr": "./scripts/copr-build.sh",
+    "store": "./scripts/store-build.sh"
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.1171.0",
