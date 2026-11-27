@@ -5,7 +5,11 @@ name: Microsoft Store build
 # is used here.
 # Optional submit job (input "submit"): uploads the package to Partner Center with the Microsoft Store
 # Developer CLI. It runs in the "store" environment (holds the Partner Center credentials; configure
-# required reviewers there).
+# required reviewers there). That environment allows only master, so a release is submitted by running this
+# workflow from master with the input "tag": the build job then builds the code of that tag, while the submit
+# job, which has the credentials, uses the changelog and the helper script of master. Submitting needs a tag,
+# so that unreleased code of master cannot reach the Store:
+#   gh workflow run store-build.yml --ref master -f tag=vX.Y.Z -f submit=true
 # "commit" (default on) commits the submission: it goes to certification, and nothing has to be done by hand in Partner Center
 # except "Publish now" when the submission holds publishing ("Don't publish until I select Publish now" under Submission
 # options, which the draft that CI created in 2026-11 inherited). The texts (What's new etc.) are those of the last submission.
@@ -29,6 +33,10 @@ name: Microsoft Store build
 on:
   workflow_dispatch:
     inputs:
+      tag:
+        description: Release tag to build (vX.Y.Z). Required to submit; empty builds the selected branch or tag
+        type: string
+        default: ''
       submit:
         description: Upload the package to Partner Center after building
         type: boolean
@@ -49,10 +57,27 @@ jobs:
   store:
     name: Build Store package (Windows)
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # Spelled as a tag ref, so a branch can never be named here. Empty: the ref the run was started from.
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
+
+      - name: Check the release tag
+        id: release
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+          SUBMIT: ${{ inputs.submit }}
+        run: |
+          $version = (node -p "require('./package.json').version").Trim()
+          if ($env:SUBMIT -eq 'true' -and -not $env:TAG) { throw "Submitting needs the release tag (-f tag=vX.Y.Z)" }
+          if ($env:TAG -and $env:TAG -cne "v$version") { throw "Tag '$env:TAG' does not match the package.json version $version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -214,9 +239,11 @@ jobs:
         shell: pwsh
         env:
           PRODUCT_ID: ${{ vars.STORE_PRODUCT_ID }}
+          # The version that was built, not the one of this job's checkout (master may have moved on).
+          VERSION: ${{ needs.store.outputs.version }}
         run: |
           # msstore prints the JSON payload on stdout and everything meant for people on stderr (its default).
-          $version = (node -p "require('./package.json').version").Trim()
+          $version = $env:VERSION
           node scripts/store-submission.mjs notes CHANGELOG.md $version release-notes.txt
           if ($LASTEXITCODE -ne 0) { throw "No What's new text: CHANGELOG.md has no usable entry for $version" }
           $appx = Get-ChildItem -Path store-package -Filter *.appx | Select-Object -First 1

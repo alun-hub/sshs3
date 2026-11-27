@@ -240,5 +240,7 @@ npm run typecheck   # Static typecheck with TypeScript
 npm run lint        # ESLint verification (must be 0 errors, 0 warnings)
 npm run test        # Unit & integration tests via Vitest
 npm run build       # tsc --noEmit + vite build (renderer, main and preload bundles)
-npm run deploy      # Bump patch version, commit, tag, and push to GitHub Actions (scripts/deploy.sh)
+npm run deploy      # Bump patch version, commit, tag, and push to GitHub Actions (scripts/deploy.sh);
+                    # also starts the Microsoft Store build of the tag (never submits it) and builds in COPR
+npm run store       # Build the Microsoft Store package of a pushed tag again (scripts/store-build.sh; build only)
 ```
