@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
  * Best-effort process-identity check before signaling a PID recorded
  * earlier (LOW finding, code review): the private agent could have already
  * exited and the OS reused its PID for an unrelated process by the time
- * killPrivateAgent()/killAllPrivateAgents() get around to it — a bare
+ * killPrivateAgent()/killAllPrivateAgents()/stopManagedAgent() get around to it — a bare
  * `process.kill(pid, 'SIGTERM')` would then hit that unrelated process
  * instead. On Linux, /proc/<pid>/comm is a synchronous, in-memory read, so
  * it can verify the PID is still actually an ssh-agent without turning
@@ -394,10 +394,12 @@ export class AgentLifecycleManager {
       this.spawnedPid = null;
       this.spawnedSocket = null;
 
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {
-        // Already dead or permission denied
+      if (looksLikeOurAgent(pid)) {
+        try {
+          process.kill(pid, 'SIGTERM');
+        } catch {
+          // Already dead or permission denied
+        }
       }
 
       if (process.env.SSH_AGENT_PID === String(pid)) {
