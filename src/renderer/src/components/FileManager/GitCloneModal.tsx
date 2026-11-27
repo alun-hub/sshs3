@@ -1,13 +1,11 @@
 import React, { useRef, useState } from 'react';
 import { GitBranch, Loader2, ShieldAlert, X } from 'lucide-react';
-import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { useModalDismiss } from '../../lib/useModalDismiss';
 import { useDialogFocus } from '../../lib/useDialogFocus';
 
 interface GitCloneModalProps {
   targetPath: string;
   providerId?: string;
-  sftpConfig?: SSHConnectionConfig;
   onClose: () => void;
   onCloned: () => void;
 }
@@ -15,7 +13,6 @@ interface GitCloneModalProps {
 export const GitCloneModal: React.FC<GitCloneModalProps> = ({
   targetPath,
   providerId,
-  sftpConfig,
   onClose,
   onCloned,
 }) => {
@@ -52,7 +49,6 @@ export const GitCloneModal: React.FC<GitCloneModalProps> = ({
         directoryName: folderName.trim() || undefined,
         depth: depth ? 1 : undefined,
         providerId,
-        sftpConfig,
       });
 
       if (!res.success) {

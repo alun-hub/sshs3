@@ -1,8 +1,10 @@
 import { fetchGitPublicKeys } from '../git/GitKeyFetcher';
 import { GitConfigService } from '../git/GitConfigService';
 import { GitStatusService } from '../git/GitStatusService';
-import { RemoteGitService } from '../git/RemoteGitService';
+import { RemoteGitService, type RemoteGitConnection } from '../git/RemoteGitService';
 import { DotfileGitImporter } from '../dotfiles/DotfileGitImporter';
+import { classifyAskpassPrompt } from '../ssh/askpassPrompt';
+import { SFTPStorageProvider } from '../storage/SFTPStorageProvider';
 import type { ConfigureGitSigningRequest, ConfigureGitSigningResult, DotfilesImportFromGitRequest, DotfilesImportFromGitResult, FetchGitKeysRequest, FetchGitKeysResult, GitCloneRequest, GitOperationResult, GitRepoStatus, GitSigningConfig, TestRemoteGitAccessRequest, TestRemoteGitAccessResult } from '../../shared/types/git';
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
@@ -15,7 +17,7 @@ const DISABLED_BY_POLICY = 'Disabled by your administrator.';
 /** The part of IpcBridge this handler group may use. */
 export type GitHost = Pick<
   IpcBridge,
-  'dotfilePoolStore' | 'policy' | 'profileStore' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'scheduleAutoSync' | 'storageRegistry'
+  'dotfilePoolStore' | 'makePresenceNotifier' | 'policy' | 'profileStore' | 'promptForPinDirect' | 'promptHostKeyTrust' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'scheduleAutoSync' | 'storageRegistry'
 > & {
   smartcard: Pick<SmartcardCoordinator, 'prepareSshCaConfig'>;
 };
@@ -25,6 +27,23 @@ export function registerGitHandlers(bridge: GitHost): void {
   const prepareSshConfig = async (config: SSHConnectionConfig): Promise<SSHConnectionConfig> => {
     const withSecrets = await bridge.restoreSavedSecrets(config);
     return bridge.smartcard.prepareSshCaConfig(await bridge.resolveProxyJumpConfig(withSecrets));
+  };
+
+  /** The connection an open SFTP pane already has (agent, certificate, jump host and secrets resolved), with its prompts. */
+  const paneConnection = (provider: SFTPStorageProvider): RemoteGitConnection => {
+    const config = provider.getConnectionConfig() as SSHConnectionConfig;
+    const label = config.name || config.host;
+    const presence = bridge.makePresenceNotifier(undefined, `Touch your security key to clone on ${label}`);
+    return {
+      config,
+      prompts: {
+        pinPromptHandler: (prompt) =>
+          bridge.promptForPinDirect(prompt.trim(), classifyAskpassPrompt(prompt.trim(), config.authType), `SSH: ${label}`),
+        hostKeyPromptHandler: (info) => bridge.promptHostKeyTrust(info),
+        onPresence: presence.onPresenceRequested,
+        onPresenceCleared: presence.onPresenceCleared,
+      },
+    };
   };
 
   bridge.registerHandler(
@@ -68,10 +87,20 @@ export function registerGitHandlers(bridge: GitHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.GIT_CLONE,
     async (_event, request: GitCloneRequest): Promise<GitOperationResult> => {
-      if (request.sftpConfig) {
-        request.sftpConfig = await prepareSshConfig(request.sftpConfig);
+      if (!request.providerId || request.providerId === 'local') {
+        return await RemoteGitService.clone(request);
       }
-      return await RemoteGitService.clone(request);
+      // Only the id comes from the renderer; the connection is the one that pane is already using.
+      const provider = bridge.storageRegistry.get(request.providerId);
+      if (!(provider instanceof SFTPStorageProvider)) {
+        return { success: false, error: 'Git clone on a server needs an open SFTP connection. Reconnect the pane and try again.' };
+      }
+      // The pane's path may be relative to the home folder, which a quoted `cd` would take literally.
+      const targetDirectory =
+        typeof request.targetDirectory === 'string' && request.targetDirectory.trim()
+          ? await provider.resolveRemotePath(request.targetDirectory)
+          : '';
+      return await RemoteGitService.clone({ ...request, targetDirectory }, paneConnection(provider));
     }
   );
 
