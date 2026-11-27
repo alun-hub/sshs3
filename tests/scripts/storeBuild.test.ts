@@ -16,7 +16,11 @@ fs.writeFileSync(
 echo "$*" >> "$FAKE_GH_LOG"
 case "$1" in
   auth) exit "\${FAKE_GH_AUTH:-0}" ;;
-  api) exit "\${FAKE_GH_TAG:-0}" ;;
+  api)
+    case "$*" in
+      *matching-refs*) printf '%b' "\${FAKE_GH_REFS-}"; exit "\${FAKE_GH_LIST:-0}" ;;
+    esac
+    exit "\${FAKE_GH_TAG:-0}" ;;
   workflow)
     case "$2" in
       view) exit "\${FAKE_GH_WORKFLOW:-0}" ;;
@@ -56,6 +60,37 @@ describe.skipIf(process.platform === 'win32')('scripts/store-build.sh', () => {
     expect(calls.join('\n')).not.toContain('submit=true');
     expect(out).toContain('https://github.com/alun-hub/sshs3/actions/runs/123');
     expect(out).toContain('Not submitted');
+  });
+
+  it('prints a submit command that runs from master, in the same repository, with the tag as an input', () => {
+    const { out } = run(['--tag', 'v0.98.6']);
+    expect(out).toContain(
+      'gh workflow run store-build.yml --repo alun-hub/sshs3 --ref master -f tag=v0.98.6 -f submit=true'
+    );
+    const workflow = fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/store-build.yml'), 'utf8');
+    for (const input of ['tag', 'submit']) expect(workflow).toMatch(new RegExp(`^      ${input}:$`, 'm'));
+  });
+
+  it('keeps an overridden repository in the submit command', () => {
+    const { out } = run(['--tag', 'v0.98.6'], { SSHS3_GH_REPO: 'someone/fork' });
+    expect(out).toContain('gh workflow run store-build.yml --repo someone/fork --ref master -f tag=v0.98.6 -f submit=true');
+  });
+
+  it('without --tag builds the highest release tag on GitHub, by version number', () => {
+    const refs = ['v0.9.0', 'v0.98.10', 'v0.98.9', 'v0.99.0-rc1', 'vnext'].map((t) => `refs/tags/${t}`).join('\\n');
+    const { status, calls } = run([], { FAKE_GH_REFS: refs });
+    expect(status).toBe(0);
+    expect(dispatched(calls)).toEqual(['workflow run store-build.yml --repo alun-hub/sshs3 --ref v0.98.10 -f submit=false']);
+  });
+
+  it.each([
+    ['the tags cannot be listed', { FAKE_GH_LIST: '1' }, 'cannot list the tags'],
+    ['there is no release tag', { FAKE_GH_REFS: 'refs/tags/vnext' }, 'has no release tag'],
+  ])('without --tag stops when %s', (_label, env, message) => {
+    const { status, out, calls } = run([], env as Record<string, string>);
+    expect(status).toBe(1);
+    expect(out).toContain(message);
+    expect(dispatched(calls)).toEqual([]);
   });
 
   it('names the workflow page when the run cannot be found, and still succeeds', () => {

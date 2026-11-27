@@ -6,11 +6,16 @@
 #
 #   ./scripts/store-build.sh [--dry-run] [--tag vX.Y.Z]
 #
+# Without --tag it takes the highest vX.Y.Z tag on GitHub (not the local tags, which may be behind).
+#
 # This only BUILDS: the workflow is dispatched with submit=false, so the package becomes an artifact of the run
 # and nothing is uploaded to Partner Center. Submitting is a separate, deliberate step because it goes to
 # certification, cannot be taken back, and cannot replace a submission that is still in certification:
 #
-#   gh workflow run store-build.yml --ref vX.Y.Z -f submit=true
+#   gh workflow run store-build.yml --repo alun-hub/sshs3 --ref master -f tag=vX.Y.Z -f submit=true
+#
+# It is run from master because the "store" environment, which holds the Partner Center credentials, allows only
+# that branch; the tag input makes the workflow build the released code.
 #
 # (Check first that the previous submission is published. The "What's new" text of a submission is the CHANGELOG
 # entry of that version, so make sure that entry reads well for users.)
@@ -39,7 +44,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo -e "${RED}Unknown option: $1${RESET}" >&2; exit 2 ;;
@@ -55,9 +60,12 @@ gh auth status >/dev/null 2>&1 || fail "the gh CLI is not logged in (gh auth log
 gh workflow view "$WORKFLOW" --repo "$GH_REPO" >/dev/null 2>&1 \
   || fail "cannot find the workflow ${WORKFLOW} in ${GH_REPO} (check SSHS3_GH_REPO and gh access)."
 
-# 2. The tag: default to the highest vX.Y.Z, and never pass anything else on to the workflow.
+# 2. The tag: default to the highest vX.Y.Z on GitHub, and never pass anything else on to the workflow.
 if [[ -z "$TAG" ]]; then
-  TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname 2>/dev/null | head -n1 || true)"
+  refs="$(gh api --paginate "repos/${GH_REPO}/git/matching-refs/tags/v" --jq '.[].ref')" \
+    || fail "cannot list the tags of ${GH_REPO} (pass --tag vX.Y.Z)."
+  TAG="$(sed 's#^refs/tags/##' <<<"$refs" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)"
+  [[ -n "$TAG" ]] || fail "${GH_REPO} has no release tag of the form vX.Y.Z (pass --tag)."
 fi
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "'${TAG}' is not a release tag of the form vX.Y.Z."
 
@@ -93,4 +101,4 @@ else
   echo -e "${GREEN}✓ Store build started: https://github.com/${GH_REPO}/actions/workflows/${WORKFLOW}${RESET}"
 fi
 echo "  Not submitted. To submit it once the previous submission is published:"
-echo "    gh workflow run ${WORKFLOW} --ref ${TAG} -f submit=true"
+echo "    gh workflow run ${WORKFLOW} --repo ${GH_REPO} --ref master -f tag=${TAG} -f submit=true"
