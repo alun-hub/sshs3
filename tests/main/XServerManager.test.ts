@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import net from 'node:net';
 import fs from 'node:fs';
 import { EventEmitter } from 'node:events';
@@ -24,6 +24,19 @@ vi.mock('electron', () => ({
 import { XServerManager } from '../../src/main/x11/XServerManager';
 
 describe('XServerManager', () => {
+  // The X server processes here are made up, but a real signal to their ids reaches whatever process has that
+  // number. process.kill is assigned a stand-in for the whole file, so that restoring a spy never brings back
+  // the real one before the last server has been stopped.
+  const realKill = process.kill;
+
+  beforeAll(() => {
+    process.kill = vi.fn((_pid: number, _signal?: string | number): true => true);
+  });
+
+  afterAll(() => {
+    process.kill = realKill;
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
   });
