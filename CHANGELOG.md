@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.6] - 2026-11-27
+
+### Added
+- **A second terminal on the same server.** Splitting an SSH pane now offers **Connect to** *name* as the default button: `Ctrl+Shift+D` (or `Ctrl+Shift+E`), then `Enter`.
+- **SFTP from a terminal pane.** A new button in the pane header, or `Ctrl+Alt+Shift+S` for the active pane, opens the file manager for that server. Session Manager shell panes have no button.
+
+### Changed
+- **`Enter` after splitting an SSH pane connects to the same server** instead of opening the connection list. Choose **Select SSH Connection** for another one.
+- **SFTP from a terminal uses the profile as it is saved now**, also when `Ctrl`+click on a remote path opens the file manager. It is not opened if the profile has been deleted, or its host, port, user, jump host or connection type changed after the terminal connected: use **Connection Manager**.
+- **Electron 45.4.1**, with fixes backported from Chromium, V8 and other components. The AWS SDK, icons and list scrolling libraries are updated too.
+
+### Fixed
+- **Quitting leaves unrelated processes alone (Linux).** sshs3 now stops the `ssh-agent` it started only if that process id still belongs to an `ssh-agent`.
+
 ## [0.98.5] - 2026-11-26
 
 ### Fixed
