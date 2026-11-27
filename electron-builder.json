@@ -30,6 +30,31 @@
       }
     ]
   },
+  "mac": {
+    "target": [
+      {
+        "target": "zip",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
+    "category": "public.app-category.developer-tools",
+    "identity": "-",
+    "notarize": false,
+    "entitlements": "build/mac/entitlements.plist",
+    "entitlementsInherit": "build/mac/entitlements.plist",
+    "artifactName": "${name}-${version}-mac-${arch}.${ext}",
+    "extraResources": [
+      {
+        "from": "build-resources/age/mac",
+        "to": "age",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  },
   "win": {
     "icon": "build/icon.ico",
     "target": [

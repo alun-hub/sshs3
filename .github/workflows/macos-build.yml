@@ -1,0 +1,125 @@
+name: macOS build (experimental)
+
+# Builds an ad-hoc signed macOS package and keeps it as a workflow artifact. It never publishes a release: macOS is
+# not a supported platform yet.
+on:
+  push:
+    branches: [ feat/macos-build ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (macOS arm64)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Same versions as release.yml. age-plugin-yubikey v0.5.0 has no Intel binary for macOS, so only arm64 is built.
+      - name: Prepare bundled age + age-plugin-yubikey for Team Vault
+        run: |
+          set -euo pipefail
+          mkdir -p build-resources/age/mac
+
+          curl -sSfL -o age.tar.gz "https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-darwin-arm64.tar.gz"
+          echo "e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5  age.tar.gz" | shasum -a 256 -c - # pragma: allowlist secret
+          tar xzf age.tar.gz
+          cp age/age age/age-keygen build-resources/age/mac/
+          rm -rf age age.tar.gz
+
+          curl -sSfL -o apy.tar.gz "https://github.com/str4d/age-plugin-yubikey/releases/download/v0.5.0/age-plugin-yubikey-v0.5.0-arm64-darwin.tar.gz"
+          echo "5080607cbbbd75953f9d50a54ce07da72c38d663783bfcc1843cab5be4be5400  apy.tar.gz" | shasum -a 256 -c - # pragma: allowlist secret
+          tar xzf apy.tar.gz
+          cp age-plugin-yubikey/age-plugin-yubikey build-resources/age/mac/
+          rm -rf age-plugin-yubikey apy.tar.gz
+
+          chmod +x build-resources/age/mac/*
+
+      # The checks below keep going after a failure, so one run shows everything that does not work yet.
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: npm run typecheck
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: npm run lint
+
+      - name: Run tests
+        if: ${{ !cancelled() }}
+        run: npm run test
+
+      - name: Build and package
+        id: package
+        if: ${{ !cancelled() }}
+        run: |
+          npm run build
+          npx electron-builder --mac --arm64 --publish never
+
+      - name: Check the signature
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          app="release/mac-arm64/sshs3.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app"
+          codesign --display --entitlements - "$app"
+          # Expected to be rejected without notarization; printed to record what Gatekeeper says.
+          spctl --assess --type execute --verbose=4 "$app" || true
+
+      - name: Check native modules and bundled binaries
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          app="$PWD/release/mac-arm64/sshs3.app"
+          cat > "$RUNNER_TEMP/check-native.cjs" <<'EOF'
+          const path = require('node:path');
+          const modules = path.join(process.argv[2], 'Contents/Resources/app.asar/node_modules');
+          require(path.join(modules, 'pkcs11js'));
+          console.log('pkcs11js loaded');
+          const pty = require(path.join(modules, 'node-pty'));
+          const child = pty.spawn('/bin/echo', ['node-pty works'], {});
+          let output = '';
+          child.onData((data) => { output += data; });
+          child.onExit(({ exitCode }) => {
+            console.log(output.trim());
+            process.exit(exitCode === 0 && output.includes('node-pty works') ? 0 : 1);
+          });
+          setTimeout(() => { console.error('node-pty timed out'); process.exit(1); }, 15000);
+          EOF
+          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/sshs3" "$RUNNER_TEMP/check-native.cjs" "$app"
+          "$app/Contents/Resources/age/age" --version
+          "$app/Contents/Resources/age/age-keygen" --version
+          "$app/Contents/Resources/age/age-plugin-yubikey" --version
+
+      - name: Smoke test the packaged app
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        env:
+          SMOKE_APP_BIN: ${{ github.workspace }}/release/mac-arm64/sshs3.app/Contents/MacOS/sshs3
+          SCREENSHOT_DIR: ${{ github.workspace }}/release/screenshots
+          SMOKE_TIMEOUT_MS: '60000'
+          VERBOSE: '1'
+        run: npm run test:smoke
+
+      - name: Upload package and screenshot
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: sshs3-macos-arm64
+          path: |
+            release/*.zip
+            release/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 14

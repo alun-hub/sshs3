@@ -12,7 +12,9 @@ const TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS) || 30_000;
 mkdirSync(SHOT_DIR, { recursive: true });
 mkdirSync(PROFILE_DIR, { recursive: true });
 
-const electronBin = path.join(APP_DIR, 'node_modules/electron/dist/electron');
+// SMOKE_APP_BIN points at a packaged executable to test that instead of the repo's build output.
+const packagedBin = process.env.SMOKE_APP_BIN;
+const electronBin = packagedBin || path.join(APP_DIR, 'node_modules/electron/dist/electron');
 
 let child = null;
 let ws = null;
@@ -81,12 +83,13 @@ async function cleanup() {
 async function run() {
   console.log(`[smoke-test] Starting Electron with isolated profile: ${PROFILE_DIR} on CDP port ${CDP_PORT}...`);
 
+  // A packaged app carries its own code and is tested with the sandbox on, as a user would run it.
   const spawnArgs = [
-    '--no-sandbox',
+    ...(packagedBin ? [] : ['--no-sandbox']),
     '--disable-gpu',
     `--remote-debugging-port=${CDP_PORT}`,
     `--user-data-dir=${PROFILE_DIR}`,
-    '.',
+    ...(packagedBin ? [] : ['.']),
   ];
 
   child = spawn(electronBin, spawnArgs, {
