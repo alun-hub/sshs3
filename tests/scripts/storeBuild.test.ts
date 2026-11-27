@@ -142,3 +142,29 @@ describe.skipIf(process.platform === 'win32')('scripts/store-build.sh', () => {
     expect(calls.some((c) => c.startsWith('api '))).toBe(false);
   });
 });
+
+// The guard lives in the workflow file itself: run from master, it cannot be changed by the tag that is built.
+describe('store-build.yml submission guard', () => {
+  const workflow = fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/store-build.yml'), 'utf8').replace(/\r\n/g, '\n');
+  const buildJob = workflow.slice(workflow.indexOf('\n  store:\n'), workflow.indexOf('\n  submit:\n'));
+
+  it('refuses to submit a tag that is not part of master', () => {
+    expect(buildJob).toContain('fetch-depth: 0');
+    expect(buildJob).toContain('git merge-base --is-ancestor HEAD refs/remotes/origin/master');
+    expect(buildJob).toMatch(/if \(\$env:SUBMIT -eq 'true' -and -not \$onMaster\) \{ throw /);
+  });
+
+  it('checks before any step runs code of the tag', () => {
+    const check = buildJob.indexOf('- name: Check the release tag');
+    expect(check).toBeGreaterThan(-1);
+    // Nothing between the checkout and the check, and every npm command after it.
+    expect(buildJob.slice(0, check).match(/^ {6}- /gm)).toHaveLength(1);
+    expect(buildJob.slice(0, check)).not.toMatch(/\bnpm\b|\bnpx\b|scripts\//);
+    expect(buildJob.indexOf('run: npm ci')).toBeGreaterThan(check);
+  });
+
+  it('runs the submit job only when the build job succeeded', () => {
+    expect(workflow.slice(workflow.indexOf('\n  submit:\n'))).toContain('needs: store');
+    expect(workflow.slice(workflow.indexOf('\n  submit:\n'))).toContain('if: ${{ inputs.submit }}');
+  });
+});
