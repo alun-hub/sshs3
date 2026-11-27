@@ -51,6 +51,15 @@ async function chooseAccount() {
   fireEvent.click(await within(list).findByLabelText(/Prod/));
 }
 
+/**
+ * With CLI profiles but no saved sign-in the guide moves to the profiles once the data has loaded. It starts on SSO,
+ * so a click on SSO before that changes nothing and the guide still moves away: wait for the move, then go back.
+ */
+async function chooseSsoOverProfiles() {
+  await waitFor(() => expect(screen.getByRole('radio', { name: 'AWS CLI profiles' })).toBeChecked());
+  fireEvent.click(screen.getByRole('radio', { name: 'AWS sign-in (SSO)' }));
+}
+
 describe('AwsInstancePickerModal (keyboard)', () => {
   it('puts initial focus on the selected credentials choice, not on the Close button', async () => {
     open();
@@ -70,7 +79,7 @@ describe('AwsInstancePickerModal (keyboard)', () => {
     settings = { awsSignIns: [], awsRegions: 'eu-north-1' };
     api.awsSsoStatus.mockResolvedValue({ status: 'missing' } as never);
     open();
-    fireEvent.click(await screen.findByRole('radio', { name: 'AWS sign-in (SSO)' })); // with CLI profiles but no saved sign-in the guide starts on the profiles
+    await chooseSsoOverProfiles();
     const url = await screen.findByTestId('guide-sso-start-url');
     fireEvent.change(url, { target: { value: CORP } });
     await waitFor(() => expect(screen.getByTestId('guide-sso-sign-in')).toBeEnabled());
@@ -84,7 +93,7 @@ describe('AwsInstancePickerModal (keyboard)', () => {
     settings = { awsSignIns: [], awsRegions: 'eu-north-1' };
     api.awsSsoStatus.mockResolvedValue({ status: 'missing' } as never);
     open();
-    fireEvent.click(await screen.findByRole('radio', { name: 'AWS sign-in (SSO)' }));
+    await chooseSsoOverProfiles();
     const url = await screen.findByTestId('guide-sso-start-url');
     fireEvent.keyDown(url, { key: 'Enter' });
     expect(api.awsSsoLogin).not.toHaveBeenCalled();
