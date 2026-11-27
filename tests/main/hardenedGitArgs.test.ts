@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isKnownHarmlessConfigKey } from '../../src/main/git/gitConfigKeys';
 import { describeConfigKey, inspectGitConfigNames, safeGitEnv, safeGitPullEnv } from '../../src/main/git/gitSafety';
 import { hardenedGitConfigArgs } from '../../src/main/git/hardenedGitArgs';
@@ -21,6 +21,10 @@ const env = () => ({ ...safeGitEnv(), GIT_CONFIG_GLOBAL: emptyGitConfig });
 // A path written as text into a git config file: a Windows `C:\Users\...` would read as invalid escape sequences
 // ("bad config line"), and git for Windows accepts forward slashes.
 const inConfig = (p: string): string => p.replace(/\\/g, '/');
+
+// Many tests here start a dozen git processes, some in their setup. That takes a few seconds on Windows and has
+// taken over 16 on a slow CI runner, past the default limits of 5 s for a test and 10 s for a hook.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describe('inspectGitConfigNames', () => {
   it('trusts the config git itself writes, for a clone, a sparse checkout and a reftable repository', () => {
