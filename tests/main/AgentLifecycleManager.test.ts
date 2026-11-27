@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,8 +19,28 @@ function mockSpawnedAgent(socketPath: string, pid: number, delayMs = 0): void {
   }) as any);
 }
 
+/** Above Linux's highest possible process id, so no process can ever have it. */
+const NO_SUCH_PID = 2 ** 22 + 1;
+
 describe('AgentLifecycleManager', () => {
   const origEnv = { ...process.env };
+
+  // The agents here are made up, but their ids are not harmless: a real SIGTERM reaches whatever process has
+  // that number, and on a CI runner that was one of the test runner's own workers. So process.kill is replaced
+  // for the whole file. It is assigned, not spied on, so that restoring a spy inside a test can only fall back
+  // to this stand-in and never to the real one.
+  const realKill = process.kill;
+  const killStandIn = vi.fn((_pid: number, _signal?: string | number): true => true);
+
+  beforeAll(() => {
+    process.kill = killStandIn;
+  });
+
+  afterAll(() => {
+    // Forget the made-up agents first: the exit handler would otherwise signal them with the real kill.
+    AgentLifecycleManager._reset();
+    process.kill = realKill;
+  });
 
   beforeEach(() => {
     AgentLifecycleManager._reset();
@@ -133,6 +153,34 @@ describe('AgentLifecycleManager', () => {
     await AgentLifecycleManager.stopManagedAgent();
     expect(AgentLifecycleManager['spawnedPid']).toBeNull();
     expect(AgentLifecycleManager['spawnedSocket']).toBeNull();
+  });
+
+  it.skipIf(process.platform !== 'linux')(
+    'stopManagedAgent does not signal a live pid that is not actually ssh-agent (Linux PID-reuse guard)',
+    async () => {
+      delete process.env.SSH_AUTH_SOCK;
+      mockSpawnedAgent('/tmp/managed-reused-pid.sock', process.pid);
+      await AgentLifecycleManager.ensureAgent();
+      killStandIn.mockClear();
+
+      await AgentLifecycleManager.stopManagedAgent();
+
+      expect(killStandIn).not.toHaveBeenCalled();
+      expect(process.env.SSH_AGENT_PID).toBeUndefined();
+      expect(process.env.SSH_AUTH_SOCK).toBeUndefined();
+    }
+  );
+
+  it.skipIf(process.platform === 'win32')('stopManagedAgent signals the agent it spawned', async () => {
+    delete process.env.SSH_AUTH_SOCK;
+    // No /proc entry to check, which is treated like our own agent (see looksLikeOurAgent).
+    mockSpawnedAgent('/tmp/managed-own-agent.sock', NO_SUCH_PID);
+    await AgentLifecycleManager.ensureAgent();
+    killStandIn.mockClear();
+
+    await AgentLifecycleManager.stopManagedAgent();
+
+    expect(killStandIn).toHaveBeenCalledWith(NO_SUCH_PID, 'SIGTERM');
   });
 
   describe('spawnPrivateAgent on Windows', () => {
