@@ -125,7 +125,7 @@ export class RemoteGitService {
   public static async pull(
     directoryPath: string,
     providerId?: string,
-    sftpConfig?: SSHConnectionConfig
+    remote?: RemoteGitConnection
   ): Promise<GitOperationResult> {
     if (!directoryPath || typeof directoryPath !== 'string') {
       return { success: false, error: 'Directory path is required' };
@@ -158,10 +158,10 @@ export class RemoteGitService {
     }
 
     // Remote SFTP pull over SSH
-    if (sftpConfig) {
+    if (remote) {
       const remoteCmd = `cd -- ${shellQuote(dir)} && git ${safeGitConfigArgs('/dev/null').map(shellQuote).join(' ')} pull`;
       try {
-        const res = await runSshCommand(sftpConfig, remoteCmd);
+        const res = await runSshCommand(remote.config, remoteCmd, remote.prompts);
         if (res.code === 0) {
           return { success: true, output: (res.stdout + '\n' + res.stderr).trim() };
         }
@@ -171,7 +171,7 @@ export class RemoteGitService {
       }
     }
 
-    return { success: false, error: 'No connection configuration provided for remote pull' };
+    return { success: false, error: 'No connection available for remote pull' };
   }
 
   /**
