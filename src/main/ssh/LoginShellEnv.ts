@@ -22,6 +22,23 @@ const TRUST_RELEVANT_VARS = [
   'SSH_AGENT_PID',
 ];
 
+/** The only PATH directories macOS gives an app started from Finder or the Dock. */
+const MAC_GUI_PATH_DIRS = new Set(['/usr/bin', '/bin', '/usr/sbin', '/sbin']);
+
+/**
+ * The PATH for a macOS app started from Finder: the login shell's PATH (where Homebrew and the like are), followed by
+ * any current directory it lacks. Undefined, meaning "leave PATH alone", when the current PATH has other directories
+ * (started from a terminal, or set on purpose) or the shell gave nothing usable. Empty and relative entries are
+ * dropped, since they would look up programs in the current directory.
+ */
+export function macGuiPath(currentPath: string | undefined, loginPath: string | undefined): string | undefined {
+  const current = (currentPath ?? '').split(':').filter(Boolean);
+  if (current.some((dir) => !MAC_GUI_PATH_DIRS.has(dir))) return undefined;
+  const login = (loginPath ?? '').split(':').filter((dir) => dir.startsWith('/'));
+  if (login.length === 0) return undefined;
+  return [...new Set([...login, ...current])].join(':');
+}
+
 let cachedEnv: Record<string, string> | undefined;
 let resolvePromise: Promise<Record<string, string>> | undefined;
 
@@ -67,14 +84,19 @@ export async function resolveLoginShellEnv(): Promise<Record<string, string>> {
 }
 
 /**
- * Backfills `process.env` with trust/PATH-relevant vars from the user's
- * login shell whenever this process was started without them (i.e.
- * launched from a GUI/.desktop entry rather than a terminal). Existing
- * values are never overwritten, so a terminal-launched app or one that
- * already set these deliberately is left untouched.
+ * Backfills `process.env` with trust and agent vars from the user's login
+ * shell whenever this process was started without them (i.e. launched from a
+ * GUI/.desktop entry rather than a terminal). Existing values are never
+ * overwritten, so a terminal-launched app or one that already set these
+ * deliberately is left untouched. The one exception is the bare PATH of a
+ * macOS app started from Finder, see macGuiPath.
  */
-export async function applyLoginShellEnv(): Promise<void> {
+export async function applyLoginShellEnv(platform: NodeJS.Platform = process.platform): Promise<void> {
   const shellEnv = await resolveLoginShellEnv();
+  if (platform === 'darwin') {
+    const guiPath = macGuiPath(process.env.PATH, shellEnv.PATH);
+    if (guiPath !== undefined) process.env.PATH = guiPath;
+  }
   for (const key of TRUST_RELEVANT_VARS) {
     if (process.env[key] === undefined && shellEnv[key] !== undefined) {
       process.env[key] = shellEnv[key];

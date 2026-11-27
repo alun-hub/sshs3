@@ -43,7 +43,7 @@ export interface UpdateServiceOptions {
   updater?: UpdaterLike;
   currentVersion?: string;
   isPackaged?: boolean;
-  /** Defaults to process.platform. Windows is unsupported until the installer is code-signed. */
+  /** Defaults to process.platform. Windows and macOS are unsupported until their builds are code-signed. */
   platform?: NodeJS.Platform;
   /** Administrator switch (SSHS3_DISABLE_UPDATES=1, or the autoCheckUpdates policy set to false): no update traffic at all, including a manual check. */
   disabled?: boolean;
@@ -99,17 +99,20 @@ export class UpdateService {
   constructor(options: UpdateServiceOptions) {
     this.options = options;
     const isPackaged = options.isPackaged ?? app.isPackaged;
+    const platform = options.platform ?? process.platform;
     this.unsupportedReason = options.disabled
       ? 'disabled'
       : !isPackaged
         ? 'dev'
-        : (options.platform ?? process.platform) === 'win32'
-          ? (options.isStoreInstall ?? Boolean((process as NodeJS.Process & { windowsStore?: boolean }).windowsStore))
-            ? 'microsoft-store'
-            : (options.isNsisInstall ?? isNsisInstall()) === false
-              ? 'not-installer'
-              : 'windows-unsigned'
-          : null;
+        : platform === 'darwin'
+          ? 'macos-unsigned'
+          : platform === 'win32'
+            ? (options.isStoreInstall ?? Boolean((process as NodeJS.Process & { windowsStore?: boolean }).windowsStore))
+              ? 'microsoft-store'
+              : (options.isNsisInstall ?? isNsisInstall()) === false
+                ? 'not-installer'
+                : 'windows-unsigned'
+            : null;
     this.state = {
       status: this.unsupportedReason ? 'unsupported' : 'idle',
       currentVersion: options.currentVersion ?? app.getVersion(),

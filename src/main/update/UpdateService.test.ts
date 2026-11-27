@@ -47,7 +47,7 @@ describe('UpdateService', () => {
     expect(updater.allowDowngrade).toBe(false);
   });
 
-  it('is unsupported in dev, on Windows and when disabled by the administrator', async () => {
+  it('is unsupported in dev, on Windows, on macOS and when disabled by the administrator', async () => {
     const dev = create({ isPackaged: false });
     expect(dev.service.getState()).toMatchObject({ status: 'unsupported', unsupportedReason: 'dev' });
     await dev.service.check();
@@ -70,6 +70,12 @@ describe('UpdateService', () => {
     store.service.start();
     await vi.advanceTimersByTimeAsync(10 * 60 * 60 * 1000);
     expect(store.updater.checkForUpdates).not.toHaveBeenCalled();
+
+    const mac = create({ isPackaged: true, platform: 'darwin' });
+    expect(mac.service.getState()).toMatchObject({ status: 'unsupported', unsupportedReason: 'macos-unsigned' });
+    mac.service.start();
+    await vi.advanceTimersByTimeAsync(10 * 60 * 60 * 1000);
+    expect(mac.updater.checkForUpdates).not.toHaveBeenCalled();
 
     const off = create({ isPackaged: true, platform: 'linux', disabled: true });
     expect(off.service.getState()).toMatchObject({ status: 'unsupported', unsupportedReason: 'disabled' });
@@ -244,7 +250,8 @@ describe('UpdateService', () => {
 
   it('calls quitAndInstall(false, true) on non-Linux platforms', async () => {
     const relaunchOnLinux = vi.fn();
-    const { updater, service } = create({ platform: 'darwin', relaunchOnLinux });
+    // Windows and macOS do not update in-app until their builds are signed, so another platform stands in.
+    const { updater, service } = create({ platform: 'freebsd', relaunchOnLinux });
     updater.emit('update-downloaded', { version: '2.0.0' });
     await service.install();
     expect(relaunchOnLinux).not.toHaveBeenCalled();

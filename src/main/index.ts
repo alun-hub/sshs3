@@ -8,6 +8,7 @@ import { showSplash, type SplashController } from './splash/SplashWindow';
 import { SystemTrustStore } from './crypto/SystemTrustStore';
 import { AgentLifecycleManager } from './ssh/AgentLifecycleManager';
 import { applyLoginShellEnv } from './ssh/LoginShellEnv';
+import { applicationMenuTemplate } from './menu/applicationMenu';
 import { configureRegistryDir } from './ssh/AgentRegistry';
 import { isEncryptionAvailable } from './crypto/SecretFieldCrypto';
 import { WindowManager } from './windows/WindowManager';
@@ -417,6 +418,11 @@ async function initializeApp(): Promise<void> {
   const { IpcBridge } = await import('./IpcBridge');
   splash?.setProgress(35, 'Loading services…');
 
+  const shellEnvReady = applyLoginShellEnv().catch((err) => log.warn('could not read the login shell environment', err));
+  // An app started from Finder only has the system directories in PATH, so on macOS the login shell's PATH has to be
+  // in place before anything looks for ssh, ssh-agent, git or kubectl. Elsewhere this stays in the background.
+  if (process.platform === 'darwin') await shellEnvReady;
+
   // Read the machine policy before any store exists, so every settings read already sees it.
   const policy = await loadPolicy();
   for (const warning of policy.warnings) log.warn(warning);
@@ -424,8 +430,9 @@ async function initializeApp(): Promise<void> {
   // Set registry directory for ssh-agents
   configureRegistryDir(path.join(app.getPath('userData'), 'runtime-agents'));
 
-  // Remove default dead application menu
-  Menu.setApplicationMenu(null);
+  // Replace Electron's default menu: none, except the minimal one macOS needs.
+  const menuTemplate = applicationMenuTemplate(process.platform);
+  Menu.setApplicationMenu(menuTemplate ? Menu.buildFromTemplate(menuTemplate) : null);
 
   // Initialize and register IPC bridge
   ipcBridge = new IpcBridge({
@@ -453,7 +460,7 @@ async function initializeApp(): Promise<void> {
   // in parallel with window loading so startup time is not penalized
   void Promise.all([
     AgentLifecycleManager.cleanupOrphanedResources(),
-    applyLoginShellEnv().then(() => {
+    shellEnvReady.then(() => {
       void SystemTrustStore.init();
     }),
     // Syncs the managed block, then (via onLocalSshConfigSynced) clears any agent block a crashed run left behind.

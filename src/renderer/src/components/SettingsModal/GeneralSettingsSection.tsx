@@ -209,25 +209,29 @@ export const GeneralSettingsSection: React.FC<{ form: SettingsForm }> = ({ form 
             {updateState?.status === 'unsupported' &&
               (updateState.unsupportedReason === 'windows-unsigned'
                 ? ' · download new versions manually (Windows builds are not code-signed yet)'
-                : updateState.unsupportedReason === 'microsoft-store'
-                  ? ' · updates are delivered by the Microsoft Store'
-                  : updateState.unsupportedReason === 'not-installer'
-                    ? ' · this copy was not installed with the sshs3 installer (MSI, ZIP or portable), so new versions come the same way it did'
-                    : updateState.unsupportedReason === 'disabled'
-                      ? ' · updates are disabled by the administrator'
-                      : ' · updates are disabled in development')}
+                : updateState.unsupportedReason === 'macos-unsigned'
+                  ? ' · download new versions manually (macOS builds are not signed with an Apple certificate)'
+                  : updateState.unsupportedReason === 'microsoft-store'
+                    ? ' · updates are delivered by the Microsoft Store'
+                    : updateState.unsupportedReason === 'not-installer'
+                      ? ' · this copy was not installed with the sshs3 installer (MSI, ZIP or portable), so new versions come the same way it did'
+                      : updateState.unsupportedReason === 'disabled'
+                        ? ' · updates are disabled by the administrator'
+                        : ' · updates are disabled in development')}
           </span>
-          {updateState?.status === 'unsupported' && updateState.unsupportedReason === 'windows-unsigned' && (
-            <button
-              type="button"
-              onClick={() =>
-                void window.multissh?.openExternal('https://github.com/alun-hub/sshs3/releases/latest')
-              }
-              className="rounded border border-border-subtle px-2 py-0.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-50"
-            >
-              Open releases
-            </button>
-          )}
+          {updateState?.status === 'unsupported' &&
+            (updateState.unsupportedReason === 'windows-unsigned' ||
+              updateState.unsupportedReason === 'macos-unsigned') && (
+              <button
+                type="button"
+                onClick={() =>
+                  void window.multissh?.openExternal('https://github.com/alun-hub/sshs3/releases/latest')
+                }
+                className="rounded border border-border-subtle px-2 py-0.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-50"
+              >
+                Open releases
+              </button>
+            )}
           {updateState?.status === 'available' && (
             <button type="button" onClick={() => void window.multissh?.downloadUpdate()} className="rounded border border-border-subtle px-2 py-0.5 text-txt-secondary hover:bg-app-surface-hover hover:text-txt-primary disabled:opacity-50">
               Download
