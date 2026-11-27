@@ -28,6 +28,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # node-pty 1.1.0 ships its prebuilt macOS spawn-helper without the executable bit, so spawning fails with
+      # "posix_spawnp failed" until electron-builder rebuilds the module. The tests run before that.
+      - name: Make node-pty's prebuilt spawn-helper executable
+        run: chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper
+
       # Same versions as release.yml. age-plugin-yubikey v0.5.0 has no Intel binary for macOS, so only arm64 is built.
       - name: Prepare bundled age + age-plugin-yubikey for Team Vault
         run: |
