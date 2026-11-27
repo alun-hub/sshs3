@@ -69,7 +69,6 @@ export function registerConnectionTestHandlers(bridge: ConnectionTestHost): void
           id: `test-${crypto.randomUUID()}`,
           name: 'Test SSH',
           agentIdentityFiles: config.agentIdentityFiles,
-          useSshCa: config.useSshCa,
         });
         if (bridge.smartcard) {
           sftpConfig = await bridge.smartcard.prepareSftpSshCaConfig(sftpConfig);

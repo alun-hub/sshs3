@@ -7,6 +7,7 @@ import type { ConfigureGitSigningRequest, ConfigureGitSigningResult, DotfilesImp
 import { IPC_CHANNELS } from '../../shared/types/ipc';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
 import type { IpcBridge } from '../IpcBridge';
+import type { SmartcardCoordinator } from '../smartcard/SmartcardCoordinator';
 import { isFeatureAllowed } from '../policy/policyApply';
 
 const DISABLED_BY_POLICY = 'Disabled by your administrator.';
@@ -15,9 +16,17 @@ const DISABLED_BY_POLICY = 'Disabled by your administrator.';
 export type GitHost = Pick<
   IpcBridge,
   'dotfilePoolStore' | 'policy' | 'profileStore' | 'registerHandler' | 'resolveProxyJumpConfig' | 'restoreSavedSecrets' | 'scheduleAutoSync' | 'storageRegistry'
->;
+> & {
+  smartcard: Pick<SmartcardCoordinator, 'prepareSshCaConfig'>;
+};
 
 export function registerGitHandlers(bridge: GitHost): void {
+  /** A connection for Git's own ssh commands: saved secrets, the jump host and, as for a terminal, the SSH CA session. */
+  const prepareSshConfig = async (config: SSHConnectionConfig): Promise<SSHConnectionConfig> => {
+    const withSecrets = await bridge.restoreSavedSecrets(config);
+    return bridge.smartcard.prepareSshCaConfig(await bridge.resolveProxyJumpConfig(withSecrets));
+  };
+
   bridge.registerHandler(
     IPC_CHANNELS.GIT_FETCH_PUBLIC_KEYS,
     async (_event, request: FetchGitKeysRequest): Promise<FetchGitKeysResult> => {
@@ -60,8 +69,7 @@ export function registerGitHandlers(bridge: GitHost): void {
     IPC_CHANNELS.GIT_CLONE,
     async (_event, request: GitCloneRequest): Promise<GitOperationResult> => {
       if (request.sftpConfig) {
-        const config = await bridge.restoreSavedSecrets(request.sftpConfig);
-        request.sftpConfig = await bridge.resolveProxyJumpConfig(config);
+        request.sftpConfig = await prepareSshConfig(request.sftpConfig);
       }
       return await RemoteGitService.clone(request);
     }
@@ -79,7 +87,7 @@ export function registerGitHandlers(bridge: GitHost): void {
           ? (await bridge.profileStore.getProfiles()).ssh.find((p) => p.id === profileId)
           : undefined;
         if (profile) {
-          sftpConfig = await bridge.resolveProxyJumpConfig(await bridge.restoreSavedSecrets(profile));
+          sftpConfig = await prepareSshConfig(profile);
         }
       }
       return await RemoteGitService.pull(directoryPath, providerId, sftpConfig);
@@ -89,9 +97,7 @@ export function registerGitHandlers(bridge: GitHost): void {
   bridge.registerHandler(
     IPC_CHANNELS.GIT_TEST_REMOTE_ACCESS,
     async (_event, request: TestRemoteGitAccessRequest): Promise<TestRemoteGitAccessResult> => {
-      const config = await bridge.restoreSavedSecrets(request.config);
-      const resolved = await bridge.resolveProxyJumpConfig(config);
-      return await RemoteGitService.testRemoteAccess({ ...request, config: resolved });
+      return await RemoteGitService.testRemoteAccess({ ...request, config: await prepareSshConfig(request.config) });
     }
   );
 
