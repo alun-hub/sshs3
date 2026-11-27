@@ -8,7 +8,8 @@ name: Microsoft Store build
 # required reviewers there). That environment allows only master, so a release is submitted by running this
 # workflow from master with the input "tag": the build job then builds the code of that tag, while the submit
 # job, which has the credentials, uses the changelog and the helper script of master. Submitting needs a tag,
-# so that unreleased code of master cannot reach the Store:
+# and the tagged commit has to be part of master (a tag can point anywhere), so that only released code of master
+# can reach the Store:
 #   gh workflow run store-build.yml --ref master -f tag=vX.Y.Z -f submit=true
 # "commit" (default on) commits the submission: it goes to certification, and nothing has to be done by hand in Partner Center
 # except "Publish now" when the submission holds publishing ("Don't publish until I select Publish now" under Submission
@@ -66,7 +67,10 @@ jobs:
         with:
           # Spelled as a tag ref, so a branch can never be named here. Empty: the ref the run was started from.
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
+          # The whole history and origin/master, for the check below.
+          fetch-depth: 0
 
+      # Keep this before every step that runs code from the checkout: that code is the tag's, the workflow is master's.
       - name: Check the release tag
         id: release
         shell: pwsh
@@ -77,6 +81,14 @@ jobs:
           $version = (node -p "require('./package.json').version").Trim()
           if ($env:SUBMIT -eq 'true' -and -not $env:TAG) { throw "Submitting needs the release tag (-f tag=vX.Y.Z)" }
           if ($env:TAG -and $env:TAG -cne "v$version") { throw "Tag '$env:TAG' does not match the package.json version $version" }
+          if ($env:TAG) {
+            # Exit code 1: not part of master. Anything but 0 stops a submission.
+            git merge-base --is-ancestor HEAD refs/remotes/origin/master
+            $onMaster = $LASTEXITCODE -eq 0
+            Write-Host "Tag $env:TAG is part of master: $onMaster"
+            if ($env:SUBMIT -eq 'true' -and -not $onMaster) { throw "Tag '$env:TAG' is not part of master: only code released from master may be submitted" }
+            $global:LASTEXITCODE = 0
+          }
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Setup Node.js
