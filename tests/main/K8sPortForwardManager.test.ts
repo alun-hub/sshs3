@@ -180,15 +180,18 @@ describe('K8sPortForwardManager', () => {
       client.on('error', reject);
     });
 
-    expect(listPodsMock).toHaveBeenCalledWith('minikube', 'default');
-    expect(mockPortForwardFn).toHaveBeenLastCalledWith(
-      'default',
-      'web-deploy-new-hash',
-      [8080],
-      expect.anything(),
-      expect.anything(),
-      expect.anything()
-    );
+    // As above, the server may not have handled the connection yet.
+    await vi.waitFor(() => {
+      expect(listPodsMock).toHaveBeenCalledWith('minikube', 'default');
+      expect(mockPortForwardFn).toHaveBeenLastCalledWith(
+        'default',
+        'web-deploy-new-hash',
+        [8080],
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
+      );
+    });
     expect(manager.listActive()[0].podName).toBe('web-deploy-new-hash');
   });
 });
