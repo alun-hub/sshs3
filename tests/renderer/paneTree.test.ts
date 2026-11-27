@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { countOtherSessionPanes, createLeaf, shouldHoistLocalPerf, updateSplitWeights } from '../../src/renderer/src/lib/paneTree';
+import {
+  closePane,
+  countOtherSessionPanes,
+  createLeaf,
+  findLeaf,
+  paneSftpConfig,
+  shouldHoistLocalPerf,
+  splitPane,
+  splitSourceConfig,
+  updateLeaf,
+  updateSplitWeights,
+} from '../../src/renderer/src/lib/paneTree';
 import type { PaneSplit } from '../../src/shared/types/session';
 
 describe('updateSplitWeights', () => {
@@ -87,5 +98,64 @@ describe('shouldHoistLocalPerf', () => {
 
   it('does not hoist for a single pane', () => {
     expect(shouldHoistLocalPerf(createLeaf('a', { local: true }))).toBe(false);
+  });
+});
+
+describe('split source connection', () => {
+  const ssh = { id: 'p1', name: 'web', host: 'h', username: 'u', authType: 'agent' } as never;
+  const connected = createLeaf('a', { config: ssh });
+
+  it('offers the SSH connection of the pane that was split', () => {
+    const { tree, newPaneId } = splitPane(connected, 'a', 'row', 't');
+    expect(findLeaf(tree, newPaneId)?.splitFromPaneId).toBe('a');
+    expect(splitSourceConfig(tree, newPaneId)).toBe(ssh);
+  });
+
+  it('passes the source on when a still empty pane is split again', () => {
+    const first = splitPane(connected, 'a', 'row', 't');
+    const second = splitPane(first.tree, first.newPaneId, 'column', 't');
+    expect(splitSourceConfig(second.tree, second.newPaneId)).toBe(ssh);
+  });
+
+  it('offers nothing after splitting a local or empty pane, and adds no key', () => {
+    for (const source of [createLeaf('a', { local: true }), createLeaf('a')]) {
+      const { tree, newPaneId } = splitPane(source, 'a', 'row', 't');
+      expect(findLeaf(tree, newPaneId)).toEqual({ type: 'leaf', id: newPaneId });
+      expect(splitSourceConfig(tree, newPaneId)).toBeUndefined();
+    }
+  });
+
+  it('offers nothing once the source is closed or no longer runs SSH', () => {
+    const { tree, newPaneId } = splitPane(connected, 'a', 'row', 't');
+    expect(splitSourceConfig(closePane(tree, 'a')!, newPaneId)).toBeUndefined();
+    const local = updateLeaf(tree, 'a', (l) => ({ ...l, config: undefined, local: true }));
+    expect(splitSourceConfig(local, newPaneId)).toBeUndefined();
+  });
+
+  it('offers nothing once the pane has a session of its own', () => {
+    const { tree, newPaneId } = splitPane(connected, 'a', 'row', 't');
+    const used = updateLeaf(tree, newPaneId, (l) => ({ ...l, local: true }));
+    expect(splitSourceConfig(used, newPaneId)).toBeUndefined();
+  });
+});
+
+describe('paneSftpConfig', () => {
+  const ssh = { id: 'p1', host: 'h' } as never;
+  const shell = { id: 'p2', host: 'i-0123456789abcdef0', ssm: { enabled: true, mode: 'shell' } } as never;
+  const tree: PaneSplit = {
+    type: 'split',
+    id: 's',
+    orientation: 'row',
+    children: [createLeaf('a', { config: ssh }), createLeaf('b', { local: true }), createLeaf('c', { config: shell })],
+  };
+
+  it('takes the active pane, or the first one when none is active', () => {
+    expect(paneSftpConfig(tree, 'a')).toBe(ssh);
+    expect(paneSftpConfig(tree, undefined)).toBe(ssh);
+  });
+
+  it('has nothing for a local pane or a Session Manager shell', () => {
+    expect(paneSftpConfig(tree, 'b')).toBeUndefined();
+    expect(paneSftpConfig(tree, 'c')).toBeUndefined();
   });
 });

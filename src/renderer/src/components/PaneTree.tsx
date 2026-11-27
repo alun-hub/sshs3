@@ -3,13 +3,15 @@ import { createPortal } from 'react-dom';
 import { Columns2, Maximize2, Minimize2, RefreshCw, Rows2, X } from 'lucide-react';
 import { TerminalView } from './TerminalView';
 import { K8sLogView } from './K8sLogView';
-import { collectLeaves, findLeaf } from '../lib/paneTree';
+import { collectLeaves, findLeaf, splitSourceConfig } from '../lib/paneTree';
 import { getShortcutKeys } from '../lib/shortcuts';
 import type { AppSettings } from '@shared/types/settings';
 import { DEFAULT_PERF_ITEMS } from '@shared/types/perf';
 import type { LocalShellType, SSHConnectionConfig } from '@shared/types/ssh';
 import type { PaneLeaf, PaneNode, PaneOrientation } from '@shared/types/session';
 import { UnconnectedPanePlaceholder } from './UnconnectedPanePlaceholder';
+import { SftpButton } from './SftpButton';
+import { isSsmShellProfile } from '@shared/ssm';
 import { SplitDivider } from './ui/SplitDivider';
 
 export interface PaneTreeViewProps {
@@ -33,6 +35,10 @@ export interface PaneTreeViewProps {
   onTitleChange?: (paneId: string, title: string) => void;
   onOpenRemotePath?: (config: SSHConnectionConfig, path: string) => void;
   onOpenLocalPath?: (path: string) => void;
+  /** Connects an empty pane, used for the connection of the pane it was split from. */
+  onConnectPane?: (paneId: string, config: SSHConnectionConfig) => void;
+  /** Opens SFTP for an SSH pane's server; without it the pane header has no SFTP button. */
+  onOpenSftp?: (config: SSHConnectionConfig) => void;
   /** Remote directory to `cd` into once this specific pane's shell prompt appears. */
   initialCwdPaneId?: string;
   initialCwd?: string;
@@ -167,7 +173,20 @@ const PaneTreeLayout: React.FC<PaneTreeLayoutProps> = (props) => {
             })()}
           </span>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-0.5">
+          {node.config && props.onOpenSftp && !isSsmShellProfile(node.config) && (
+            <>
+              <SftpButton
+                variant="icon"
+                authType={node.config.authType}
+                ssm={node.config.ssm}
+                shortcut={getShortcutKeys('openPaneSftp', props.settings.shortcuts)}
+                testId={`sftp-pane-${node.id}`}
+                onOpen={() => node.config && props.onOpenSftp?.(node.config)}
+              />
+              <span aria-hidden="true" className="mx-0.5 h-3 w-px bg-divider" />
+            </>
+          )}
           <button
             aria-label="Change connection"
             type="button"
@@ -247,6 +266,8 @@ const PaneLeafContent: React.FC<{
   onSelectPane: (paneId: string) => void;
   onNavigateToTabBar?: () => void;
   hoistLocalPerf?: boolean;
+  suggestedConfig?: SSHConnectionConfig;
+  onConnectPane?: (paneId: string, config: SSHConnectionConfig) => void;
 }> = ({
   leaf,
   isActive,
@@ -265,6 +286,8 @@ const PaneLeafContent: React.FC<{
   onSelectPane,
   onNavigateToTabBar,
   hoistLocalPerf,
+  suggestedConfig,
+  onConnectPane,
 }) => {
   const isSole = totalPanes === 1;
   const perfEnabled = settings.perfMetricsEnabled === true;
@@ -375,6 +398,11 @@ const PaneLeafContent: React.FC<{
         onChangeConnection={onChangeConnection}
         onOpenLocalTerminal={onOpenLocalTerminal}
         onNavigateToTabBar={onNavigateToTabBar}
+        suggestion={
+          suggestedConfig && onConnectPane
+            ? { name: suggestedConfig.name, onConnect: () => onConnectPane(leaf.id, suggestedConfig) }
+            : undefined
+        }
       />
     );
   }
@@ -460,6 +488,8 @@ export const PaneTreeView: React.FC<PaneTreeViewProps> = (props) => {
             onSelectPane={props.onSelectPane}
             onNavigateToTabBar={props.onNavigateToTabBar}
             hoistLocalPerf={props.hoistLocalPerf}
+            suggestedConfig={splitSourceConfig(props.node, leaf.id)}
+            onConnectPane={props.onConnectPane}
           />,
           container,
           leaf.id

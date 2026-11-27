@@ -23,12 +23,32 @@ function withProxyPassword<T extends { proxy?: ProxyConfig }>(config: T, saved: 
   return { ...config, proxy: { ...config.proxy, password: saved.proxy.password } };
 }
 
+/** True when two SSH configs name the same server account: host, port and user. */
+function sameSshAccount(a: SSHConnectionConfig, b: SSHConnectionConfig): boolean {
+  return a.host === b.host && (a.port ?? 22) === (b.port ?? 22) && a.username === b.username;
+}
+
+/**
+ * True when the saved profile a connection came from now points somewhere else: another host, port, user or
+ * jump host. The file manager keeps one connection per profile id, so opening SFTP with the outdated config
+ * would leave the old server behind under that profile. A quick connection and a Team Vault profile have no
+ * personal profile to compare with.
+ */
+export function profileTargetChanged(config: SSHConnectionConfig, profiles: SSHConnectionConfig[] | undefined): boolean {
+  if (config.teamVaultProfileRef) return false;
+  const saved = profiles?.find((p) => p.id === config.id);
+  if (!saved || saved.deletedAt) return false;
+  return !(
+    sameSshAccount(saved, config) &&
+    (saved.proxyJump ?? '') === (config.proxyJump ?? '') &&
+    (saved.proxyJumpProfileId ?? '') === (config.proxyJumpProfileId ?? '')
+  );
+}
+
 export function withSavedSshSecrets(config: SSHConnectionConfig, profiles: SSHConnectionConfig[] | undefined): SSHConnectionConfig {
   const saved = profiles?.find((p) => p.id === config.id);
   if (!saved || saved.deletedAt || saved.authType !== config.authType) return config;
-  const sameTarget =
-    saved.host === config.host && (saved.port ?? 22) === (config.port ?? 22) && saved.username === config.username;
-  if (!sameTarget) return config;
+  if (!sameSshAccount(saved, config)) return config;
   let result = config;
   if (!result.password && saved.password) result = { ...result, password: saved.password };
   if (!result.passphrase && saved.passphrase) result = { ...result, passphrase: saved.passphrase };

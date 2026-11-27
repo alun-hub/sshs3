@@ -561,6 +561,56 @@ describe('App Component', () => {
     expect(screen.getAllByRole('tab').length).toBe(1);
   });
 
+  const savedSshSession = {
+    tabs: [
+      {
+        id: 'term-1',
+        type: 'terminal',
+        title: 'web-prod',
+        paneTree: {
+          type: 'leaf',
+          id: 'ssh-pane',
+          config: { id: 'p1', name: 'web-prod', host: 'prod.example.com', username: 'u', authType: 'agent' },
+        },
+      },
+    ],
+    activeTabId: 'term-1',
+  };
+
+  it('connects a split of an SSH pane to the same server from the offered button', async () => {
+    (window.multissh.sessionGet as any).mockResolvedValue(savedSshSession);
+    render(<App />);
+    await screen.findByTestId('terminal-pane-ssh-pane');
+    await waitFor(() => expect(window.multissh.terminalCreate).toHaveBeenCalledTimes(1));
+
+    fireEvent.keyDown(window, { key: 'D', ctrlKey: true, shiftKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect to web-prod' }));
+
+    await waitFor(() => expect(window.multissh.terminalCreate).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(window.multissh.terminalCreate).mock.calls[1][0]).toMatchObject({
+      config: { host: 'prod.example.com', username: 'u' },
+    });
+    expect(screen.queryByRole('button', { name: 'Connect to web-prod' })).not.toBeInTheDocument();
+  });
+
+  it('opens SFTP for the active SSH pane with Ctrl+Alt+Shift+S, not behind a dialog or from an empty pane', async () => {
+    (window.multissh.sessionGet as any).mockResolvedValue(savedSshSession);
+    render(<App />);
+    await screen.findByTestId('terminal-pane-ssh-pane');
+    const press = () => fireEvent.keyDown(window, { key: 'S', code: 'KeyS', ctrlKey: true, altKey: true, shiftKey: true });
+
+    // An empty pane has no server: the key stays free
+    fireEvent.keyDown(window, { key: 'D', ctrlKey: true, shiftKey: true });
+    expect(press()).toBe(true);
+    expect(screen.getAllByRole('tab')).toHaveLength(1);
+
+    // Back to the SSH pane
+    fireEvent.keyDown(window, { key: 'P', ctrlKey: true, shiftKey: true });
+    expect(press()).toBe(false);
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
+    expect(screen.getByText('web-prod (SFTP)')).toBeInTheDocument();
+  });
+
   it('opens Settings on the Keyboard Shortcuts overview with Ctrl+Shift+H', async () => {
     render(<App />);
     await screen.findByTestId('tab-term-1');

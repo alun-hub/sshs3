@@ -48,6 +48,18 @@ sshs3 implements non-destructive recursive pane splitting modeled on KDE's **Kon
 | **Close Split Pane** | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd> | Closes the active pane (or type `exit`). Neighbors expand to fill space. |
 | **Close Active Tab** | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd> | Closes the entire workspace tab and terminates all splits in it. |
 
+### Same Server: New Terminal or SFTP
+
+| Action | How | Result |
+| :--- | :--- | :--- |
+| **Second terminal on the same server** | Split an SSH pane, then press <kbd>Enter</kbd> (**Connect to** *name*, selected by default) | The new pane connects with the same connection. **Select SSH Connection** picks another one. |
+| **SFTP to the same server** | The **Open SFTP for this server** button in the pane header, or <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> for the active pane | Opens the file manager in a new tab. The terminal keeps running. |
+
+> [!NOTE]
+> - Both are new logins, so a smartcard or security key may ask for its PIN or a touch again, and a password typed at the terminal prompt (not saved in the profile) is asked for again.
+> - Both use the pane's saved connection, also after you have continued to another host with `ssh` inside the terminal.
+> - A Session Manager shell pane has no SFTP button. If the profile's host, port, user or jump host changed after the terminal connected, SFTP is not opened from the pane: open it from **Saved Connections**.
+
 ### Resizing Splits & Unsplit (Close Others)
 - **Resizable Dividers:** Drag the divider line between any two split panes to resize them horizontally or vertically. **Double-click the divider** to immediately reset to an equal 50/50 split.
 - **Close Other Panes (Unsplit):** Click the unsplit icon on the pane's mini-toolbar or click **Close others** in the *Split view* bar to restore a single-pane layout keeping only the focused pane. If the panes being closed hold active sessions, sshs3 explicitly prompts for confirmation first because their running sessions will terminate. To temporarily focus on one pane without ending other sessions, use **Zoom** (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>).

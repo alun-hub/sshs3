@@ -176,6 +176,7 @@ const AppContent: React.FC = () => {
     handleOpenK8sTerminalAt,
     handleBrowseK8sFiles,
     handleConnectSFTP,
+    handleOpenPaneSftp,
     handleConnectS3,
     handleQuickStartTerminal,
     handleConnectRecentSSH,
@@ -393,6 +394,7 @@ const AppContent: React.FC = () => {
     handleClosePane,
     handleToggleZoom,
     handleSelectPane,
+    handleOpenPaneSftp,
     openShortcutsHelp,
     focusActiveTabContent,
   });
@@ -589,6 +591,8 @@ const AppContent: React.FC = () => {
                         onTitleChange={(paneId, title) => handlePaneTitleChange(tab.id, paneId, title)}
                         onOpenRemotePath={handleOpenRemotePath}
                         onOpenLocalPath={handleOpenLocalPath}
+                        onConnectPane={(paneId, config) => handleConnectTerminal({ tabId: tab.id, paneId }, config)}
+                        onOpenSftp={(config) => void handleOpenPaneSftp(config)}
                         onNavigateToTabBar={() => setTabBarFocused(true)}
                         hoistLocalPerf={hoistLocalPerf}
                         initialCwdPaneId={rootLeaf?.id}

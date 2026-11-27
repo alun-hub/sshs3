@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { withSavedS3Secrets, withSavedSshSecrets } from '../../src/renderer/src/lib/savedSecrets';
+import { profileTargetChanged, withSavedS3Secrets, withSavedSshSecrets } from '../../src/renderer/src/lib/savedSecrets';
 import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 import type { S3Config } from '../../src/shared/types/storage';
 
@@ -73,5 +73,31 @@ describe('withSavedS3Secrets', () => {
     expect(withSavedS3Secrets(s3({ secretAccessKey: 'own' }), [s3({ secretAccessKey: 'saved' })]).secretAccessKey).toBe('own'); // pragma: allowlist secret
     const unknown = s3({ id: 'other' });
     expect(withSavedS3Secrets(unknown, [s3({ secretAccessKey: 'saved' })])).toBe(unknown); // pragma: allowlist secret
+  });
+});
+
+describe('profileTargetChanged', () => {
+  const saved = { id: 'p1', name: 'web', host: 'h', username: 'u', authType: 'agent' } as SSHConnectionConfig;
+
+  it('is false for the same target, also with the default port spelled out', () => {
+    expect(profileTargetChanged({ ...saved, port: 22, name: 'renamed' }, [saved])).toBe(false);
+  });
+
+  it.each([
+    ['host', { host: 'other' }],
+    ['port', { port: 2222 }],
+    ['username', { username: 'other' }],
+    ['jump host', { proxyJump: 'bastion' }],
+    ['jump host profile', { proxyJumpProfileId: 'p2' }],
+  ])('is true when the %s differs', (_label, change) => {
+    expect(profileTargetChanged({ ...saved, ...change }, [saved])).toBe(true);
+  });
+
+  it('is false without a personal profile to compare with', () => {
+    const changed = { ...saved, host: 'other' };
+    expect(profileTargetChanged(changed, undefined)).toBe(false);
+    expect(profileTargetChanged(changed, [])).toBe(false);
+    expect(profileTargetChanged(changed, [{ ...saved, deletedAt: '2026-11-27T00:00:00Z' }])).toBe(false);
+    expect(profileTargetChanged({ ...changed, teamVaultProfileRef: { vaultId: 'v', profileId: 'p1' } }, [saved])).toBe(false);
   });
 });

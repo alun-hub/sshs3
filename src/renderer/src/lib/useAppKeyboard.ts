@@ -4,8 +4,9 @@ import type { TabType } from '../components/TabBar';
 import { FILEMANAGER_FOCUS_SIDE_EVENT } from '../components/FileManager/types';
 import { DEFAULT_SETTINGS, DEFAULT_SHORTCUTS, type AppSettings } from '@shared/types/settings';
 import type { PaneOrientation } from '@shared/types/session';
+import type { SSHConnectionConfig } from '@shared/types/ssh';
 import { tabForNumber, type AppTab } from './tabs';
-import { collectLeafIds } from './paneTree';
+import { collectLeafIds, paneSftpConfig } from './paneTree';
 import { comboFromKeyboardEvent } from './shortcuts';
 import { isGlobalActionId, runGlobalAction } from './globalActions';
 import { OPEN_CLIPBOARD_HISTORY_EVENT } from './clipboardHistoryEvents';
@@ -40,6 +41,7 @@ export interface AppKeyboardContext {
   handleClosePane: (tabId: string, paneId: string) => void;
   handleToggleZoom: (tabId: string, paneId?: string) => void;
   handleSelectPane: (tabId: string, paneId: string) => void;
+  handleOpenPaneSftp: (config: SSHConnectionConfig) => Promise<void>;
   /** Opens Settings on the keyboard shortcuts overview. */
   openShortcutsHelp: () => void;
   focusActiveTabContent: () => void;
@@ -70,6 +72,7 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     handleClosePane,
     handleToggleZoom,
     handleSelectPane,
+    handleOpenPaneSftp,
     openShortcutsHelp,
     focusActiveTabContent,
   } = ctx;
@@ -187,6 +190,15 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
         }
         // Switched off in Settings: leave the key free instead of swallowing it.
         if (isMatch && actionId === 'globalSearch' && settings.enableGlobalSearch === false) continue;
+        // Nothing to open (no SSH pane), or a dialog or menu is in front: leave the key free.
+        let sftpConfig: SSHConnectionConfig | undefined;
+        if (isMatch && actionId === 'openPaneSftp') {
+          const tab = tabs.find((t) => t.id === activeTabId);
+          if (tab?.type === 'terminal' && tab.paneTree && !getTopmostOverlay()) {
+            sftpConfig = paneSftpConfig(tab.paneTree, tab.activePaneId);
+          }
+          if (!sftpConfig) continue;
+        }
 
         if (isMatch) {
           e.preventDefault();
@@ -390,6 +402,9 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
                 ?.focus();
               break;
             }
+            case 'openPaneSftp':
+              if (sftpConfig) void handleOpenPaneSftp(sftpConfig);
+              break;
             case 'clipboardHistory':
               window.dispatchEvent(new CustomEvent(OPEN_CLIPBOARD_HISTORY_EVENT));
               break;
@@ -453,6 +468,7 @@ export function useAppKeyboard(ctx: AppKeyboardContext): void {
     handleClosePane,
     handleToggleZoom,
     handleSelectPane,
+    handleOpenPaneSftp,
     openShortcutsHelp,
     focusActiveTabContent,
   ]);

@@ -64,6 +64,9 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   { id: 'snippets', name: 'Snippets', defaultKeys: 'Ctrl+Shift+L', category: 'Terminal' },
   { id: 'searchInFiles', name: 'Search in Files', defaultKeys: 'Ctrl+Shift+K', category: 'General' },
   { id: 'globalSearch', name: 'Search Profiles, Tabs and Hosts', defaultKeys: 'Ctrl+Shift+G', category: 'General' },
+  // Keep new definitions last: the first action bound to a combo wins, so a binding the user already made
+  // on the same keys is not taken over by a new default.
+  { id: 'openPaneSftp', name: 'Open SFTP for Active Pane', defaultKeys: 'Ctrl+Alt+Shift+S', category: 'Terminal' },
 ];
 
 export const DEFAULT_SHORTCUTS: Record<string, string> = SHORTCUT_DEFINITIONS.reduce(

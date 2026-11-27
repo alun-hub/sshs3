@@ -297,3 +297,37 @@ describe('useTabActions handleNewTab file manager', () => {
     expect(create(true).promptRemote).toBe(true);
   });
 });
+
+describe('useTabActions handleOpenPaneSftp', () => {
+  const config = { id: 'p1', name: 'Prod', host: 'prod.example.com', username: 'u', authType: 'agent' } as any;
+  const tabs = [{ id: 'a', type: 'terminal', title: 'a' } as AppTab];
+
+  afterEach(() => {
+    delete (window as any).multissh;
+  });
+
+  it('opens a file manager tab for the pane connection', async () => {
+    (window as any).multissh = { profilesGet: vi.fn().mockResolvedValue({ ssh: [config], s3: [] }) };
+    const { result, setTabs } = setup(tabs);
+    await act(async () => {
+      await result.current.handleOpenPaneSftp(config);
+    });
+    const updater = setTabs.mock.calls[0][0] as (prev: AppTab[]) => AppTab[];
+    expect(updater([])[0]).toMatchObject({ type: 'filemanager', title: 'Prod (SFTP)', initialSSHConfig: config });
+  });
+
+  it('opens nothing when the saved profile now points elsewhere, and says why', async () => {
+    (window as any).multissh = {
+      profilesGet: vi.fn().mockResolvedValue({ ssh: [{ ...config, host: 'new.example.com' }], s3: [] }),
+    };
+    const notify = vi.fn();
+    const { result, setTabs } = setup(tabs, vi.fn(), notify);
+    await act(async () => {
+      await result.current.handleOpenPaneSftp(config);
+    });
+    expect(setTabs).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(
+      'This profile has changed since the terminal connected. Open SFTP from Saved Connections.'
+    );
+  });
+});

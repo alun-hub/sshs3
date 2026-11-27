@@ -14,6 +14,7 @@ import { closePane, countLeaves, createLeaf, findLeaf, getFirstLeafId, splitPane
 import { extractHostnameFromTitle, isSameHost } from './terminalTitle';
 import type { OpenEditorTabDetail } from './editorTabEvents';
 import { statIfExists } from './storageLookup';
+import { profileTargetChanged } from './savedSecrets';
 import type { ConfirmOptions } from '../components/ConfirmDialog';
 
 export interface TabActionsContext {
@@ -219,6 +220,7 @@ export function useTabActions(ctx: TabActionsContext) {
           shellType: undefined,
           baseHost: config.host,
           dynamicHost: undefined,
+          splitFromPaneId: undefined,
         }));
         const leavesCount = countLeaves(paneTree);
         const isDefaultTitle = !t.title || /^Terminal\s+\d+$/.test(t.title);
@@ -245,6 +247,7 @@ export function useTabActions(ctx: TabActionsContext) {
           k8sTarget,
           baseHost: `${k8sTarget.podName}/${k8sTarget.containerName}`,
           dynamicHost: undefined,
+          splitFromPaneId: undefined,
         }));
         const leavesCount = countLeaves(paneTree);
         const isDefaultTitle = !t.title || /^Terminal\s+\d+$/.test(t.title);
@@ -354,6 +357,7 @@ export function useTabActions(ctx: TabActionsContext) {
             wslDistro,
             baseHost,
             dynamicHost: undefined,
+            splitFromPaneId: undefined,
           }));
           const defaultTitle =
             shellType === 'wsl'
@@ -562,6 +566,19 @@ export function useTabActions(ctx: TabActionsContext) {
     setConnectTarget(null);
   }, [setActiveTabId, setConnectTarget, setProfilesModalOpen, setTabs]);
 
+  /** SFTP from a terminal pane, whose config may be older than the saved profile it came from. */
+  const handleOpenPaneSftp = useCallback(
+    async (config: SSHConnectionConfig) => {
+      const profiles = await window.multissh.profilesGet?.().catch(() => undefined);
+      if (profileTargetChanged(config, profiles?.ssh)) {
+        notify?.('This profile has changed since the terminal connected. Open SFTP from Saved Connections.');
+        return;
+      }
+      handleConnectSFTP(config);
+    },
+    [handleConnectSFTP, notify]
+  );
+
   const handleConnectS3 = useCallback((config: S3Config) => {
     const newId = `fm-${Date.now()}`;
     const newTab: AppTab = {
@@ -650,6 +667,7 @@ export function useTabActions(ctx: TabActionsContext) {
     handleOpenK8sTerminalAt,
     handleBrowseK8sFiles,
     handleConnectSFTP,
+    handleOpenPaneSftp,
     handleConnectS3,
     handleQuickStartTerminal,
     handleConnectRecentSSH,
