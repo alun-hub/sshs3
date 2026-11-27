@@ -101,13 +101,16 @@ describe('K8sPortForwardManager', () => {
       client.on('error', reject);
     });
 
-    expect(mockPortForwardFn).toHaveBeenCalledWith(
-      'default',
-      'web-pod',
-      [8080],
-      expect.anything(),
-      expect.anything(),
-      expect.anything()
+    // The client can see 'connect' before the server has run its connection handler (it does on macOS).
+    await vi.waitFor(() =>
+      expect(mockPortForwardFn).toHaveBeenCalledWith(
+        'default',
+        'web-pod',
+        [8080],
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
+      )
     );
   });
 
