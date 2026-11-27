@@ -51,9 +51,8 @@ export interface GitCloneRequest {
   targetDirectory: string;
   directoryName?: string;
   depth?: number;
-  /** Om satt och inte 'local': körs över SFTP/SSH */
+  /** When set and not 'local', git runs on the server of that open SFTP connection. */
   providerId?: string;
-  sftpConfig?: SSHConnectionConfig;
 }
 
 export interface GitOperationResult {

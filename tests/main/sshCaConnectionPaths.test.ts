@@ -11,6 +11,7 @@ vi.mock('electron', () => {
 import { registerStorageHandlers, type StorageHost } from '../../src/main/ipc/storageHandlers';
 import { registerGitHandlers, type GitHost } from '../../src/main/ipc/gitHandlers';
 import { RemoteGitService } from '../../src/main/git/RemoteGitService';
+import { StorageRegistry } from '../../src/main/storage/StorageRegistry';
 import { SmartcardCoordinator, type SmartcardDeps } from '../../src/main/smartcard/SmartcardCoordinator';
 import { IPC_CHANNELS, type StorageConnectConfig } from '../../src/shared/types/ipc';
 import { toSftpConfig } from '../../src/shared/toSftpConfig';
@@ -71,7 +72,7 @@ describe('SSH CA profiles in the file manager', () => {
 describe('SSH CA profiles in Git over SSH', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  function gitHandlers(saved: SSHConnectionConfig) {
+  function gitHandlers(saved: SSHConnectionConfig, extra: object = {}) {
     const handlers = new Map<string, Handler>();
     registerGitHandlers({
       registerHandler: (channel: string, h: Handler) => handlers.set(channel, h),
@@ -80,6 +81,8 @@ describe('SSH CA profiles in Git over SSH', () => {
       restoreSavedSecrets: async <T,>(c: T) => c,
       resolveProxyJumpConfig: async <T,>(c: T) => c,
       policy: { policy: {} },
+      makePresenceNotifier: () => ({ onPresenceRequested: vi.fn(), onPresenceCleared: vi.fn() }),
+      ...extra,
     } as unknown as GitHost);
     return handlers;
   }
@@ -91,10 +94,14 @@ describe('SSH CA profiles in Git over SSH', () => {
     expect(pull).toHaveBeenCalledWith('/srv/repo', 'sftp-p1', withCa);
   });
 
-  it('clones with the certificate', async () => {
+  it('clones over the pane connection, which already has the certificate', async () => {
     const clone = vi.spyOn(RemoteGitService, 'clone').mockResolvedValue({ success: true });
-    await gitHandlers(profile()).get(IPC_CHANNELS.GIT_CLONE)!({}, { url: 'u', targetDirectory: '/srv', sftpConfig: profile() });
-    expect(clone).toHaveBeenCalledWith(expect.objectContaining({ sftpConfig: withCa }));
+    // Creating the provider opens no connection.
+    const storageRegistry = new StorageRegistry();
+    await storageRegistry.getOrCreate({ id: 'sftp-p1', name: 'CA', type: 'sftp', sftpConfig: await connectInFileManager(profile()) });
+    await gitHandlers(profile(), { storageRegistry }).get(IPC_CHANNELS.GIT_CLONE)!(
+      {}, { url: 'u', targetDirectory: '/srv', providerId: 'sftp-p1' });
+    expect(clone).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ config: withCa }));
   });
 
   it('tests remote access with the certificate', async () => {

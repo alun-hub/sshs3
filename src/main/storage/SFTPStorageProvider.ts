@@ -548,6 +548,11 @@ export class SFTPStorageProvider extends BaseStorageProvider implements IStorage
     });
   }
 
+  /** A copy of the config this connection was made with, for another ssh command to the same server. Main process only. */
+  public getConnectionConfig(): SFTPConfig {
+    return { ...this.config };
+  }
+
   public async exec(cmd: string): Promise<{ stdout: Buffer; stderr: string }> {
     await this.ensureConnected();
     if (typeof this.client.exec === 'function') {
