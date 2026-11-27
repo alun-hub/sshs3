@@ -242,7 +242,7 @@ Click the Shield icon in the top toolbar, or focus it and press <kbd>Enter</kbd>
 
 ![A connection profile that uses the active SSH CA session](/img/docs/ssh-ca-profile.png)
 
-Set **Authentication** to **SSH Agent** and tick **Use active SSH Certificate Authority session**. Terminals, SFTP and file-manager connections (including **Pull** in a Git repository on the server), Directory Sync, SSH tunnels and *Test connection* then use the active certificate. When no certificate is active, sign in first; the profile does not trigger a sign-in by itself.
+Set **Authentication** to **SSH Agent** and tick **Use active SSH Certificate Authority session**. Terminals, SFTP and file-manager connections (including Git **Pull** and **Clone** on the server), Directory Sync, SSH tunnels and *Test connection* then use the active certificate. When no certificate is active, sign in first; the profile does not trigger a sign-in by itself.
 
 ### Renewal
 

@@ -1,4 +1,4 @@
-// "Git Clone to here" in an SFTP pane: git runs on that pane's server, over the connection main already has.
+// Git in an SFTP pane (clone and pull): git runs on that pane's server, over the connection main already has.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const runSshCommand = vi.hoisted(() => vi.fn());
@@ -36,7 +36,9 @@ async function setup() {
   registerGitHandlers(bridge as unknown as GitHost);
   const clone = (request: Partial<GitCloneRequest> & Record<string, unknown>) =>
     handlers.get(IPC_CHANNELS.GIT_CLONE)!({}, { url: URL, targetDirectory: '/srv/work', providerId: 'sftp-p1', ...request }) as Promise<GitOperationResult>;
-  return { bridge, provider, clone };
+  const pull = (folder: string, providerId = 'sftp-p1') =>
+    handlers.get(IPC_CHANNELS.GIT_PULL)!({}, folder, providerId) as Promise<GitOperationResult>;
+  return { bridge, provider, clone, pull };
 }
 
 describe('Git clone in an SFTP pane', () => {
@@ -92,6 +94,44 @@ describe('Git clone in an SFTP pane', () => {
   it('still rejects an empty folder', async () => {
     const { clone } = await setup();
     await expect(clone({ targetDirectory: ' ' })).resolves.toEqual({ success: false, error: 'Target directory is required' });
+    expect(runSshCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe('Git pull in an SFTP pane', () => {
+  beforeEach(() => {
+    runSshCommand.mockReset();
+    runSshCommand.mockResolvedValue({ code: 0, stdout: 'Already up to date.', stderr: '' });
+  });
+
+  // No saved profile is involved, so quick and Team Vault connections work like saved ones.
+  it('runs git on the server over the pane connection, with its prompts', async () => {
+    const { pull, bridge } = await setup();
+    await expect(pull('/srv/repo')).resolves.toMatchObject({ success: true, output: 'Already up to date.' });
+    const [config, command, prompts] = runSshCommand.mock.calls[0];
+    expect(config).toMatchObject({ host: 'server.example.com', port: 2222, agentPath: '/run/agent.sock' });
+    expect(command).toMatch(/^cd -- '\/srv\/repo' && git .* pull$/);
+    await (prompts as PromptHandlers).pinPromptHandler!("Enter PIN for 'card': ");
+    expect(bridge.promptForPinDirect).toHaveBeenCalled();
+    expect(bridge.makePresenceNotifier).toHaveBeenCalledWith(undefined, 'Touch your security key to pull on Server');
+  });
+
+  it('resolves a home-relative folder before quoting it', async () => {
+    const { pull, provider } = await setup();
+    vi.spyOn(provider, 'getHomeDir').mockResolvedValue('/home/alun');
+    await pull('~/repo');
+    expect(runSshCommand.mock.calls[0][1]).toContain("cd -- '/home/alun/repo' && ");
+  });
+
+  it('refuses a connection that is not open', async () => {
+    const { pull } = await setup();
+    await expect(pull('/srv/repo', 'sftp-gone')).resolves.toMatchObject({ success: false, error: expect.stringContaining('open SFTP connection') });
+    expect(runSshCommand).not.toHaveBeenCalled();
+  });
+
+  it('still rejects an empty folder', async () => {
+    const { pull } = await setup();
+    await expect(pull(' ')).resolves.toEqual({ success: false, error: 'Directory path is required' });
     expect(runSshCommand).not.toHaveBeenCalled();
   });
 });

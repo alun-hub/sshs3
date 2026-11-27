@@ -2206,13 +2206,14 @@ describe('IpcBridge', () => {
   });
 
   describe('Git pull handler', () => {
-    it('resolves the SSH connection of a remote pane from the saved profile', async () => {
+    it("uses the connection of the remote pane's open provider", async () => {
       const { RemoteGitService } = await import('../../src/main/git/RemoteGitService');
+      const { SFTPStorageProvider } = await import('../../src/main/storage/SFTPStorageProvider');
       const pullSpy = vi.spyOn(RemoteGitService, 'pull').mockResolvedValue({ success: true, output: 'ok' });
-      mockProfileStore.getProfiles.mockResolvedValue({
-        ssh: [{ id: 'p1', name: 'Prod', host: 'prod.example.com', username: 'deploy', authType: 'privateKey' }],
-        s3: [],
-      });
+      // Creating the provider opens no connection.
+      mockStorageRegistry.get.mockReturnValue(
+        new SFTPStorageProvider({ id: 'sftp-p1', host: 'prod.example.com', port: 22, username: 'deploy', authType: 'privateKey' })
+      );
 
       const res = await mockIpc.invoke(IPC_CHANNELS.GIT_PULL, '/srv/app', 'sftp-p1');
 
@@ -2220,20 +2221,19 @@ describe('IpcBridge', () => {
       expect(pullSpy).toHaveBeenCalledWith(
         '/srv/app',
         'sftp-p1',
-        expect.objectContaining({ id: 'p1', host: 'prod.example.com', username: 'deploy' })
+        expect.objectContaining({ config: expect.objectContaining({ host: 'prod.example.com', username: 'deploy' }) })
       );
       pullSpy.mockRestore();
     });
 
-    it('passes no connection for local panes or unknown providers', async () => {
+    it('passes no connection for local panes and refuses unknown providers', async () => {
       const { RemoteGitService } = await import('../../src/main/git/RemoteGitService');
       const pullSpy = vi.spyOn(RemoteGitService, 'pull').mockResolvedValue({ success: true });
 
       await mockIpc.invoke(IPC_CHANNELS.GIT_PULL, '/home/me/repo', 'local');
       await mockIpc.invoke(IPC_CHANNELS.GIT_PULL, '/srv/app', 'sftp-missing');
 
-      expect(pullSpy).toHaveBeenNthCalledWith(1, '/home/me/repo', 'local', undefined);
-      expect(pullSpy).toHaveBeenNthCalledWith(2, '/srv/app', 'sftp-missing', undefined);
+      expect(pullSpy).toHaveBeenCalledExactlyOnceWith('/home/me/repo', 'local');
       pullSpy.mockRestore();
     });
   });
