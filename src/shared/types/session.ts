@@ -23,6 +23,8 @@ export interface PaneLeaf {
   baseHost?: string;
   /** Dynamically updated hostname if user SSH'd further to another host. */
   dynamicHost?: string;
+  /** Set on a pane created by a split: the pane whose SSH connection the empty pane offers to repeat. Only an id. */
+  splitFromPaneId?: string;
 }
 
 export interface PaneSplit {

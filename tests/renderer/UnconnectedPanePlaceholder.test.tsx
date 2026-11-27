@@ -128,3 +128,38 @@ describe('UnconnectedPanePlaceholder Component', () => {
     expect(onOpenLocalTerminal).toHaveBeenCalledWith('leaf-1', undefined, undefined);
   });
 });
+
+describe('UnconnectedPanePlaceholder split suggestion', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('offers the suggested connection first, focused, and keeps the connection dialog', () => {
+    const onConnect = vi.fn();
+    const onChangeConnection = vi.fn();
+    render(
+      <UnconnectedPanePlaceholder
+        leafId="leaf-2"
+        isSole={false}
+        isActive={true}
+        platform="linux"
+        onChangeConnection={onChangeConnection}
+        onOpenLocalTerminal={vi.fn()}
+        suggestion={{ name: 'web-prod', onConnect }}
+      />
+    );
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+
+    const connect = screen.getByRole('button', { name: 'Connect to web-prod' });
+    expect(connect).toHaveFocus();
+    fireEvent.click(connect);
+    expect(onConnect).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId('select-ssh-connection-btn'));
+    expect(onChangeConnection).toHaveBeenCalledWith('leaf-2');
+  });
+});

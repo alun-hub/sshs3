@@ -1,4 +1,6 @@
 import type { PaneLeaf, PaneNode, PaneOrientation, PaneSplit } from '@shared/types/session';
+import type { SSHConnectionConfig } from '@shared/types/ssh';
+import { isSsmShellProfile } from '@shared/ssm';
 
 let paneCounter = 0;
 
@@ -24,11 +26,33 @@ export function findLeaf(node: PaneNode, id: string): PaneLeaf | null {
   return null;
 }
 
-/** Panes other than `exceptId` that hold a live or connectable session (not an empty placeholder). */
+/** True for a pane that holds a live or connectable session (not an empty placeholder). */
+function hasSession(leaf: PaneLeaf): boolean {
+  return Boolean(leaf.config || leaf.local || leaf.k8sTarget || leaf.k8sLogTarget);
+}
+
+/** Panes other than `exceptId` that hold a session. */
 export function countOtherSessionPanes(node: PaneNode, exceptId: string): number {
-  return collectLeaves(node).filter(
-    (leaf) => leaf.id !== exceptId && Boolean(leaf.config || leaf.local || leaf.k8sTarget || leaf.k8sLogTarget)
-  ).length;
+  return collectLeaves(node).filter((leaf) => leaf.id !== exceptId && hasSession(leaf)).length;
+}
+
+/**
+ * The connection an empty pane offers to repeat: the SSH connection the pane it was split from has now.
+ * Undefined once this pane has a session of its own, or when the source is gone or no longer runs SSH.
+ */
+export function splitSourceConfig(tree: PaneNode, paneId: string): SSHConnectionConfig | undefined {
+  const leaf = findLeaf(tree, paneId);
+  if (!leaf?.splitFromPaneId || hasSession(leaf)) return undefined;
+  return findLeaf(tree, leaf.splitFromPaneId)?.config;
+}
+
+/**
+ * The connection "Open SFTP for Active Pane" uses: that of the active pane (else the first), or undefined
+ * when it has nothing SFTP can open (no SSH connection, or a Session Manager shell).
+ */
+export function paneSftpConfig(tree: PaneNode, activePaneId: string | undefined): SSHConnectionConfig | undefined {
+  const leaf = findLeaf(tree, activePaneId ?? getFirstLeafId(tree));
+  return leaf?.config && !isSsmShellProfile(leaf.config) ? leaf.config : undefined;
 }
 
 /** True for a plain local-shell pane (the same precedence PaneLeafContent uses to pick the view). */
@@ -94,6 +118,8 @@ export function updateSplitWeights(node: PaneNode, splitId: string, weights: num
  * when the pane's parent split already has the same orientation the new leaf is inserted as a sibling
  * (no extra nesting); otherwise the existing leaf is wrapped in place inside a new split node together
  * with the new leaf. The existing leaf keeps its id, so its live TerminalView/session is never recreated.
+ * The new leaf remembers which pane's SSH connection it can repeat (see `splitSourceConfig`); splitting a
+ * still empty pane passes that pane's own source on.
  */
 export function splitPane(
   tree: PaneNode,
@@ -101,7 +127,9 @@ export function splitPane(
   orientation: PaneOrientation,
   idPrefix: string
 ): { tree: PaneNode; newPaneId: string } {
-  const newLeaf = createLeaf(genPaneId(idPrefix));
+  const source = findLeaf(tree, paneId);
+  const splitFromPaneId = source?.config ? source.id : source?.splitFromPaneId;
+  const newLeaf = createLeaf(genPaneId(idPrefix), splitFromPaneId ? { splitFromPaneId } : undefined);
 
   function recurse(node: PaneNode): PaneNode {
     if (node.type === 'leaf') {

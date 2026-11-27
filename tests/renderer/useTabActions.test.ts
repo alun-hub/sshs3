@@ -297,3 +297,55 @@ describe('useTabActions handleNewTab file manager', () => {
     expect(create(true).promptRemote).toBe(true);
   });
 });
+
+describe('useTabActions SFTP from a terminal', () => {
+  const config = { id: 'p1', name: 'Prod', host: 'prod.example.com', username: 'u', authType: 'agent' } as any;
+  const saved = { ...config, proxy: { type: 'socks5', host: 'proxy', port: 1080 } };
+  const tabs = [{ id: 'a', type: 'terminal', title: 'a' } as AppTab];
+
+  afterEach(() => {
+    delete (window as any).multissh;
+  });
+
+  const open = async (how: 'button' | 'path', profilesGet: () => Promise<unknown>) => {
+    (window as any).multissh = { profilesGet, storageStat: vi.fn().mockRejectedValue(new Error('not connected')) };
+    const notify = vi.fn();
+    const rendered = setup(tabs, vi.fn(), notify);
+    await act(async () => {
+      if (how === 'button') await rendered.result.current.handleOpenPaneSftp(config);
+      else await rendered.result.current.handleOpenRemotePath(config, '/var/log/syslog');
+    });
+    return { ...rendered, notify };
+  };
+  const openedTab = (setTabs: ReturnType<typeof vi.fn>) => (setTabs.mock.calls[0][0] as (prev: AppTab[]) => AppTab[])([])[0];
+
+  it('opens a file manager tab with the profile as it is saved now', async () => {
+    const { setTabs } = await open('button', vi.fn().mockResolvedValue({ ssh: [saved], s3: [] }));
+    expect(openedTab(setTabs)).toMatchObject({ type: 'filemanager', title: 'Prod (SFTP)', initialSSHConfig: saved });
+  });
+
+  it('opens a clicked path with the saved profile too, in that folder', async () => {
+    const { setTabs } = await open('path', vi.fn().mockResolvedValue({ ssh: [saved], s3: [] }));
+    expect(openedTab(setTabs)).toMatchObject({
+      initialSSHConfig: { ...saved, initialPath: '/var/log' },
+      initialSelectedPath: '/var/log/syslog',
+    });
+  });
+
+  it.each(['button', 'path'] as const)('opens nothing from the %s when the profile now points elsewhere', async (how) => {
+    const { setTabs, notify } = await open(
+      how,
+      vi.fn().mockResolvedValue({ ssh: [{ ...config, host: 'new.example.com' }], s3: [] })
+    );
+    expect(setTabs).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(
+      'This profile has changed since the terminal connected. Open SFTP from Connection Manager.'
+    );
+  });
+
+  it.each(['button', 'path'] as const)('opens nothing from the %s when the profiles cannot be read', async (how) => {
+    const { setTabs, notify } = await open(how, vi.fn().mockRejectedValue(new Error('boom')));
+    expect(setTabs).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith('Could not read the saved profiles, so SFTP was not opened.');
+  });
+});

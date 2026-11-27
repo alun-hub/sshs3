@@ -1,5 +1,6 @@
 import type { SSHConnectionConfig } from '@shared/types/ssh';
 import type { ProxyConfig, S3Config } from '@shared/types/storage';
+import { isSsmShellProfile } from '@shared/ssm';
 
 /**
  * A file manager tab is saved to the session without its secrets (see `sanitizeTabConfigs`), so a tab
@@ -23,12 +24,38 @@ function withProxyPassword<T extends { proxy?: ProxyConfig }>(config: T, saved: 
   return { ...config, proxy: { ...config.proxy, password: saved.proxy.password } };
 }
 
+/** True when two SSH configs name the same server account: host, port and user. */
+function sameSshAccount(a: SSHConnectionConfig, b: SSHConnectionConfig): boolean {
+  return a.host === b.host && (a.port ?? 22) === (b.port ?? 22) && a.username === b.username;
+}
+
+/** What SFTP from a terminal connects with, or why it must not be opened. */
+export type TerminalSftpProfile = { config: SSHConnectionConfig } | { refused: 'changed' | 'deleted' };
+
+/**
+ * A terminal keeps the config it connected with, which may be older than the saved profile it came from. The
+ * file manager keeps one connection per profile id and its password prompt saves the config it was given, so
+ * SFTP from a terminal uses the profile as it is saved now. That is refused when the profile no longer points
+ * at the terminal's server (host, port, user, jump host, or the kind of connection) or has been deleted. A
+ * quick connection (never saved, so without `updatedAt`) and a Team Vault profile, which main looks up
+ * itself, have no personal profile to use.
+ */
+export function terminalSftpProfile(config: SSHConnectionConfig, profiles: SSHConnectionConfig[]): TerminalSftpProfile {
+  if (config.teamVaultProfileRef) return { config };
+  const saved = profiles.find((p) => p.id === config.id && !p.deletedAt);
+  if (!saved) return config.updatedAt ? { refused: 'deleted' } : { config };
+  const sameServer =
+    sameSshAccount(saved, config) &&
+    (saved.proxyJump ?? '') === (config.proxyJump ?? '') &&
+    (saved.proxyJumpProfileId ?? '') === (config.proxyJumpProfileId ?? '') &&
+    isSsmShellProfile(saved) === isSsmShellProfile(config);
+  return sameServer ? { config: saved } : { refused: 'changed' };
+}
+
 export function withSavedSshSecrets(config: SSHConnectionConfig, profiles: SSHConnectionConfig[] | undefined): SSHConnectionConfig {
   const saved = profiles?.find((p) => p.id === config.id);
   if (!saved || saved.deletedAt || saved.authType !== config.authType) return config;
-  const sameTarget =
-    saved.host === config.host && (saved.port ?? 22) === (config.port ?? 22) && saved.username === config.username;
-  if (!sameTarget) return config;
+  if (!sameSshAccount(saved, config)) return config;
   let result = config;
   if (!result.password && saved.password) result = { ...result, password: saved.password };
   if (!result.passphrase && saved.passphrase) result = { ...result, passphrase: saved.passphrase };

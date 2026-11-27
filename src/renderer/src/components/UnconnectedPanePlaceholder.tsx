@@ -118,6 +118,8 @@ export interface UnconnectedPanePlaceholderProps {
   onChangeConnection: (paneId: string) => void;
   onOpenLocalTerminal: (paneId: string, shellType?: LocalShellType, wslDistro?: string) => void;
   onNavigateToTabBar?: () => void;
+  /** The connection of the pane this one was split from: offered first, so Enter repeats it. */
+  suggestion?: { name: string; onConnect: () => void };
 }
 
 export const UnconnectedPanePlaceholder: React.FC<UnconnectedPanePlaceholderProps> = ({
@@ -128,6 +130,7 @@ export const UnconnectedPanePlaceholder: React.FC<UnconnectedPanePlaceholderProp
   onChangeConnection,
   onOpenLocalTerminal,
   onNavigateToTabBar,
+  suggestion,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const primaryButtonRef = useRef<HTMLButtonElement>(null);
@@ -183,14 +186,30 @@ export const UnconnectedPanePlaceholder: React.FC<UnconnectedPanePlaceholderProp
       <p className={isSole ? 'text-sm text-txt-secondary' : 'text-xs text-txt-secondary'}>
         {isSole ? 'No connection selected for this tab' : 'No connection selected'}
       </p>
+      {suggestion && (
+        <button
+          ref={primaryButtonRef}
+          type="button"
+          data-testid="connect-split-source-btn"
+          title={`Connect to ${suggestion.name}`}
+          onClick={suggestion.onConnect}
+          className="max-w-[90%] truncate rounded-lg bg-sky-600 px-3 py-1 text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors"
+        >
+          Connect to {suggestion.name}
+        </button>
+      )}
       <button
-        ref={primaryButtonRef}
+        ref={suggestion ? undefined : primaryButtonRef}
         type="button"
         data-testid="select-ssh-connection-btn"
         onClick={() => onChangeConnection(leafId)}
-        className={`rounded-lg bg-sky-600 ${
-          isSole ? 'px-3.5 py-1.5' : 'px-3 py-1'
-        } text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors`}
+        className={
+          suggestion
+            ? 'rounded-lg border border-border-subtle px-3 py-1 text-xs font-medium text-txt-secondary hover:bg-app-surface-hover transition-colors'
+            : `rounded-lg bg-sky-600 ${
+                isSole ? 'px-3.5 py-1.5' : 'px-3 py-1'
+              } text-xs font-medium text-white hover:bg-sky-500 shadow-sm transition-colors`
+        }
       >
         Select SSH Connection
       </button>

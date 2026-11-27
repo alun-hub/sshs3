@@ -262,3 +262,70 @@ describe('PaneTree Component', () => {
     expect(screen.queryByRole('separator')).not.toBeInTheDocument();
   });
 });
+
+describe('PaneTree SSH pane actions', () => {
+  const ssh = { id: 'p1', name: 'web-prod', host: 'h', username: 'u', authType: 'agent' } as any;
+  const shell = { ...ssh, id: 'p2', ssm: { enabled: true, mode: 'shell' } };
+
+  afterEach(() => cleanup());
+
+  const renderTree = (node: any, extra: Record<string, unknown> = {}) =>
+    render(
+      <PaneTreeView
+        node={node}
+        isActive={false}
+        totalPanes={2}
+        settings={dummySettings}
+        platform="linux"
+        onSelectPane={vi.fn()}
+        onSplitPane={vi.fn()}
+        onClosePane={vi.fn()}
+        onChangeConnection={vi.fn()}
+        onOpenLocalTerminal={vi.fn()}
+        onCloseTab={vi.fn()}
+        {...extra}
+      />
+    );
+
+  it('has an SFTP button on SSH panes only', () => {
+    const onOpenSftp = vi.fn();
+    renderTree(
+      {
+        type: 'split',
+        id: 's',
+        orientation: 'row',
+        children: [
+          { type: 'leaf', id: 'ssh', config: ssh },
+          { type: 'leaf', id: 'shell', config: shell },
+          { type: 'leaf', id: 'empty' },
+        ],
+      },
+      { onOpenSftp }
+    );
+
+    expect(screen.getAllByRole('button', { name: 'Open SFTP for this server' })).toHaveLength(1);
+    const button = screen.getByTestId('sftp-pane-ssh');
+    expect(button).toHaveAttribute('title', 'Open SFTP for this server (Ctrl+Alt+Shift+S)');
+    fireEvent.click(button);
+    expect(onOpenSftp).toHaveBeenCalledWith(ssh);
+  });
+
+  it('offers the source connection in the new pane, also while that pane is zoomed', () => {
+    const onConnectPane = vi.fn();
+    renderTree(
+      {
+        type: 'split',
+        id: 's',
+        orientation: 'row',
+        children: [
+          { type: 'leaf', id: 'ssh', config: ssh },
+          { type: 'leaf', id: 'new', splitFromPaneId: 'ssh' },
+        ],
+      },
+      { onConnectPane, zoomedPaneId: 'new' }
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect to web-prod' }));
+    expect(onConnectPane).toHaveBeenCalledWith('new', ssh);
+  });
+});
