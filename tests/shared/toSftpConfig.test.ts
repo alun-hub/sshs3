@@ -5,7 +5,7 @@ import type { SSHConnectionConfig } from '../../src/shared/types/ssh';
 // Every routing/auth field set to a distinct value: a field dropped from the mapping shows up as undefined.
 const full: SSHConnectionConfig = {
   id: 'p1', name: 'n', host: 'h', port: 2200, username: 'u', authType: 'privateKey', password: 'pw', // pragma: allowlist secret
-  privateKeyPath: '/k', passphrase: 'pp', agentPath: '/a', pkcs11LibPath: '/lib', fido2Resident: true,
+  privateKeyPath: '/k', passphrase: 'pp', agentPath: '/a', useSshCa: true, pkcs11LibPath: '/lib', fido2Resident: true,
   initialPath: '/srv', proxy: { type: 'http', host: 'px', port: 1 }, proxyJump: 'j@h', proxyJumpProfileId: 'jp',
   ssm: { enabled: true, region: 'eu-north-1' },
 };
@@ -14,6 +14,10 @@ describe('toSftpConfig', () => {
   it('maps every routing and auth field, including ssm', () => {
     const out = toSftpConfig(full) as unknown as Record<string, unknown>;
     for (const key of SFTP_MAPPED_FIELDS) expect(out[key], key).toEqual((full as unknown as Record<string, unknown>)[key]);
+  });
+  it('copies the SSH CA choice, without which main connects as a plain agent profile', () => {
+    expect(toSftpConfig(full).useSshCa).toBe(true);
+    expect(toSftpConfig({ ...full, useSshCa: undefined }).useSshCa).toBeUndefined();
   });
   it('defaults the port and applies overrides', () => {
     expect(toSftpConfig({ ...full, port: undefined }).port).toBe(22);

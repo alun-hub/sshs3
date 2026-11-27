@@ -4,7 +4,7 @@ import type { SFTPConfig } from './types/storage';
 /** Fields every SFTP connection copies from its SSH profile. */
 const MAPPED = [
   'id', 'name', 'host', 'port', 'username', 'authType', 'password', 'privateKeyPath', 'passphrase',
-  'agentPath', 'pkcs11LibPath', 'fido2Resident', 'initialPath', 'proxy', 'proxyJump', 'proxyJumpProfileId', 'ssm',
+  'agentPath', 'useSshCa', 'pkcs11LibPath', 'fido2Resident', 'initialPath', 'proxy', 'proxyJump', 'proxyJumpProfileId', 'ssm',
 ] as const;
 
 /**
@@ -13,7 +13,7 @@ const MAPPED = [
  * both types fails the exhaustiveness check below until someone decides which list it belongs to.
  */
 const NOT_COPIED = [
-  'teamVaultProfileRef', 'pin', 'useSshCa', 'certificateFile', 'agentIdentityFiles', 'group', 'lastUsedAt',
+  'teamVaultProfileRef', 'pin', 'certificateFile', 'agentIdentityFiles', 'group', 'lastUsedAt',
   'compression', 'serverAliveInterval', 'ciphers', 'kexAlgorithms', 'macs', 'forwardAgent',
 ] as const;
 
@@ -38,6 +38,7 @@ export function toSftpConfig(profile: SSHConnectionConfig, overrides: Partial<SF
     privateKeyPath: profile.privateKeyPath,
     passphrase: profile.passphrase,
     agentPath: profile.agentPath,
+    useSshCa: profile.useSshCa,
     pkcs11LibPath: profile.pkcs11LibPath,
     fido2Resident: profile.fido2Resident,
     initialPath: profile.initialPath,
