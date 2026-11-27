@@ -7,17 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.98.6] - 2026-11-27
 
+Includes everything new since 0.98.3.
+
 ### Added
-- **A second terminal on the same server.** Splitting an SSH pane now offers **Connect to** *name* as the default button: `Ctrl+Shift+D` (or `Ctrl+Shift+E`), then `Enter`.
-- **SFTP from a terminal pane.** A new button in the pane header, or `Ctrl+Alt+Shift+S` for the active pane, opens the file manager for that server. Session Manager shell panes have no button.
+- **A second terminal on the same server:** after splitting an SSH pane, `Enter` connects to it. **Select SSH Connection** picks another.
+- **SFTP from a terminal pane:** a button in its header, or `Ctrl+Alt+Shift+S` (not for Session Manager shells).
+
+### Security
+- A crafted line in a synced SSH config can no longer run commands.
+- Git settings in a downloaded folder can no longer run programs.
+- Opening a file with the system app refuses program files, also local ones.
+- Downloaded copies of remote files are better protected, and the file editor checks its input.
 
 ### Changed
-- **`Enter` after splitting an SSH pane connects to the same server** instead of opening the connection list. Choose **Select SSH Connection** for another one.
-- **SFTP from a terminal uses the profile as it is saved now**, also when `Ctrl`+click on a remote path opens the file manager. It is not opened if the profile has been deleted, or its host, port, user, jump host or connection type changed after the terminal connected: use **Connection Manager**.
-- **Electron 45.4.1**, with fixes backported from Chromium, V8 and other components. The AWS SDK, icons and list scrolling libraries are updated too.
+- `Ctrl`+click on a file path opens the file with the system app, not the file manager (**Settings → Terminal** switches back). Folders and missing, large or runnable files still use the file manager. Saves of remote files are uploaded, also on quit.
+- Local Git repositories with custom configuration (such as Git LFS), and all of them with git older than 2.26, show the branch only and **Pull** refuses.
+- SFTP from a terminal uses the saved profile and is refused if it was deleted or points elsewhere.
+- Electron 45.4.1 and updated libraries.
 
 ### Fixed
-- **Quitting leaves unrelated processes alone (Linux).** sshs3 now stops the `ssh-agent` it started only if that process id still belongs to an `ssh-agent`.
+- The Git indicator no longer says "clean" for a repository it did not check.
+- The path hover card no longer opens for missing files after a failed connection, and copying a path reports failures.
+- Linux: quitting no longer stops an unrelated process.
 
 ## [0.98.5] - 2026-11-26
 
