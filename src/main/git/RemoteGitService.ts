@@ -7,7 +7,7 @@ import type {
   TestRemoteGitAccessResult,
 } from '../../shared/types/git';
 import type { SSHConnectionConfig } from '../../shared/types/ssh';
-import { runSshCommand } from '../ssh/KeyInstallService';
+import { runSshCommand, type PromptHandlers } from '../ssh/KeyInstallService';
 import { hasControlChars, resolveGitBinary, safeGitConfigArgs, safeGitEnv, safeGitPullEnv, shellQuote } from './gitSafety';
 import { hardenedGitConfigArgs } from './hardenedGitArgs';
 
@@ -39,11 +39,18 @@ export function isValidGitCloneUrl(rawUrl: string): boolean {
   return false;
 }
 
+/** The SSH connection a command on a server uses. Resolved in main, never taken from the renderer. */
+export interface RemoteGitConnection {
+  config: SSHConnectionConfig;
+  /** Answers what ssh asks while logging in (PIN, passphrase, host key, touch). */
+  prompts?: PromptHandlers;
+}
+
 export class RemoteGitService {
   /**
    * Executes git clone locally or remotely via SSH.
    */
-  public static async clone(request: GitCloneRequest): Promise<GitOperationResult> {
+  public static async clone(request: GitCloneRequest, remote?: RemoteGitConnection): Promise<GitOperationResult> {
     const url = request.url?.trim();
     if (!url || !isValidGitCloneUrl(url)) {
       return { success: false, error: 'Invalid Git repository URL' };
@@ -96,10 +103,10 @@ export class RemoteGitService {
     }
 
     // Remote SFTP clone over SSH
-    if (request.sftpConfig) {
+    if (remote) {
       const remoteCmd = `cd -- ${shellQuote(targetDir)} && git ${[...safeGitConfigArgs('/dev/null'), ...args].map(shellQuote).join(' ')}`;
       try {
-        const res = await runSshCommand(request.sftpConfig, remoteCmd);
+        const res = await runSshCommand(remote.config, remoteCmd, remote.prompts);
         if (res.code === 0) {
           return { success: true, output: (res.stdout + '\n' + res.stderr).trim() };
         }
@@ -109,7 +116,7 @@ export class RemoteGitService {
       }
     }
 
-    return { success: false, error: 'No connection configuration provided for remote clone' };
+    return { success: false, error: 'No connection available for remote clone' };
   }
 
   /**
@@ -118,7 +125,7 @@ export class RemoteGitService {
   public static async pull(
     directoryPath: string,
     providerId?: string,
-    sftpConfig?: SSHConnectionConfig
+    remote?: RemoteGitConnection
   ): Promise<GitOperationResult> {
     if (!directoryPath || typeof directoryPath !== 'string') {
       return { success: false, error: 'Directory path is required' };
@@ -151,10 +158,10 @@ export class RemoteGitService {
     }
 
     // Remote SFTP pull over SSH
-    if (sftpConfig) {
+    if (remote) {
       const remoteCmd = `cd -- ${shellQuote(dir)} && git ${safeGitConfigArgs('/dev/null').map(shellQuote).join(' ')} pull`;
       try {
-        const res = await runSshCommand(sftpConfig, remoteCmd);
+        const res = await runSshCommand(remote.config, remoteCmd, remote.prompts);
         if (res.code === 0) {
           return { success: true, output: (res.stdout + '\n' + res.stderr).trim() };
         }
@@ -164,7 +171,7 @@ export class RemoteGitService {
       }
     }
 
-    return { success: false, error: 'No connection configuration provided for remote pull' };
+    return { success: false, error: 'No connection available for remote pull' };
   }
 
   /**

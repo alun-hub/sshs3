@@ -80,11 +80,12 @@ describe('RemoteGitService', () => {
   });
 
   describe('clone hardening', () => {
-    const sftpConfig = { host: 'h', port: 22, username: 'u' } as unknown as SSHConnectionConfig;
-    const base = { url: 'https://github.com/example/repo.git', providerId: 'sftp-1', sftpConfig };
+    const config = { host: 'h', port: 22, username: 'u' } as unknown as SSHConnectionConfig;
+    const base = { url: 'https://github.com/example/repo.git', providerId: 'sftp-1' };
+    const clone = (request: Parameters<typeof RemoteGitService.clone>[0]) => RemoteGitService.clone(request, { config });
 
     it('rejects directoryName starting with a dash', async () => {
-      const res = await RemoteGitService.clone({
+      const res = await clone({
         ...base,
         targetDirectory: '/tmp',
         directoryName: '--upload-pack=calc',
@@ -95,26 +96,26 @@ describe('RemoteGitService', () => {
     });
 
     it('rejects non-integer depth', async () => {
-      const res = await RemoteGitService.clone({ ...base, targetDirectory: '/tmp', depth: 1.5 });
+      const res = await clone({ ...base, targetDirectory: '/tmp', depth: 1.5 });
       expect(res.success).toBe(false);
       expect(res.error).toContain('Invalid clone depth');
     });
 
     it('single-quotes the target directory so shell metacharacters are inert', async () => {
-      await RemoteGitService.clone({ ...base, targetDirectory: '/srv/x$(touch /tmp/p);id' });
+      await clone({ ...base, targetDirectory: '/srv/x$(touch /tmp/p);id' });
       const cmd = runSshCommand.mock.calls[0][1] as string;
       expect(cmd.startsWith("cd -- '/srv/x$(touch /tmp/p);id' && git ")).toBe(true);
       expect(cmd).toContain("'--' 'https://github.com/example/repo.git'");
     });
 
     it('escapes embedded single quotes in the target directory', async () => {
-      await RemoteGitService.clone({ ...base, targetDirectory: "/srv/it's" });
+      await clone({ ...base, targetDirectory: "/srv/it's" });
       const cmd = runSshCommand.mock.calls[0][1] as string;
       expect(cmd.startsWith("cd -- '/srv/it'\\''s' && ")).toBe(true);
     });
 
     it('rejects target directories containing newlines', async () => {
-      const res = await RemoteGitService.clone({ ...base, targetDirectory: '/srv/a\nb' });
+      const res = await clone({ ...base, targetDirectory: '/srv/a\nb' });
       expect(res.success).toBe(false);
       expect(runSshCommand).not.toHaveBeenCalled();
     });
