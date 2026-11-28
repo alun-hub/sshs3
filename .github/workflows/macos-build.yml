@@ -192,6 +192,74 @@ jobs:
           SSH_AUTH_SOCK="$sock" SSH_ASKPASS="$RUNNER_TEMP/askpass-hsm.sh" SSH_ASKPASS_REQUIRE=force ssh-add -s "$lib" < /dev/null
           SSH_AUTH_SOCK="$sock" ssh-add -l
 
+      # Information only: how far Apple's own smartcard module gets without a card, under ssh-agent's default
+      # allow-list. Also records what the default allow-list says about the OpenSC installation. Every command runs
+      # even if an earlier one fails.
+      - name: Probe Apple's ssh-keychain PKCS#11 module
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          lib=/usr/lib/ssh-keychain.dylib
+          app="$PWD/release/mac-arm64/sshs3.app"
+          sw_vers
+          echo "== file on disk"
+          ls -l "$lib"
+          codesign --display --verbose=2 "$lib" 2>&1
+
+          # A software identity in CryptoTokenKit would stand in for a card. It may well be refused on a virtual machine.
+          echo "== CryptoTokenKit identities"
+          sc_auth create-ctk-identity -l ci-p256 -k p-256 -t none 2>&1
+          sc_auth create-ctk-identity -l ci-p256-ne -k p-256-ne -t none 2>&1
+          sc_auth list-ctk-identities 2>&1
+
+          echo "== load into the packaged app"
+          cat > "$RUNNER_TEMP/probe-keychain.cjs" <<'EOF'
+          const path = require('node:path');
+          const fs = require('node:fs');
+          const [appDir, lib] = process.argv.slice(2);
+          console.log('stat isFile (the check the app uses):', fs.statSync(lib).isFile());
+          const { PKCS11 } = require(path.join(appDir, 'Contents/Resources/app.asar/node_modules/pkcs11js'));
+          const pkcs11 = new PKCS11();
+          pkcs11.load(lib);
+          pkcs11.C_Initialize();
+          console.log('library:', pkcs11.C_GetInfo().libraryDescription.trim());
+          const slots = pkcs11.C_GetSlotList(true);
+          console.log('slots with a token:', slots.length);
+          for (const slot of slots) {
+            console.log('token:', pkcs11.C_GetTokenInfo(slot).label.trim());
+            const session = pkcs11.C_OpenSession(slot, 4);
+            for (const [name, cls] of [['certificates', 1], ['public keys', 2]]) {
+              pkcs11.C_FindObjectsInit(session, [{ type: 0, value: cls }]);
+              console.log(name + ':', pkcs11.C_FindObjects(session, 16).length);
+              pkcs11.C_FindObjectsFinal(session);
+            }
+            pkcs11.C_CloseSession(session);
+          }
+          pkcs11.C_Finalize();
+          pkcs11.close();
+          EOF
+          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/sshs3" "$RUNNER_TEMP/probe-keychain.cjs" "$app" "$lib" 2>&1
+          echo "exit: $?"
+
+          echo "== ssh-agent without -P"
+          sock="$RUNNER_TEMP/agent-apple.sock"
+          ssh-agent -d -a "$sock" > "$RUNNER_TEMP/agent-apple.log" 2>&1 &
+          agent=$!
+          printf '#!/bin/sh\necho 000000\n' > "$RUNNER_TEMP/askpass-apple.sh"
+          chmod 700 "$RUNNER_TEMP/askpass-apple.sh"
+          sleep 2
+          for module in "$lib" /Library/OpenSC/lib/opensc-pkcs11.so; do
+            echo "-- $module"
+            SSH_AUTH_SOCK="$sock" SSH_ASKPASS="$RUNNER_TEMP/askpass-apple.sh" SSH_ASKPASS_REQUIRE=force ssh-add -s "$module" < /dev/null 2>&1
+          done
+          SSH_AUTH_SOCK="$sock" ssh-add -l 2>&1
+          sleep 2
+          kill "$agent"
+          cat "$RUNNER_TEMP/agent-apple.log"
+
+          echo "== ssh client reading the module directly"
+          ssh-keygen -D "$lib" 2>&1
+
       - name: Smoke test the packaged app
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         env:
