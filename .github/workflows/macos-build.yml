@@ -135,26 +135,62 @@ jobs:
           EOF
           ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/sshs3" "$RUNNER_TEMP/check-pkcs11.cjs" "$app" "$RUNNER_TEMP/pkcs11.txt"
 
-      # Information only: records whether ssh-agent accepts these modules with its default provider allow-list.
-      - name: Show how ssh-agent treats the PKCS#11 modules
+      # The app's agent gets this allow-list (see agentProviderAllowlist.ts). No smartcard is present, so only the
+      # agent's decision is checked: the OpenSC installation is let through, Homebrew's directory is not.
+      - name: Check the ssh-agent PKCS#11 allow-list
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}
-        continue-on-error: true
         run: |
-          which -a ssh ssh-agent
+          set -euo pipefail
+          allow="$(npx tsx -e "import { MAC_AGENT_PROVIDER_ALLOWLIST as list } from './src/main/ssh/agentProviderAllowlist'; process.stdout.write(list)")"
+          echo "allow-list: $allow"
+          # Homebrew's opensc formula stays out of the way of the cask, which is the installation the allow-list is for.
+          brew unlink opensc
+          brew install --cask opensc
           ssh -V
           sock="$RUNNER_TEMP/agent.sock"
-          ssh-agent -d -a "$sock" > "$RUNNER_TEMP/agent.log" 2>&1 &
+          ssh-agent -d -P "$allow" -a "$sock" > "$RUNNER_TEMP/agent.log" 2>&1 &
           agent=$!
           printf '#!/bin/sh\necho 000000\n' > "$RUNNER_TEMP/askpass.sh"
           chmod 700 "$RUNNER_TEMP/askpass.sh"
           sleep 2
-          while read -r lib; do
-            echo "== $lib"
+          for lib in /Library/OpenSC/lib/opensc-pkcs11.so /opt/homebrew/lib/libykcs11.dylib; do
+            test -f "$lib"
             SSH_AUTH_SOCK="$sock" SSH_ASKPASS="$RUNNER_TEMP/askpass.sh" SSH_ASKPASS_REQUIRE=force ssh-add -s "$lib" < /dev/null || true
-          done < "$RUNNER_TEMP/pkcs11.txt"
+          done
           sleep 2
           kill "$agent" || true
           cat "$RUNNER_TEMP/agent.log"
+          if grep -q 'refusing PKCS#11 add of "/Library/OpenSC' "$RUNNER_TEMP/agent.log"; then
+            echo "::error::ssh-agent refused the OpenSC module"
+            exit 1
+          fi
+          grep -q 'refusing PKCS#11 add of "/opt/homebrew' "$RUNNER_TEMP/agent.log"
+
+      # Information only: a software token (SoftHSM) placed in the allowed directory shows whether macOS's own
+      # ssh-agent can really load a third-party module and list its keys.
+      - name: Try a software token through ssh-agent
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          allow="$(npx tsx -e "import { MAC_AGENT_PROVIDER_ALLOWLIST as list } from './src/main/ssh/agentProviderAllowlist'; process.stdout.write(list)")"
+          brew install softhsm
+          lib=/Library/OpenSC/lib/libsofthsm2.so
+          sudo cp "$(brew --prefix softhsm)/lib/softhsm/libsofthsm2.so" "$lib"
+          export SOFTHSM2_CONF="$RUNNER_TEMP/softhsm2.conf"
+          mkdir -p "$RUNNER_TEMP/tokens"
+          echo "directories.tokendir = $RUNNER_TEMP/tokens" > "$SOFTHSM2_CONF"
+          softhsm2-util --init-token --free --label ci --so-pin 123456 --pin 123456
+          /Library/OpenSC/bin/pkcs11-tool --module "$lib" --login --pin 123456 --keypairgen --key-type rsa:2048 --label ci --id 01
+          sock="$RUNNER_TEMP/agent-hsm.sock"
+          ssh-agent -d -P "$allow" -a "$sock" > "$RUNNER_TEMP/agent-hsm.log" 2>&1 &
+          agent=$!
+          trap 'kill "$agent" || true; cat "$RUNNER_TEMP/agent-hsm.log"' EXIT
+          printf '#!/bin/sh\necho 123456\n' > "$RUNNER_TEMP/askpass-hsm.sh"
+          chmod 700 "$RUNNER_TEMP/askpass-hsm.sh"
+          sleep 2
+          SSH_AUTH_SOCK="$sock" SSH_ASKPASS="$RUNNER_TEMP/askpass-hsm.sh" SSH_ASKPASS_REQUIRE=force ssh-add -s "$lib" < /dev/null
+          SSH_AUTH_SOCK="$sock" ssh-add -l
 
       - name: Smoke test the packaged app
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}

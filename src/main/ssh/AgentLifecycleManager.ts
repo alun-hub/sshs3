@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import fs from 'node:fs';
 import net from 'node:net';
 import * as AgentRegistry from './AgentRegistry';
+import { agentProviderArgs } from './agentProviderAllowlist';
 
 const execFileAsync = promisify(execFile);
 
@@ -297,7 +298,10 @@ export class AgentLifecycleManager {
 
     // `-a` pins the socket to a caller-chosen path (the app-wide agent needs a stable one); the
     // default random path under the user's agent/tmp directory is used otherwise.
-    const agentArgs = options?.socketPath ? ['-a', options.socketPath, '-s'] : ['-s'];
+    const agentArgs = [
+      ...agentProviderArgs(process.platform),
+      ...(options?.socketPath ? ['-a', options.socketPath, '-s'] : ['-s']),
+    ];
     const { stdout } = await execFileAsync('ssh-agent', agentArgs, {
       env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
     });

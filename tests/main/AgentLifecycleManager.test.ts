@@ -6,6 +6,7 @@ import path from 'node:path';
 import { execFile as mockedExecFile } from 'node:child_process';
 import { AgentLifecycleManager } from '../../src/main/ssh/AgentLifecycleManager';
 import * as AgentRegistry from '../../src/main/ssh/AgentRegistry';
+import { agentProviderArgs } from '../../src/main/ssh/agentProviderAllowlist';
 
 vi.mock('node:child_process', () => ({ execFile: vi.fn() }));
 
@@ -214,12 +215,33 @@ describe('AgentLifecycleManager', () => {
         socketPath: '/run/user/1000/sshs3/agent.sock',
       });
       expect(res.socketPath).toBe('/run/user/1000/sshs3/agent.sock');
-      expect(vi.mocked(mockedExecFile).mock.calls[0][1]).toEqual(['-a', '/run/user/1000/sshs3/agent.sock', '-s']);
+      const providerArgs = agentProviderArgs(process.platform);
+      expect(vi.mocked(mockedExecFile).mock.calls[0][1]).toEqual([
+        ...providerArgs,
+        '-a',
+        '/run/user/1000/sshs3/agent.sock',
+        '-s',
+      ]);
 
       vi.mocked(mockedExecFile).mockClear();
       mockSpawnedAgent('/tmp/random.sock', 12348);
       await AgentLifecycleManager.spawnPrivateAgent();
-      expect(vi.mocked(mockedExecFile).mock.calls[0][1]).toEqual(['-s']);
+      expect(vi.mocked(mockedExecFile).mock.calls[0][1]).toEqual([...providerArgs, '-s']);
+    });
+  });
+
+  describe('spawnPrivateAgent PKCS#11 allow-list', () => {
+    it('passes the macOS allow-list to the agent it spawns', async () => {
+      if (process.platform === 'win32') return;
+      const original = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+      try {
+        mockSpawnedAgent('/tmp/mac-agent.sock', 12349);
+        await AgentLifecycleManager.spawnPrivateAgent();
+        expect(vi.mocked(mockedExecFile).mock.calls.at(-1)?.[1]).toEqual([...agentProviderArgs('darwin'), '-s']);
+      } finally {
+        Object.defineProperty(process, 'platform', { value: original, configurable: true });
+      }
     });
   });
 
