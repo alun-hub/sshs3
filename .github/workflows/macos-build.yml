@@ -199,6 +199,7 @@ jobs:
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         continue-on-error: true
         run: |
+          set +e
           lib=/usr/lib/ssh-keychain.dylib
           app="$PWD/release/mac-arm64/sshs3.app"
           sw_vers
